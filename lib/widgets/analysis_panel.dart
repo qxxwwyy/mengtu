@@ -53,7 +53,7 @@ class _AnalysisPanelState extends ConsumerState<AnalysisPanel> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         constraints: BoxConstraints(
-          maxHeight: _expanded ? 320 : 52,
+          maxHeight: _expanded ? 380 : 52,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -63,7 +63,7 @@ class _AnalysisPanelState extends ConsumerState<AnalysisPanel> {
             // 展开内容
             if (_expanded)
               SizedBox(
-                height: 268,
+                height: 340,
                 child: DefaultTabController(
                   length: 5,
                   child: Column(

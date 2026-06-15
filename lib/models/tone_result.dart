@@ -64,9 +64,11 @@ class ToneResult {
   final int minVal;
   final int maxVal;
   final double peakPosition;
+  final double blacks;
   final double shadows;
   final double midtones;
   final double highlights;
+  final double whites;
   final String toneKey; // high/mid/low/full
   final String toneRange; // long/medium/short
   final double confidence;
@@ -78,9 +80,11 @@ class ToneResult {
     required this.minVal,
     required this.maxVal,
     required this.peakPosition,
+    required this.blacks,
     required this.shadows,
     required this.midtones,
     required this.highlights,
+    required this.whites,
     required this.toneKey,
     required this.toneRange,
     required this.confidence,
@@ -116,9 +120,11 @@ class ToneResult {
         'minVal': minVal,
         'maxVal': maxVal,
         'peakPosition': peakPosition,
+        'blacks': blacks,
         'shadows': shadows,
         'midtones': midtones,
         'highlights': highlights,
+        'whites': whites,
         'toneKey': toneKey,
         'toneRange': toneRange,
         'confidence': confidence,
@@ -131,9 +137,13 @@ class ToneResult {
         minVal: j['minVal'] as int,
         maxVal: j['maxVal'] as int,
         peakPosition: (j['peakPosition'] as num).toDouble(),
+        // blacks/whites 不加默认值：旧缓存（3 段）缺这两键 → 强转抛 TypeError
+        // → 被 fromJsonString 的 try/catch 捕获返回 null → provider 自动重算
+        blacks: (j['blacks'] as num).toDouble(),
         shadows: (j['shadows'] as num).toDouble(),
         midtones: (j['midtones'] as num).toDouble(),
         highlights: (j['highlights'] as num).toDouble(),
+        whites: (j['whites'] as num).toDouble(),
         toneKey: j['toneKey'] as String,
         toneRange: j['toneRange'] as String,
         confidence: (j['confidence'] as num).toDouble(),

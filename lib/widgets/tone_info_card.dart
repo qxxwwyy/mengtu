@@ -1,4 +1,4 @@
-// tone_info_card.dart — 影调信息组件（三区域占比 + 基调标签 + 统计指标）
+// tone_info_card.dart — 影调信息组件（五区域占比 + 基调标签 + 统计指标）
 import 'package:flutter/material.dart';
 import '../models/tone_result.dart';
 
@@ -73,6 +73,9 @@ class ToneInfoCard extends StatelessWidget {
   Widget _buildZoneBars(BuildContext context) {
     final labelColor =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    // 黑色条在深色主题下提亮，避免与背景 (#121212) 对比度过低不可见
+    final blackColor = isDark ? const Color(0xFF42424F) : const Color(0xFF1A1A1A);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -81,18 +84,22 @@ class ToneInfoCard extends StatelessWidget {
                 fontSize: 12, color: labelColor, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         _ZoneBar(
-            label: '暗部', ratio: tone.shadows, color: const Color(0xFF37474F)),
+            label: '黑色', ratio: tone.blacks, color: blackColor),
+        const SizedBox(height: 6),
+        _ZoneBar(
+            label: '阴影', ratio: tone.shadows, color: const Color(0xFF37474F)),
         const SizedBox(height: 6),
         _ZoneBar(
             label: '中间调', ratio: tone.midtones, color: const Color(0xFF78909C)),
         const SizedBox(height: 6),
         _ZoneBar(
-            label: '亮部',
-            ratio: tone.highlights,
+            label: '高光', ratio: tone.highlights, color: const Color(0xFFB0BEC5)),
+        const SizedBox(height: 6),
+        _ZoneBar(
+            label: '白色',
+            ratio: tone.whites,
             color: const Color(0xFFECEFF1),
-            textColor: Theme.of(context).brightness == Brightness.dark
-                ? Colors.black54
-                : Colors.black87),
+            textColor: isDark ? Colors.black54 : Colors.black87),
       ],
     );
   }

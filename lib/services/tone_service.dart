@@ -1,7 +1,7 @@
 // tone_service.dart — 影调分析服务
 //
 // 复用直方图的亮度数据计算影调统计，不重新读图。
-// 三区域划分：shadows(0-85) / midtones(86-170) / highlights(171-255)
+// 五区域划分：blacks(0-51) / shadows(52-102) / midtones(103-153) / highlights(154-204) / whites(205-255)
 // 基调判定：基于峰值位置 + 区域占比
 // 跨度判定：基于最值分布范围
 //
@@ -23,9 +23,11 @@ ToneResult analyzeTone(List<int> lumHist) {
       minVal: 0,
       maxVal: 0,
       peakPosition: 0,
+      blacks: 0,
       shadows: 0,
       midtones: 0,
       highlights: 0,
+      whites: 0,
       toneKey: 'mid',
       toneRange: 'short',
       confidence: 0,
@@ -81,25 +83,33 @@ ToneResult analyzeTone(List<int> lumHist) {
     }
   }
 
-  // 三区域占比（按像素数）
+  // 五区域占比（按像素数，分界点 51/102/153/204 与直方图视觉分界线对齐）
+  var blacksCount = 0;
   var shadowsCount = 0;
   var midtonesCount = 0;
   var highlightsCount = 0;
+  var whitesCount = 0;
   for (var i = 0; i < 256; i++) {
-    if (i <= 85) {
+    if (i <= 51) {
+      blacksCount += lumHist[i];
+    } else if (i <= 102) {
       shadowsCount += lumHist[i];
-    } else if (i <= 170) {
+    } else if (i <= 153) {
       midtonesCount += lumHist[i];
-    } else {
+    } else if (i <= 204) {
       highlightsCount += lumHist[i];
+    } else {
+      whitesCount += lumHist[i];
     }
   }
+  final blacks = blacksCount / total * 100;
   final shadows = shadowsCount / total * 100;
   final midtones = midtonesCount / total * 100;
   final highlights = highlightsCount / total * 100;
+  final whites = whitesCount / total * 100;
 
-  // 基调判定
-  final toneKey = _classifyToneKey(peakPosition, shadows, highlights);
+  // 基调判定：用合并段（暗部=blacks+shadows，亮部=highlights+whites）判定全长调
+  final toneKey = _classifyToneKey(peakPosition, blacks, shadows, highlights, whites);
   final toneRange = _classifyToneRange(minVal, maxVal);
   final confidence = _calcConfidence(toneKey, peakCount, total);
 
@@ -110,9 +120,11 @@ ToneResult analyzeTone(List<int> lumHist) {
     minVal: minVal,
     maxVal: maxVal,
     peakPosition: peakPosition,
+    blacks: blacks,
     shadows: shadows,
     midtones: midtones,
     highlights: highlights,
+    whites: whites,
     toneKey: toneKey,
     toneRange: toneRange,
     confidence: confidence,
@@ -120,12 +132,22 @@ ToneResult analyzeTone(List<int> lumHist) {
 }
 
 /// 基调判定（参考取色卡 tone_analysis.py 分类规则）
-String _classifyToneKey(double peak, double shadows, double highlights) {
+///
+/// 全长调用合并段判定：暗部 = blacks + shadows，亮部 = highlights + whites，
+/// 两端都有显著占比（>15%）即为全长调。这样能正确识别"黑场+白场为主、
+/// 中间稀疏"的高对比图（单看 shadows/highlights 会漏判）。
+///
+/// peak 阈值 85/171 沿用旧值（bin 索引），与 5 段分界 51/102/153/204 独立，
+/// 用于判定峰值偏向暗端还是亮端。
+String _classifyToneKey(
+    double peak, double blacks, double shadows, double highlights, double whites) {
+  final dark = blacks + shadows;
+  final light = highlights + whites;
   // 全长调：暗部和亮部都有显著占比（>15%）
-  if (shadows > 15 && highlights > 15) return 'full';
+  if (dark > 15 && light > 15) return 'full';
   // 按峰值位置判定
-  if (peak <= 85) return 'low'; // 低调
-  if (peak >= 171) return 'high'; // 高调
+  if (peak <= 85) return 'low'; // 低调（峰值偏暗端）
+  if (peak >= 171) return 'high'; // 高调（峰值偏亮端）
   return 'mid'; // 中间调
 }
 

@@ -1,7 +1,7 @@
 // histogram_painter.dart — 直方图 CustomPainter
 //
 // v1.0.0: 色相直方图模式（360 bins，彩虹色条）
-// v1.1.0: ACR 风格标注（三段分界 + 溢出三角 + RGB+亮度叠加）
+// v1.1.0: ACR 风格标注（五段分界 + 溢出三角 + RGB+亮度叠加）
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/tone_result.dart';
@@ -42,7 +42,7 @@ class HistogramPainter extends CustomPainter {
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
-  // 三段分界线 Paint
+  // 五段分界线 Paint
   static final _dividerPaint = Paint()
     ..color = Colors.white.withValues(alpha: 0.2)
     ..strokeWidth = 0.5
@@ -110,7 +110,7 @@ class HistogramPainter extends CustomPainter {
         break; // handled above
     }
 
-    // 绘制三段分界线（非色相模式）
+    // 绘制五段分界线（非色相模式）
     _drawZoneDividers(canvas, size);
 
     // 绘制溢出三角
@@ -190,7 +190,7 @@ class HistogramPainter extends CustomPainter {
     canvas.drawPath(path, paint);
   }
 
-  /// 绘制五段分界线（极暗/暗部/中间调/亮部/极亮）
+  /// 绘制五段分界线（黑色/阴影/中间调/高光/白色）
   void _drawZoneDividers(Canvas canvas, Size size) {
     final w = size.width;
     final h = size.height;
@@ -203,7 +203,7 @@ class HistogramPainter extends CustomPainter {
     }
 
     // 底部标签（五段居中）
-    const labels = ['极暗', '暗部', '中间调', '亮部', '极亮'];
+    const labels = ['黑色', '阴影', '中间调', '高光', '白色'];
     const centers = [25, 76, 128, 179, 230]; // 各段中点 (0-255)
     for (var i = 0; i < labels.length; i++) {
       final cx = w * (centers[i] / 256);

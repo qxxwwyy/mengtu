@@ -102,9 +102,9 @@ void main() {
       // 缓存影调
       await db.photoDao.updateToneCache(photoId, tone.toJsonString());
 
-      // 验证
+      // 验证（亮度 20 落入黑色区 0-51）
       expect(tone.toneKey, 'low');
-      expect(tone.shadows, greaterThan(80));
+      expect(tone.blacks, greaterThan(80));
 
       // 从缓存读取验证
       final photo = await db.photoDao.getPhotoById(photoId);
@@ -125,8 +125,9 @@ void main() {
       final hist = await computeHistogram(imgPath);
       final tone = analyzeTone(hist.lum);
 
+      // 验证（亮度 240 落入白色区 205-255）
       expect(tone.toneKey, 'high');
-      expect(tone.highlights, greaterThan(80));
+      expect(tone.whites, greaterThan(80));
     });
 
     test('灰色图片 → 中间调判定', () async {

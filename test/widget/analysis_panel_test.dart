@@ -12,9 +12,11 @@ void main() {
     ToneResult buildTone({
       String toneKey = 'mid',
       String toneRange = 'long',
+      double blacks = 10,
       double shadows = 20,
-      double midtones = 60,
+      double midtones = 40,
       double highlights = 20,
+      double whites = 10,
     }) {
       return ToneResult(
         mean: 128,
@@ -23,9 +25,11 @@ void main() {
         minVal: 10,
         maxVal: 250,
         peakPosition: 125,
+        blacks: blacks,
         shadows: shadows,
         midtones: midtones,
         highlights: highlights,
+        whites: whites,
         toneKey: toneKey,
         toneRange: toneRange,
         confidence: 0.5,
@@ -44,7 +48,7 @@ void main() {
       expect(find.text('高调'), findsOneWidget);
     });
 
-    testWidgets('渲染三区域占比条', (tester) async {
+    testWidgets('渲染五区域占比条', (tester) async {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -53,9 +57,9 @@ void main() {
         ),
       );
 
-      expect(find.text('暗部'), findsOneWidget);
+      expect(find.text('黑色'), findsOneWidget);
       expect(find.textContaining('中间调'), findsWidgets);
-      expect(find.text('亮部'), findsOneWidget);
+      expect(find.text('白色'), findsOneWidget);
     });
 
     testWidgets('渲染统计指标', (tester) async {

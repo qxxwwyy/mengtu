@@ -94,14 +94,17 @@ void main() {
     test('toJson 包含所有字段', () {
       final tone = ToneResult(
         mean: 100, median: 95, std: 30, minVal: 5, maxVal: 240,
-        peakPosition: 90, shadows: 20, midtones: 60, highlights: 20,
+        peakPosition: 90,
+        blacks: 10, shadows: 20, midtones: 40, highlights: 20, whites: 10,
         toneKey: 'mid', toneRange: 'long', confidence: 0.5,
       );
       final json = tone.toJson();
       expect(json.containsKey('mean'), isTrue);
       expect(json.containsKey('toneKey'), isTrue);
       expect(json.containsKey('confidence'), isTrue);
-      expect(json.length, 12);
+      expect(json.containsKey('blacks'), isTrue);
+      expect(json.containsKey('whites'), isTrue);
+      expect(json.length, 14);
     });
   });
 }
