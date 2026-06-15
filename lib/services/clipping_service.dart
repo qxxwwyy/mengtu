@@ -58,8 +58,12 @@ ClippingResult _detectClipping(String path) {
   var brightCount = 0;
   var totalSamples = 0;
 
-  // 降采样 step=2（比直方图更密）
-  const step = 2;
+  // 动态 step：大图加大步长，控制采样点总数在 ~50 万以内，避免 300 万次循环卡顿
+  // 4000×3000 图：step=2 → 300万采样；step=5 → 48万采样
+  final pixelCount = w * h;
+  final step = pixelCount > 1000000
+      ? 5 // >100 万像素（如 4000×3000）用 step=5
+      : (pixelCount > 250000 ? 3 : 2); // 中等用 3，小图用 2
   for (var y = 0; y < h; y += step) {
     for (var x = 0; x < w; x += step) {
       final pixel = decoded.getPixel(x, y);

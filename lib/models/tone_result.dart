@@ -32,11 +32,16 @@ class HistogramData {
   ///
   /// v1.0.0 布局：`[R(256×2) | G(256×2) | B(256×2) | Lum(256×2) | Hue(360×2)]` = 2768 bytes
   /// 旧格式（无 hue）：2048 bytes，fromBytes 会检测长度
+  ///
+  /// 注意：每个 bin 在序列化前 clamp 到 65535，防止大图降采样后单 bin 计数
+  /// 超过 Uint16 范围（如纯色图 75 万像素集中在一个 bin）
   Uint8List toBytes() {
     final all = <int>[...r, ...g, ...b, ...lum];
     // hue 可能为 null（旧缓存或无色相计算），存 360 个 0
     all.addAll(hue ?? List.filled(360, 0));
-    final u16 = Uint16List.fromList(all);
+    // clamp 到 Uint16 范围，避免极端单色图溢出
+    final clamped = all.map((v) => v > 65535 ? 65535 : v).toList();
+    final u16 = Uint16List.fromList(clamped);
     return u16.buffer.asUint8List();
   }
 

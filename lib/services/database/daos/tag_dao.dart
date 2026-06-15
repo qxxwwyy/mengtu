@@ -21,9 +21,11 @@ class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
   Future<List<Tag>> getTagsByGroup(String group) =>
       (select(tags)..where((t) => t.group.equals(group))).get();
 
-  /// 按名称模糊查询标签
-  Future<List<Tag>> searchTagsByName(String name) =>
-      (select(tags)..where((t) => t.name.like('%$name%'))).get();
+  /// 按名称模糊查询标签（转义 LIKE 通配符 % 和 _）
+  Future<List<Tag>> searchTagsByName(String name) {
+    final escaped = name.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
+    return (select(tags)..where((t) => t.name.like('%$escaped%'))).get();
+  }
 
   /// 创建标签
   Future<String> insertTag(TagsCompanion entry) async {

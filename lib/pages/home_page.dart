@@ -434,6 +434,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                   mainAxisSpacing: 6,
                   crossAxisSpacing: 6,
                   padding: const EdgeInsets.all(6),
+                  // 限制预渲染范围，避免 1000+ 照片时 keepAlive 缓存过多 Image 解码器
+                  cacheExtent: 500,
                   itemCount: sorted.length,
                   itemBuilder: (context, index) {
                     return PhotoCard(

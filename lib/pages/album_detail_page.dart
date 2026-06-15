@@ -370,11 +370,19 @@ class _PhotoSelectionPageState extends State<PhotoSelectionPage> {
                     }
                   },
                   onLongPress: () {
-                    if (!_selectMode) {
-                      setState(() => _selectMode = true);
-                    }
                     setState(() {
-                      _selectedIds.add(photo.id);
+                      if (_selectMode) {
+                        // 已在选择模式：长按 toggle 选中状态（与 onTap 一致）
+                        if (isSelected) {
+                          _selectedIds.remove(photo.id);
+                        } else {
+                          _selectedIds.add(photo.id);
+                        }
+                      } else {
+                        // 首次进入选择模式：选中当前
+                        _selectMode = true;
+                        _selectedIds.add(photo.id);
+                      }
                     });
                   },
                   child: Stack(

@@ -1,4 +1,5 @@
 // photo_provider.dart — 照片列表状态管理
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/database/app_database.dart';
 import 'database_provider.dart';
@@ -18,12 +19,23 @@ final photoByIdProvider = FutureProvider.family<Photo?, String>((ref, id) {
   return db.photoDao.getPhotoById(id);
 });
 
-/// 搜索查询状态
+/// 搜索查询状态（带 200ms debounce，避免中文输入法连续上字时每键触发 JOIN LIKE 查询）
 class SearchQueryNotifier extends Notifier<String?> {
-  @override
-  String? build() => null;
+  Timer? _debounce;
 
-  void set(String? query) => state = query;
+  @override
+  String? build() {
+    // 注册清理（Riverpod 3.x 的 Notifier 用 ref.onDispose 而非 dispose）
+    ref.onDispose(() => _debounce?.cancel());
+    return null;
+  }
+
+  void set(String? query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 200), () {
+      state = query;
+    });
+  }
 }
 
 final searchQueryProvider =

@@ -58,3 +58,6 @@ PRD.md
 
 # 敏感文件（签名由 CI 环境变量提供）
 debug.keystore
+  
+# ZCode ����Ŀ¼�����ܻ��桢��ʱ��� 
+.zcode/  
