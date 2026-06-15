@@ -11,9 +11,6 @@ import '../services/database/app_database.dart';
 import '../services/import_service.dart' show ImportResult;
 import '../widgets/photo_card.dart';
 import 'detail_page.dart';
-import 'tag_manage_page.dart';
-import 'settings_page.dart';
-import 'album_page.dart';
 
 /// 导入方式选项
 enum _ImportChoice { direct, newAlbum, existingAlbum }
@@ -365,15 +362,6 @@ class _HomePageState extends ConsumerState<HomePage> {
             onSelected: (value) {
               if (value == 'sort') {
                 ref.read(sortOrderProvider.notifier).toggle();
-              } else if (value == 'tags') {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const TagManagePage()));
-              } else if (value == 'albums') {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const AlbumPage()));
-              } else if (value == 'settings') {
-                Navigator.push(context,
-                    MaterialPageRoute(builder: (_) => const SettingsPage()));
               }
             },
             itemBuilder: (context) => [
@@ -389,30 +377,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                   ],
                 ),
               ),
-              const PopupMenuItem(
-                value: 'tags',
-                child: Row(children: [
-                  Icon(Icons.label_outline),
-                  SizedBox(width: 8),
-                  Text('标签管理'),
-                ]),
-              ),
-              const PopupMenuItem(
-                value: 'albums',
-                child: Row(children: [
-                  Icon(Icons.photo_album_outlined),
-                  SizedBox(width: 8),
-                  Text('相册'),
-                ]),
-              ),
-              const PopupMenuItem(
-                value: 'settings',
-                child: Row(children: [
-                  Icon(Icons.settings_outlined),
-                  SizedBox(width: 8),
-                  Text('设置'),
-                ]),
-              ),
+              // 相册/标签/设置已迁移到底部导航（策划 tab / 我的 tab）
             ],
           ),
         ],

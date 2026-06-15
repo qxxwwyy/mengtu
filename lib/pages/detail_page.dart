@@ -208,7 +208,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
             child: Column(
               children: [
                 // 顶部毛玻璃工具栏
-                _buildTopBar(),
+                _buildTopBar(photo.fileName),
                 // 图片区域
                 Expanded(
                   flex: 2,
@@ -535,7 +535,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   }
 
   /// 毛玻璃顶栏（BackdropFilter + 渐变遮罩）
-  Widget _buildTopBar() {
+  Widget _buildTopBar(String fileName) {
     return ClipRect(
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
@@ -553,7 +553,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 第一行：返回 + 功能开关
+              // 第一行：返回 + 文件名 + 更多 + 删除（常驻，极简）
               Row(
                 children: [
                   IconButton(
@@ -563,55 +563,28 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     onPressed: () => Navigator.pop(context),
                   ),
                   Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: [
-                          _toolButton(
-                            icon: Icons.brightness_6,
-                            label: '黑白',
-                            isActive: _isBlackWhite,
-                            onPressed: () =>
-                                setState(() => _isBlackWhite = !_isBlackWhite),
-                          ),
-                          _toolButton(
-                            icon: Icons.remove_red_eye,
-                            label: 'Clipping',
-                            isActive: _showClipping,
-                            onPressed: () =>
-                                setState(() => _showClipping = !_showClipping),
-                          ),
-                          _toolButton(
-                            icon: Icons.grid_on,
-                            label: '构图',
-                            isActive: _compositionMode != CompositionMode.none,
-                            onPressed: () => setState(() {
-                              const modes = CompositionMode.values;
-                              final nextIndex =
-                                  (modes.indexOf(_compositionMode) + 1) %
-                                      modes.length;
-                              _compositionMode = modes[nextIndex];
-                            }),
-                          ),
-                          _toolButton(
-                            icon: Icons.colorize,
-                            label: '取色',
-                            isActive: _colorPickMode,
-                            onPressed: () =>
-                                setState(() => _colorPickMode = !_colorPickMode),
-                          ),
-                        ],
+                    child: Text(
+                      fileName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.7),
                       ),
                     ),
                   ),
+                  // 更多：低频工具收进 BottomSheet（渐进式披露）
                   IconButton(
-                    icon: Icon(Icons.compare,
+                    icon: Icon(Icons.more_horiz,
                         color: Theme.of(context)
                             .colorScheme
                             .onSurface
                             .withValues(alpha: 0.7)),
-                    tooltip: '与其他照片对比',
-                    onPressed: () => _showComparePicker(),
+                    tooltip: '更多工具',
+                    onPressed: _showMoreTools,
                   ),
                   IconButton(
                     icon: Icon(Icons.delete_outline,
@@ -622,24 +595,174 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     tooltip: '删除照片',
                     onPressed: _confirmDelete,
                   ),
-                  IconButton(
-                    icon: Icon(Icons.local_offer_outlined,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7)),
-                    tooltip: '添加标签',
-                    onPressed: _showTagDialog,
-                  ),
                   const SizedBox(width: 8),
                 ],
               ),
               // 第二行：对比度/曝光滑块（仅黑白模式）
               if (_isBlackWhite) _buildAdjustmentSliders(),
+              // 第三行：激活中的工具快捷开关（黑白/clipping/构图/取色 激活时显示，方便关闭）
+              if (_isBlackWhite || _showClipping || _compositionMode != CompositionMode.none || _colorPickMode)
+                _buildActiveToolsBar(),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// 激活工具的快捷关闭栏（只显示当前激活的工具，方便快速关闭）
+  Widget _buildActiveToolsBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            if (_isBlackWhite)
+              _toolButton(
+                icon: Icons.brightness_6,
+                label: '黑白',
+                isActive: true,
+                onPressed: () =>
+                    setState(() => _isBlackWhite = !_isBlackWhite),
+              ),
+            if (_showClipping)
+              _toolButton(
+                icon: Icons.remove_red_eye,
+                label: 'Clipping',
+                isActive: true,
+                onPressed: () =>
+                    setState(() => _showClipping = !_showClipping),
+              ),
+            if (_compositionMode != CompositionMode.none)
+              _toolButton(
+                icon: Icons.grid_on,
+                label: '构图',
+                isActive: true,
+                onPressed: () => setState(() {
+                  const modes = CompositionMode.values;
+                  final nextIndex =
+                      (modes.indexOf(_compositionMode) + 1) % modes.length;
+                  _compositionMode = modes[nextIndex];
+                }),
+              ),
+            if (_colorPickMode)
+              _toolButton(
+                icon: Icons.colorize,
+                label: '取色',
+                isActive: true,
+                onPressed: () =>
+                    setState(() => _colorPickMode = !_colorPickMode),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// "更多工具" BottomSheet（低频工具渐进式披露）
+  void _showMoreTools() {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('工具',
+                    style:
+                        TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: Icon(Icons.brightness_6,
+                    color: _isBlackWhite
+                        ? Theme.of(context).colorScheme.primary
+                        : null),
+                title: const Text('黑白滤镜'),
+                trailing: _isBlackWhite
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  setState(() => _isBlackWhite = !_isBlackWhite);
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.remove_red_eye,
+                    color: _showClipping
+                        ? Theme.of(context).colorScheme.primary
+                        : null),
+                title: const Text('Clipping 溢出警告'),
+                trailing: _showClipping
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  setState(() => _showClipping = !_showClipping);
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.grid_on,
+                    color: _compositionMode != CompositionMode.none
+                        ? Theme.of(context).colorScheme.primary
+                        : null),
+                title: const Text('构图参考线'),
+                trailing: _compositionMode != CompositionMode.none
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  setState(() {
+                    const modes = CompositionMode.values;
+                    final nextIndex =
+                        (modes.indexOf(_compositionMode) + 1) % modes.length;
+                    _compositionMode = modes[nextIndex];
+                  });
+                  Navigator.pop(ctx);
+                },
+              ),
+              ListTile(
+                leading: Icon(Icons.colorize,
+                    color: _colorPickMode
+                        ? Theme.of(context).colorScheme.primary
+                        : null),
+                title: const Text('取色器'),
+                trailing: _colorPickMode
+                    ? Icon(Icons.check_circle,
+                        color: Theme.of(context).colorScheme.primary)
+                    : null,
+                onTap: () {
+                  setState(() => _colorPickMode = !_colorPickMode);
+                  Navigator.pop(ctx);
+                },
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.compare),
+                title: const Text('与其他照片对比'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showComparePicker();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.local_offer_outlined),
+                title: const Text('添加标签'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showTagDialog();
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
     );
   }
 

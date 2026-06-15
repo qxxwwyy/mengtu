@@ -2,7 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
-import 'pages/home_page.dart';
+import 'pages/main_shell.dart';
 
 void main() {
   // 全局错误兜底：防止 widget build 异常时显示红屏，显示友好错误页
@@ -54,7 +54,7 @@ class MengtuApp extends StatelessWidget {
       theme: buildDarkTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: ThemeMode.dark, // 暗色优先（摄影工具气质，不支持浅色）
-      home: const HomePage(),
+      home: const MainShell(),
     );
   }
 }
