@@ -16,19 +16,20 @@ android {
 
     // 签名配置：CI 通过环境变量注入（KEYSTORE_PATH/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD），
     // 本地开发 fallback 到固定 debug 签名（android/app/debug.keystore）
-    val keystorePath = System.getenv("KEYSTORE_PATH")
-    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-    val keyAlias = System.getenv("KEY_ALIAS")
-    val keyPassword = System.getenv("KEY_PASSWORD")
+    // 注：局部变量名避免与 SigningConfig 的同名属性冲突（Kotlin val 不能重新赋值）
+    val ciKeystorePath = System.getenv("KEYSTORE_PATH")
+    val ciKeystorePassword = System.getenv("KEYSTORE_PASSWORD")
+    val ciKeyAlias = System.getenv("KEY_ALIAS")
+    val ciKeyPassword = System.getenv("KEY_PASSWORD")
     signingConfigs {
         create("release") {
-            if (keystorePath != null && keystorePassword != null &&
-                keyAlias != null && keyPassword != null) {
+            if (ciKeystorePath != null && ciKeystorePassword != null &&
+                ciKeyAlias != null && ciKeyPassword != null) {
                 // CI 环境：用注入的签名
-                storeFile = file(keystorePath)
-                storePassword = keystorePassword
-                this.keyAlias = keyAlias
-                this.keyPassword = keyPassword
+                storeFile = file(ciKeystorePath)
+                storePassword = ciKeystorePassword
+                keyAlias = ciKeyAlias
+                keyPassword = ciKeyPassword
             } else {
                 // 本地开发：fallback 固定 debug 签名（保证每次构建签名一致，可覆盖安装）
                 storeFile = file("debug.keystore")
