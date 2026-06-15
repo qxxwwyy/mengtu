@@ -99,9 +99,21 @@ class ImportService {
           importedPhotoIds.add(photoId);
           success++;
         } catch (e) {
-          // 导入失败，清理缩略图（不再有复制的照片文件）
+          // 导入失败，清理缩略图
           final thumbFile = File(result.thumbPath);
           if (await thumbFile.exists()) await thumbFile.delete();
+
+          // 唯一约束冲突（并发导入竞态的最后防线）：
+          // 按 hash 重查已有记录，计入 importedPhotoIds + skipped，而非 rethrow 计 failed
+          if (e.toString().contains('UNIQUE constraint')) {
+            final existing = await _db.photoDao.getPhotoByHash(result.hash);
+            if (existing != null) {
+              importedPhotoIds.add(existing.id);
+              skipped++;
+              onProgress?.call(i + 1, total);
+              continue;
+            }
+          }
           rethrow;
         }
       } catch (e) {
@@ -189,17 +201,20 @@ _PhotoProcessResult _processPhotoIsolate((String, String) args) {
 
   // 2. 解码图片
   final decoded = img.decodeImage(bytes);
-  final width = decoded?.width ?? 0;
-  final height = decoded?.height ?? 0;
+  if (decoded == null) {
+    // 解码失败：抛异常，由 importPhotos 外层 catch 捕获并计入 failedFiles
+    // 不写缩略图、不返回脏数据（width=0 / 指向不存在的 thumbPath）
+    throw FormatException('无法解码图片: $srcPath');
+  }
 
-  // 3. 生成缩略图
+  // 3. 解码成功才生成缩略图 + 真实宽高
+  final width = decoded.width;
+  final height = decoded.height;
   final thumbId = _uuid.v4();
   final thumbPath = '$thumbDir/thumb_$thumbId.jpg';
-  if (decoded != null) {
-    final thumb = img.copyResize(decoded, width: 360);
-    final thumbBytes = img.encodeJpg(thumb, quality: 85);
-    File(thumbPath).writeAsBytesSync(thumbBytes);
-  }
+  final thumb = img.copyResize(decoded, width: 360);
+  final thumbBytes = img.encodeJpg(thumb, quality: 85);
+  File(thumbPath).writeAsBytesSync(thumbBytes);
 
   return _PhotoProcessResult(hash, thumbPath, width, height);
 }

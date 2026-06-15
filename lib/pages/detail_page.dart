@@ -312,35 +312,37 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       photoAsync.whenData((data) => photo = data);
       // 取色标记从 DB 唯一数据源读取
       final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
-      
+
+      // 关键：pins 标记和 Image 都放在 InteractiveViewer 内部的 Stack，
+      // 这样它们共享 InteractiveViewer 的缩放/平移变换，pin 位置始终正确。
+      // 手势 GestureDetector 放外层（用 globalPosition 取色）。
       viewer = GestureDetector(
         onLongPressStart: _handleColorPickStart,
         onLongPressMoveUpdate: _handleColorPickUpdate,
         onLongPressEnd: _handleColorPickEnd,
         child: Stack(
           children: [
-            viewer,
-            // 取色点标记（从 DB 读取，像素坐标映射到屏幕坐标）
-            if (photo != null)
-              pinsAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (pins) => Stack(
-                  children: pins.map((pin) {
-                    final rect = _calculateImageDisplayRect();
-                    if (rect == null) return const SizedBox.shrink();
-                    final px = rect.left + pin.x / photo!.width * rect.width;
-                    final py = rect.top + pin.y / photo!.height * rect.height;
-                    return ColorPinMarker(
-                      r: pin.r,
-                      g: pin.g,
-                      b: pin.b,
-                      position: Offset(px, py),
-                    );
-                  }).toList(),
-                ),
+            // InteractiveViewer 包裹 Image + pins（共享变换坐标系）
+            InteractiveViewer(
+              minScale: 0.5,
+              maxScale: 4.0,
+              child: Stack(
+                children: [
+                  // Image（保留原 viewer 的非取色增强：黑白/clipping/构图）
+                  Center(
+                    child: _buildImageWithOverlays(filePath, clippingAsync),
+                  ),
+                  // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
+                  if (photo != null)
+                    pinsAsync.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (pins) => _buildPinMarkers(pins, photo!),
+                    ),
+                ],
               ),
-            // 放大镜
+            ),
+            // 放大镜（不随缩放，始终跟随手指）
             if (_currentPick != null && _loupePosition != null)
               ColorPickerLoupe(
                 result: _currentPick!,
@@ -362,6 +364,66 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
 
     return viewer;
+  }
+
+  /// 构建 Image + 黑白/clipping/构图 overlay（取色模式下复用，放进 InteractiveViewer 内）
+  Widget _buildImageWithOverlays(String filePath, dynamic clippingAsync) {
+    Widget image = Image.file(
+      key: _imageKey,
+      File(filePath),
+      fit: BoxFit.contain,
+      cacheWidth:
+          (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
+      errorBuilder: (_, error, ___) => const Center(
+        child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+      ),
+    );
+
+    if (_isBlackWhite) {
+      final matrix = _buildAdjustmentMatrix();
+      image = ColorFiltered(colorFilter: ColorFilter.matrix(matrix), child: image);
+    }
+
+    if (_showClipping && clippingAsync != null) {
+      image = Stack(children: [
+        image,
+        clippingAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (result) => ClippingOverlay(result: result),
+        ),
+      ]);
+    }
+
+    if (_compositionMode != CompositionMode.none) {
+      image = Stack(children: [image, CompositionOverlay(mode: _compositionMode)]);
+    }
+
+    return image;
+  }
+
+  /// 构建取色点标记列表（局部坐标，基于 Image 的 RenderBox size）
+  /// pin 存的是像素坐标，渲染时按 photo.width/height 比例映射到 Image 显示区域
+  Widget _buildPinMarkers(List<ColorPin> pins, Photo photo) {
+    final ctx = _imageKey.currentContext;
+    if (ctx == null) return const SizedBox.shrink();
+    final box = ctx.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return const SizedBox.shrink();
+
+    // Image 在 InteractiveViewer 内部，RenderBox 局部原点 (0,0) 即图片左上
+    // pin 按 photo 像素尺寸比例映射到 box.size
+    return Stack(
+      children: pins.map((pin) {
+        final px = pin.x / photo.width * box.size.width;
+        final py = pin.y / photo.height * box.size.height;
+        return ColorPinMarker(
+          r: pin.r,
+          g: pin.g,
+          b: pin.b,
+          position: Offset(px, py),
+        );
+      }).toList(),
+    );
   }
 
   /// 构建调整矩阵（灰度 + 对比度 + 曝光）

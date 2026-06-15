@@ -22,7 +22,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 6;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -45,6 +45,20 @@ class AppDatabase extends _$AppDatabase {
             // v1.1.0: 相册表
             await m.createTable(albums);
             await m.createTable(albumPhotos);
+          }
+          if (from < 6) {
+            // v1.2.0: fileHash 唯一约束（防止并发导入重复记录）
+            // 先清理已存在的重复 hash（保留每组最早 id），排除空字符串默认值
+            await m.database.customStatement(
+              "DELETE FROM photos WHERE id NOT IN ("
+              "SELECT MIN(id) FROM photos WHERE file_hash != '' GROUP BY file_hash"
+              ") AND file_hash != ''",
+            );
+            // 部分唯一索引（仅对非空 hash 生效，避免空字符串默认值相互冲突）
+            await m.database.customStatement(
+              "CREATE UNIQUE INDEX photos_file_hash_unique "
+              "ON photos (file_hash) WHERE file_hash != ''",
+            );
           }
         },
       );

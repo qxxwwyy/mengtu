@@ -62,22 +62,15 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
 
     if (filePaths.isEmpty) return;
 
-    // 导入前记录现有照片 ID 集
+    // 导入照片，用返回的 importedPhotoIds 精确加入相册（避免全表 diff 误加并发导入的照片）
     final db = ref.read(appDatabaseProvider);
-    final existingPhotoIds = (await db.photoDao.getAllPhotos()).map((p) => p.id).toSet();
-
-    // 导入照片
     final importService = await ref.read(importServiceProvider.future);
-    await importService.importPhotos(filePaths);
+    final result = await importService.importPhotos(filePaths);
 
-    // 导入后获取所有照片，新增的即为刚导入的
-    final allPhotos = await db.photoDao.getAllPhotos();
     var added = 0;
-    for (final photo in allPhotos) {
-      if (!existingPhotoIds.contains(photo.id)) {
-        await db.albumDao.addPhotoToAlbum(widget.albumId, photo.id);
-        added++;
-      }
+    for (final photoId in result.importedPhotoIds) {
+      await db.albumDao.addPhotoToAlbum(widget.albumId, photoId);
+      added++;
     }
 
     if (mounted) {
