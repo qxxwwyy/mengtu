@@ -7,12 +7,14 @@ import '../services/database/app_database.dart';
 class PhotoCard extends StatefulWidget {
   final Photo photo;
   final VoidCallback? onTap;
+  final VoidCallback? onTagTap; // 快速加标签（右下角图标）
   final double aspectRatio;
 
   const PhotoCard({
     super.key,
     required this.photo,
     this.onTap,
+    this.onTagTap,
     this.aspectRatio = 0.75,
   });
 
@@ -112,6 +114,24 @@ class _PhotoCardState extends State<PhotoCard>
                     ),
                   ),
                 ),
+                // 右下角快速加标签按钮（渐进式披露：不进详情就能加标签）
+                if (widget.onTagTap != null)
+                  Positioned(
+                    right: 6,
+                    bottom: 6,
+                    child: GestureDetector(
+                      onTap: widget.onTagTap,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.local_offer_outlined,
+                            color: Colors.white.withValues(alpha: 0.9), size: 16),
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

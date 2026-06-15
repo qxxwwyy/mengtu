@@ -35,6 +35,134 @@ class _HomePageState extends ConsumerState<HomePage> {
     super.dispose();
   }
 
+  /// 快速给照片加标签（从卡片右下角图标触发，不进详情页）
+  Future<void> _quickAddTag(String photoId) async {
+    final db = ref.read(appDatabaseProvider);
+    final allTags = await db.tagDao.getAllTags();
+    final photoTags = await db.tagDao.getTagsForPhoto(photoId);
+    final taggedIds = photoTags.map((t) => t.id).toSet();
+
+    if (!mounted) return;
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Text('选择标签',
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        TextButton.icon(
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('新建'),
+                          onPressed: () async {
+                            final name = await _showCreateTagDialog();
+                            if (name == null || name.isEmpty) return;
+                            final tag = await db.tagDao
+                                .insertTag(TagsCompanion.insert(
+                              id: 'tag-${DateTime.now().microsecondsSinceEpoch}',
+                              name: name,
+                            ));
+                            await db.tagDao.addTagToPhoto(tag, photoId);
+                            if (ctx.mounted) Navigator.pop(ctx);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('已创建并添加标签「$name」')),
+                              );
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.5,
+                    ),
+                    child: allTags.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Text('还没有标签，点右上角新建',
+                                  style: TextStyle(color: Colors.white54)),
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: allTags.length,
+                            itemBuilder: (_, i) {
+                              final tag = allTags[i];
+                              final isSelected = taggedIds.contains(tag.id);
+                              return ListTile(
+                                leading: Icon(
+                                  isSelected ? Icons.check_circle : Icons.label_outline,
+                                  color: isSelected
+                                      ? Theme.of(ctx).colorScheme.primary
+                                      : null,
+                                ),
+                                title: Text(tag.name),
+                                onTap: () async {
+                                  if (isSelected) {
+                                    await db.tagDao
+                                        .removeTagFromPhoto(tag.id, photoId);
+                                    taggedIds.remove(tag.id);
+                                  } else {
+                                    await db.tagDao
+                                        .addTagToPhoto(tag.id, photoId);
+                                    taggedIds.add(tag.id);
+                                  }
+                                  setSheetState(() {});
+                                },
+                              );
+                            },
+                          ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 新建标签对话框（返回标签名，取消返回 null）
+  Future<String?> _showCreateTagDialog() {
+    final controller = TextEditingController();
+    return showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('新建标签'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(hintText: '标签名'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            child: const Text('创建'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _pickAndImport() async {
     // 权限预检：避免用户拒绝相册权限后无提示卡死
     final permission = await PhotoManager.requestPermissionExtend();
@@ -406,6 +534,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     return PhotoCard(
                       photo: sorted[index],
                       onTap: () => _navigateToDetail(sorted[index].id),
+                      onTagTap: () => _quickAddTag(sorted[index].id),
                     );
                   },
                 );
