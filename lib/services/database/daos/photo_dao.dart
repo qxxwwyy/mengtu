@@ -94,6 +94,15 @@ class PhotoDao extends DatabaseAccessor<AppDatabase> with _$PhotoDaoMixin {
       (update(photos)..where((t) => t.id.equals(id)))
           .write(PhotosCompanion(toneJson: Value(toneJson)));
 
+  /// 清空所有照片的缩略图路径（清缓存后调用，配合 ImportService.regenerateThumbnail 按需重生成）
+  Future<int> clearAllThumbnails() =>
+      (update(photos)).write(const PhotosCompanion(thumbnailPath: Value('')));
+
+  /// 更新单张照片的缩略图路径（重生成后回填）
+  Future<void> updateThumbnailPath(String id, String thumbnailPath) =>
+      (update(photos)..where((t) => t.id.equals(id)))
+          .write(PhotosCompanion(thumbnailPath: Value(thumbnailPath)));
+
   /// 获取照片总数
   Future<int> getPhotoCount() async {
     final count = photos.id.count();

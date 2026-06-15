@@ -128,9 +128,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
         await thumbDir.delete(recursive: true);
         await thumbDir.create(recursive: true);
       }
+      // 清空 DB 中所有照片的缩略图路径（避免指向已删文件导致碎图）
+      // 下次浏览时 photo_card 会按需重生成（ImportService.regenerateThumbnail）
+      await ref.read(appDatabaseProvider).photoDao.clearAllThumbnails();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('缩略图缓存已清理')),
+          const SnackBar(content: Text('缩略图缓存已清理，浏览时将自动重建')),
         );
       }
     } catch (e) {

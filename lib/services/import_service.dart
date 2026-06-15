@@ -146,6 +146,26 @@ class ImportService {
       }
     }
   }
+
+  /// 为单张照片重新生成缩略图（清缓存后 photo_card 按需调用）
+  /// 返回新的缩略图路径；失败返回空字符串
+  Future<String> regenerateThumbnail(String photoId) async {
+    final photo = await _db.photoDao.getPhotoById(photoId);
+    if (photo == null) return '';
+
+    try {
+      final result = await compute(
+        _generateThumbnailIsolate,
+        (photo.filePath, _thumbnailsDir),
+      );
+      // 回填 DB
+      await _db.photoDao.updateThumbnailPath(photoId, result);
+      return result;
+    } catch (e) {
+      debugPrint('Regenerate thumbnail failed: $photoId — $e');
+      return '';
+    }
+  }
 }
 
 /// Isolate 入口参数
@@ -182,4 +202,21 @@ _PhotoProcessResult _processPhotoIsolate((String, String) args) {
   }
 
   return _PhotoProcessResult(hash, thumbPath, width, height);
+}
+
+/// Isolate 入口：仅生成缩略图（用于清缓存后按需重生成）
+/// 返回缩略图路径；解码失败抛异常（调用方 catch 后返回空串）
+String _generateThumbnailIsolate((String, String) args) {
+  final (srcPath, thumbDir) = args;
+  final bytes = File(srcPath).readAsBytesSync();
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) {
+    throw FormatException('无法解码图片: $srcPath');
+  }
+  final thumbId = _uuid.v4();
+  final thumbPath = '$thumbDir/thumb_$thumbId.jpg';
+  final thumb = img.copyResize(decoded, width: 360);
+  final thumbBytes = img.encodeJpg(thumb, quality: 85);
+  File(thumbPath).writeAsBytesSync(thumbBytes);
+  return thumbPath;
 }

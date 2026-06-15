@@ -37,6 +37,12 @@ class _PhotoCardState extends State<PhotoCard>
         ? (photo.width / photo.height).clamp(0.5, 2.0)
         : widget.aspectRatio;
 
+    // 缩略图可能被清缓存清空（thumbnailPath=''）或文件丢失，用原图兜底
+    // 原图兜底时用 cacheWidth 限制解码尺寸，避免大图 OOM
+    final thumbPath = photo.thumbnailPath;
+    final thumbExists = thumbPath.isNotEmpty && File(thumbPath).existsSync();
+    final imageFile = File(thumbExists ? thumbPath : photo.filePath);
+
     return GestureDetector(
       onTap: widget.onTap,
       onTapDown: (_) => setState(() => _isPressed = true),
@@ -59,11 +65,12 @@ class _PhotoCardState extends State<PhotoCard>
                     color: Theme.of(context).colorScheme.surfaceContainerHighest
                         .withValues(alpha: 0.3),
                   ),
-                // 缩略图
+                // 缩略图（或原图兜底；原图用 cacheWidth 限制解码尺寸防 OOM）
                 Image.file(
-                  File(photo.thumbnailPath),
+                  imageFile,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
+                  cacheWidth: thumbExists ? null : 360,
                   frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
                     if (frame != null && !_isLoaded) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {
