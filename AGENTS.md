@@ -11,8 +11,7 @@
 
 **技术栈：** Flutter + Riverpod 3.x + drift (SQLite) + image 包 + material_color_utilities
 **目标平台：** Android（优先）→ Windows（二期）
-**详细需求：** 参见 [PRD.md](./PRD.md)
-**开发计划：** 参见 [DEVPLAN.md](./DEVPLAN.md)
+**详细需求：** 以本文档"已完成"清单 + [README.md](./README.md) 功能列表为准（PRD.md/DEVPLAN.md 未入库）
 
 ## 当前开发状态（v1.2.0）
 
@@ -181,8 +180,7 @@ mengtu/
 ├── .github/workflows/build.yml      # CI: build_runner → analyze → test → release APK
 ├── AGENTS.md                        # 本文件
 ├── REVIEW.md                        # 代码审查报告（gitignore，不入库）
-├── PRD.md                           # 产品需求文档（gitignore）
-├── DEVPLAN.md                       # 开发计划（gitignore）
+├── README.md                        # 项目说明（功能列表 + 技术栈）
 └── pubspec.yaml
 ```
 

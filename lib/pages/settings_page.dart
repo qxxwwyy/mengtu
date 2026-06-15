@@ -84,7 +84,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       title: '关于',
       children: [
         const _InfoRow(label: '应用名称', value: '萌图'),
-        const _InfoRow(label: '版本', value: 'v1.1.0'),
+        const _InfoRow(label: '版本', value: 'v1.2.0'),
         ListTile(
           leading: const Icon(Icons.code),
           title: const Text('开源协议'),
@@ -159,7 +159,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     showLicensePage(
       context: context,
       applicationName: '萌图',
-      applicationVersion: '1.0.0',
+      applicationVersion: '1.2.0',
     );
   }
 
@@ -172,7 +172,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('萌图 Mengtu v1.1.0'),
+            Text('萌图 Mengtu v1.2.0'),
             SizedBox(height: 12),
             Text(
               '面向摄影爱好者的照片灵感收集与调色参考工具。\n\n'

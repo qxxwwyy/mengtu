@@ -4,7 +4,7 @@ description: "萌图 — 面向摄影爱好者的照片灵感收集与调色参�
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 0.1.0+1
+version: 1.2.0+1
 
 environment:
   sdk: ^3.12.0

@@ -13,6 +13,7 @@ import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/clipping_provider.dart';
 import '../services/database/app_database.dart';
+import 'compare_page.dart';
 import '../widgets/analysis_panel.dart' show AnalysisPanel, colorPinsProvider;
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
@@ -461,6 +462,78 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     return box.localToGlobal(Offset.zero) & box.size;
   }
 
+  /// 弹出底部列表选择第二张照片进行对比
+  Future<void> _showComparePicker() async {
+    final photos = await ref.read(allPhotosProvider.future);
+    if (!mounted) return;
+    // 排除当前照片，只列其余
+    final candidates = photos.where((p) => p.id != widget.photoId).toList();
+    if (candidates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('至少需要 2 张照片才能对比')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('选择对比的照片',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: candidates.length,
+                  itemBuilder: (_, i) {
+                    final p = candidates[i];
+                    return ListTile(
+                      leading: ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: Image.file(File(p.thumbnailPath.isEmpty
+                            ? p.filePath
+                            : p.thumbnailPath),
+                            width: 48,
+                            height: 48,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              width: 48,
+                              height: 48,
+                              color: Colors.white12,
+                              child: const Icon(Icons.image, size: 24),
+                            )),
+                      ),
+                      title: Text(p.filePath.split(Platform.pathSeparator).last,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      onTap: () => Navigator.pop(ctx, p.id),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (selected != null && mounted) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ComparePage(
+            photoId1: widget.photoId,
+            photoId2: selected,
+          ),
+        ),
+      );
+    }
+  }
+
   /// 毛玻璃顶栏（BackdropFilter + 渐变遮罩）
   Widget _buildTopBar() {
     return ClipRect(
@@ -530,6 +603,15 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                         ],
                       ),
                     ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.compare,
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.7)),
+                    tooltip: '与其他照片对比',
+                    onPressed: () => _showComparePicker(),
                   ),
                   IconButton(
                     icon: Icon(Icons.delete_outline,

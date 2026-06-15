@@ -39,6 +39,23 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Future<void> _pickAndImport() async {
+    // 权限预检：避免用户拒绝相册权限后无提示卡死
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.isAuth) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('需要相册权限才能导入照片，请在设置中开启'),
+          action: SnackBarAction(
+            label: '设置',
+            onPressed: () => PhotoManager.openSetting(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
     final List<AssetEntity>? assets = await AssetPicker.pickAssets(
       context,
       pickerConfig: AssetPickerConfig(
