@@ -14,13 +14,28 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    // 固定 debug 签名（保证 CI 每次构建签名一致，可覆盖安装）
+    // 签名配置：CI 通过环境变量注入（KEYSTORE_PATH/KEYSTORE_PASSWORD/KEY_ALIAS/KEY_PASSWORD），
+    // 本地开发 fallback 到固定 debug 签名（android/app/debug.keystore）
+    val keystorePath = System.getenv("KEYSTORE_PATH")
+    val keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+    val keyAlias = System.getenv("KEY_ALIAS")
+    val keyPassword = System.getenv("KEY_PASSWORD")
     signingConfigs {
-        getByName("debug") {
-            storeFile = file("debug.keystore")
-            storePassword = "android"
-            keyAlias = "debug"
-            keyPassword = "android"
+        create("release") {
+            if (keystorePath != null && keystorePassword != null &&
+                keyAlias != null && keyPassword != null) {
+                // CI 环境：用注入的签名
+                storeFile = file(keystorePath)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            } else {
+                // 本地开发：fallback 固定 debug 签名（保证每次构建签名一致，可覆盖安装）
+                storeFile = file("debug.keystore")
+                storePassword = "android"
+                keyAlias = "debug"
+                keyPassword = "android"
+            }
         }
     }
 
@@ -37,11 +52,11 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("debug")
+            // debug 用 Android 默认签名（~/.android/debug.keystore）
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            signingConfig = signingConfigs.getByName("debug")
+            // release 用 release 签名配置（CI 注入或本地 debug keystore）
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
