@@ -83,3 +83,58 @@ class AlbumPhotos extends Table {
   @override
   Set<Column> get primaryKey => {albumId, photoId};
 }
+
+// ============ v2.0 拍摄策划 ============
+
+/// 拍摄策划表（v2.0 新增）—— 摄影师前期策划的工作台
+class ShootingPlans extends Table {
+  TextColumn get id => text()(); // UUID
+  TextColumn get title => text()(); // 策划标题（如"秋日公园人像"）
+  TextColumn get theme => text().withDefault(const Constant(''))(); // 主题
+  TextColumn get style => text().withDefault(const Constant(''))(); // 风格（如"日系小清新"）
+  TextColumn get moodTags => text().withDefault(const Constant('[]'))(); // 情绪标签 JSON 数组
+  TextColumn get location => text().withDefault(const Constant(''))(); // 拍摄地点
+  DateTimeColumn get plannedDate =>
+      dateTime().nullable()(); // 计划拍摄日期
+  TextColumn get gearList =>
+      text().withDefault(const Constant('[]'))(); // 器材清单 JSON [{lens,note}]
+  TextColumn get shotList =>
+      text().withDefault(const Constant('[]'))(); // shot list JSON [{desc,done}]
+  TextColumn get status =>
+      text().withDefault(const Constant('planning'))(); // planning/shooting/completed/archived
+  TextColumn get templateId =>
+      text().nullable()(); // 来源模板 ID（可复用）
+  TextColumn get coverPhotoId =>
+      text().nullable()(); // 封面照片（逻辑关联，无外键约束）
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+  DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}
+
+/// 策划-照片关联表（v2.0 新增）—— 区分参考图(reference)和实拍图(result)
+class PlanPhotos extends Table {
+  TextColumn get planId => text().references(ShootingPlans, #id)();
+  TextColumn get photoId => text().references(Photos, #id)();
+  TextColumn get role =>
+      text().withDefault(const Constant('result'))(); // reference(参考) / result(实拍)
+  IntColumn get sortOrder => integer().withDefault(const Constant(0))();
+
+  @override
+  Set<Column> get primaryKey => {planId, photoId, role};
+}
+
+/// 策划模板表（v2.0 新增）—— 可复用的策划结构
+class PlanTemplates extends Table {
+  TextColumn get id => text()(); // UUID
+  TextColumn get name => text()(); // 模板名（如"人像外拍"）
+  TextColumn get gearList =>
+      text().withDefault(const Constant('[]'))(); // 预填器材清单
+  TextColumn get shotList =>
+      text().withDefault(const Constant('[]'))(); // 预填 shot list
+  DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
+
+  @override
+  Set<Column> get primaryKey => {id};
+}

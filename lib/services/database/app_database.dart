@@ -9,12 +9,16 @@ import 'daos/photo_dao.dart';
 import 'daos/tag_dao.dart';
 import 'daos/color_pin_dao.dart';
 import 'daos/album_dao.dart';
+import 'daos/plan_dao.dart';
 
 part 'app_database.g.dart';
 
 @DriftDatabase(
-  tables: [Photos, Tags, PhotoTags, ColorPins, Albums, AlbumPhotos],
-  daos: [PhotoDao, TagDao, ColorPinDao, AlbumDao],
+  tables: [
+    Photos, Tags, PhotoTags, ColorPins, Albums, AlbumPhotos,
+    ShootingPlans, PlanPhotos, PlanTemplates
+  ],
+  daos: [PhotoDao, TagDao, ColorPinDao, AlbumDao, PlanDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_open());
@@ -22,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 6;
+  int get schemaVersion => 7;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -66,6 +70,12 @@ class AppDatabase extends _$AppDatabase {
               "CREATE UNIQUE INDEX photos_file_hash_unique "
               "ON photos (file_hash) WHERE file_hash != ''",
             );
+          }
+          if (from < 7) {
+            // v2.0: 拍摄策划三表（前期策划工作台）
+            await m.createTable(shootingPlans);
+            await m.createTable(planPhotos);
+            await m.createTable(planTemplates);
           }
         },
       );
