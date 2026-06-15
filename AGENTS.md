@@ -14,7 +14,7 @@
 **详细需求：** 参见 [PRD.md](./PRD.md)
 **开发计划：** 参见 [DEVPLAN.md](./DEVPLAN.md)
 
-## 当前开发状态（v1.0.0 RC）
+## 当前开发状态（v1.2.0）
 
 ### 已完成
 - ✅ §1.1 项目初始化（Flutter 3.44 + Riverpod 3.x + drift + CI/CD）
@@ -26,21 +26,26 @@
 - ✅ §1.7 一键黑白（ColorFiltered Rec.709 灰度矩阵）
 - ✅ §1.8 标签基础 + 搜索（tag CRUD + 按标签名搜索 + 分组管理）
 - ✅ §2.2 色卡提取（QuantizerCelebi + Score + 占比归一化 + 缓存）
-- ✅ §3.1 影调分析（三区域占比 + 基调判定 + 统计指标 + 缓存）
+- ✅ §3.1 影调分析（**五区域占比**（黑/阴/中/高/白，分界 51/102/153/204）+ 基调判定 + 统计指标 + 缓存）
 - ✅ §3.2 色彩占比（色块宽度按占比动态分配）
 - ✅ §3.4 设置页面（存储统计 + 清理缓存 + 关于）
 - ✅ §4.1 MMCQ + K-Means 算法（三种算法可切换 + 数量可调节 3-8）
-- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3）
+- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3→v5）
+- ✅ §5.x CI 体积优化（`--debug` → `--release`，APK 从 ~150MB 降到 ~30MB）
 
 ### 待开发
 - ⬜ Phase 5 (v1.1.0)：Windows 适配 + 开源发布
 
 ## 开发环境
 
+当前开发机为 Windows。Flutter SDK 采用**便携式隔离安装**（不污染系统 PATH，卸载删文件夹即可）。
+
 ```bash
-# Flutter SDK
-export PATH="/opt/flutter/bin:$PATH"
-flutter --version  # 3.44.2+ / Dart 3.12+
+# Flutter SDK 激活（每次开新 cmd 窗口执行，临时加入 PATH + 国内镜像）
+C:\Users\10492\flutter-sdk-activate.bat
+flutter --version  # 3.44.2 / Dart 3.12+
+
+# 卸载 Flutter：删 C:\Users\10492\flutter-sdk 文件夹 + flutter-sdk-activate.bat
 
 # 代码生成（修改 DAO/表结构后必须执行）
 dart run build_runner build
@@ -49,6 +54,12 @@ dart run build_runner build
 dart analyze
 flutter test
 ```
+
+激活脚本（`flutter-sdk-activate.bat`）内已配置国内镜像：
+- `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`
+- `PUB_HOSTED_URL=https://pub.flutter-io.cn`
+
+> 注：CI 跑在 Ubuntu，用默认 pub.dev，**不要把本地镜像产生的 `pubspec.lock` 变更提交**（只有 url 字段改 pub.dev→pub.flutter-io.cn，是环境噪音）。
 
 ## 关键依赖（pubspec.yaml）
 
@@ -102,47 +113,76 @@ mengtu/
 │   │   └── tone_result.dart         # HistogramData + ToneResult
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=3）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=5）
 │   │   │   ├── app_database.g.dart   # 自动生成（gitignore）
-│   │   │   ├── tables.dart          # 表定义（photos, tags, photo_tags）
+│   │   │   ├── tables.dart          # 表定义（photos, tags, photo_tags, colorPins, albums, albumPhotos）
 │   │   │   └── daos/
 │   │   │       ├── photo_dao.dart   # 照片CRUD + watch流（自动刷新）
 │   │   │       ├── photo_dao.g.dart  # 自动生成
 │   │   │       ├── tag_dao.dart     # 标签CRUD + 关联管理
-│   │   │       └── tag_dao.g.dart   # 自动生成
+│   │   │       ├── album_dao.dart   # 相册CRUD
+│   │   │       ├── color_pin_dao.dart # 取色点CRUD
+│   │   │       └── *.g.dart        # 自动生成
 │   │   ├── import_service.dart      # 导入去重+缩略图+删除
-│   │   └── histogram_service.dart   # 直方图计算（Isolate）
+│   │   ├── histogram_service.dart   # 直方图计算（Isolate）
+│   │   ├── tone_service.dart        # 影调分析（5区域占比）
+│   │   ├── palette_service.dart     # 色卡提取
+│   │   ├── clipping_service.dart    # 高光/阴影溢出警告
+│   │   ├── harmony_service.dart     # 配色和谐度
+│   │   └── pixel_picker_service.dart # 取色器像素拾取
 │   ├── pages/
 │   │   ├── home_page.dart           # 首页瀑布流+导入+搜索
 │   │   ├── detail_page.dart         # 照片详情+黑白+缩放
+│   │   ├── compare_page.dart        # 多图对比
+│   │   ├── album_page.dart          # 相册列表
+│   │   ├── album_detail_page.dart   # 相册详情
+│   │   ├── settings_page.dart       # 设置（存储统计+清理缓存）
 │   │   └── tag_manage_page.dart     # 标签管理（分组显示）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片
-│   │   ├── histogram_painter.dart   # 直方图 CustomPainter
-│   │   └── analysis_panel.dart      # 展开/收起式分析面板
+│   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
+│   │   ├── analysis_panel.dart      # 展开/收起式分析面板（高度 340）
+│   │   ├── tone_info_card.dart      # 影调 5 区域占比条
+│   │   ├── color_card.dart          # 色卡展示
+│   │   ├── harmony_card.dart        # 配色和谐度
+│   │   ├── color_wheel.dart         # 色轮
+│   │   ├── color_picker_loupe.dart  # 取色放大镜
+│   │   ├── clipping_overlay.dart    # 溢出警告蒙层
+│   │   ├── composition_overlay.dart # 构图辅助线
+│   │   └── tone_info_card.dart      # 统计指标网格
 │   ├── providers/
 │   │   ├── database_provider.dart   # AppDatabase + ImportService 单例
 │   │   ├── photo_provider.dart      # 照片流（StreamProvider 自动刷新）
 │   │   ├── tag_provider.dart        # 标签流 + 操作
-│   │   └── analysis_provider.dart   # 直方图计算+缓存
+│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存
+│   │   └── clipping_provider.dart   # 溢出状态
 │   └── utils/
 │       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度
 │       ├── file_hash.dart           # 纯Dart SHA256
 │       └── image_utils.dart         # 缩略图生成
+├── algorithms/                      # 取色算法（独立模块）
+│   ├── mmcq.dart                    # MMCQ 改进中位切分
+│   └── kmeans.dart                  # K-Means++
 ├── android/
 │   ├── app/
-│   │   ├── build.gradle.kts         # namespace=com.mengtu.app, minSdk=26, 固定debug签名
-│   │   ├── debug.keystore            # 固定签名（仓库内，保证CI签名一致）
+│   │   ├── build.gradle.kts         # namespace=com.mengtu.app, minSdk=26, abiFilters=arm64-v8a
+│   │   │                             # 签名：CI 环境变量注入（KEYSTORE_*），本地 fallback debug 默认
 │   │   └── src/main/
 │   │       ├── AndroidManifest.xml  # READ_MEDIA_IMAGES 权限
 │   │       └── kotlin/com/mengtu/app/MainActivity.kt
-│   └── ...
-├── test/
-│   └── widget_test.dart             # color_utils 单元测试
-├── .github/workflows/build.yml      # CI: build_runner → analyze → test → APK
+│   └── .gitignore                   # 含 **/*.keystore（keystore 不入库，走 CI secret）
+├── test/                            # 测试（17 个文件，分 4 层）
+│   ├── algorithms/                  # hue/kmeans/mmcq 算法测试
+│   ├── dao/                         # photo_dao/tag_dao 数据层测试
+│   ├── integration/                 # analysis_flow/import_flow 全链路测试
+│   ├── unit/                        # color_utils/file_hash/histogram/tone 等单元测试
+│   ├── widget/                      # analysis_panel/histogram_painter/photo_card Widget 测试
+│   └── helpers/test_helpers.dart    # 测试工具（图片生成、DB 创建）
+├── .github/workflows/build.yml      # CI: build_runner → analyze → test → release APK
 ├── AGENTS.md                        # 本文件
-├── PRD.md                           # 产品需求文档
-├── DEVPLAN.md                       # 开发计划
+├── REVIEW.md                        # 代码审查报告（gitignore，不入库）
+├── PRD.md                           # 产品需求文档（gitignore）
+├── DEVPLAN.md                       # 开发计划（gitignore）
 └── pubspec.yaml
 ```
 
@@ -177,10 +217,17 @@ mengtu/
 - 一键黑白用 `ColorFiltered` widget，不修改原图
 - Rec.709 灰度系数：0.2126R + 0.7152G + 0.0722B
 
+### 影调分析（5 段划分）
+- **分界点**：51 / 102 / 153 / 204（均分 0-255，与直方图视觉分界线对齐）
+- **5 段命名**：黑色(blacks 0-51) / 阴影(shadows 52-102) / 中间调(midtones 103-153) / 高光(highlights 154-204) / 白色(whites 205-255)
+- **基调判定**：`dark = blacks + shadows`、`light = highlights + whites`，两端占比都 >15% 即全长调（合并段判定，单看 shadows/highlights 会漏判高对比图）
+- **缓存兼容**：旧 3 段 JSON 缺 blacks/whites 键 → `fromJson` 强转抛 TypeError → `fromJsonString` 的 try/catch 兜底返回 null → provider 自动重算，**无需数据库迁移**
+
 ### 分析面板布局
 - **不使用 `DraggableScrollableSheet`**（真机上与 InteractiveViewer 手势冲突）
 - 改用 `AnimatedContainer` + 展开/收起按钮
 - 黑白状态通过 Widget state + 回调传递（不使用 Riverpod family provider）
+- 展开高度 `340px`（maxHeight `380px`），容纳 5 段影调占比条 + 统计指标网格（曾用 268px 装 5 段会溢出需滚动）
 
 ## Android 配置
 
@@ -190,7 +237,11 @@ mengtu/
 - 权限：`READ_MEDIA_IMAGES`（API 33+）, `READ_EXTERNAL_STORAGE`（旧版）
 - MainActivity 路径必须与 namespace 一致：`kotlin/com/mengtu/app/`
 - `requestLegacyExternalStorage="true"` 兼容旧版分区存储
-- **固定 debug 签名**：`debug.keystore` 在仓库中，CI 每次构建签名一致可覆盖安装
+- **签名配置（重要，曾踩坑）**：
+  - `debug.keystore` **不在仓库**（`android/.gitignore` 的 `**/*.keystore` 规则忽略）
+  - CI 通过 4 个 Actions secret 注入：`KEYSTORE_BASE64`（keystore 文件 base64）、`KEYSTORE_PASSWORD`、`KEY_ALIAS`、`KEY_PASSWORD`
+  - `build.gradle.kts` 的 `signingConfigs.release` 优先读环境变量（CI），本地开发 fallback 到固定 debug 默认（`android/android`）
+  - **坑**：release 构建会触发 `validateSigningRelease` 严格校验（debug 构建有 Android 默认 keystore 兜底），所以 release 必须能找到 keystore 文件
 
 ## CI/CD
 
@@ -203,8 +254,17 @@ CI 流程（`.github/workflows/build.yml`）：
 4. `flutter test`
 5. `flutter test --coverage`（生成 lcov 覆盖率报告）
 6. Upload coverage artifact
-7. `flutter build apk --debug`（push 触发）
-8. Upload APK artifact
+7. **Decode keystore**：base64 解码 `KEYSTORE_BASE64` secret 到 `android/app/release.keystore`，通过 `GITHUB_ENV` 注入 `KEYSTORE_PATH`
+8. `flutter build apk --release`（push 触发，**不再用 --debug**；env 注入其余 3 个签名 secret）
+9. Upload APK artifact（`mengtu-apk`，产物 `app-release.apk`）
+
+**APK 体积**：release + abiFilters=arm64-v8a 约 **30MB**（曾用 --debug 约 150MB）
+
+**签名 secret（Actions secrets）**：
+- `KEYSTORE_BASE64`：keystore 文件 base64 编码
+- `KEYSTORE_PASSWORD`：keystore 密码
+- `KEY_ALIAS`：密钥别名
+- `KEY_PASSWORD`：密钥密码
 
 本地只做：代码编辑 + `dart run build_runner build`（代码生成）+ `dart analyze` + `flutter test`
 
@@ -224,6 +284,11 @@ CI 流程（`.github/workflows/build.yml`）：
 6. **MainActivity 包路径** — flutter create 默认 `com.xxx.xxx`，改 namespace 后必须同步移动 .kt 文件
 7. **DraggableScrollableSheet** — 在 Stack 里与 InteractiveViewer 冲突，改用展开/收起
 8. **FutureProvider 不自动刷新** — 列表数据用 StreamProvider + drift watch()
+9. **`--split-per-abi` 与 `ndk.abiFilters` 互斥** — Gradle 报 "Conflicting configuration"。`abiFilters=arm64-v8a` 已限制单 ABI，`--split-per-abi` 多余且会冲突，去掉即可
+10. **release 构建严格校验签名** — `validateSigningRelease` 找不到 keystore 直接挂（debug 构建有 Android 默认 keystore 兜底）。keystore 走 CI secret，不在仓库
+11. **Kotlin 变量遮蔽（shadowing）** — `signingConfigs` 配置块里，外层 `val keyAlias` 与 `this.keyAlias` 同名会被当成"重赋值 val"报错。局部变量加前缀（如 `ciKeyAlias`）规避
+12. **`pubspec.lock` 的 url 字段** — 本地用国内镜像会改 `pub.dev`→`pub.flutter-io.cn`，提交会让 CI 产生无关 diff，还原即可
+13. **影调分段升级的基调判定** — 3 段→5 段后，`_classifyToneKey` 的全长调判定要改用合并段（dark=blacks+shadows / light=highlights+whites），否则高对比图会漏判
 
 ## 许可证合规
 
