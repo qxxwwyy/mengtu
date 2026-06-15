@@ -26,7 +26,14 @@ class AppDatabase extends _$AppDatabase {
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-        onCreate: (m) => m.createAll(),
+        onCreate: (m) async {
+          await m.createAll();
+          // v6: fileHash 唯一索引（全新安装也需创建，防并发导入重复）
+          await m.database.customStatement(
+            "CREATE UNIQUE INDEX IF NOT EXISTS photos_file_hash_unique "
+            "ON photos (file_hash) WHERE file_hash != ''",
+          );
+        },
         onUpgrade: (m, from, to) async {
           if (from < 2) {
             // v0.3.0: 新增 paletteJson + toneJson 列

@@ -60,6 +60,7 @@ void main() {
         photoId,
         rgbHistogram: bytes.sublist(0, 1536),
         lumHistogram: bytes.sublist(1536, 2048),
+        hueHistogram: bytes.sublist(2048), // hue 360 bins × 2 = 720 字节（v1.0.0 新增）
       );
 
       // 从缓存读取
@@ -67,7 +68,12 @@ void main() {
       expect(photo!.rgbHistogram, isNotNull);
       expect(photo.lumHistogram, isNotNull);
 
-      final combined = Uint8List.fromList([...photo.rgbHistogram!, ...photo.lumHistogram!]);
+      // 完整重建（含 hue）：RGB + Lum + Hue = 2768 字节
+      final combined = Uint8List.fromList([
+        ...photo.rgbHistogram!,
+        ...photo.lumHistogram!,
+        ...?photo.hueHistogram,
+      ]);
       final hist2 = HistogramData.fromBytes(combined);
 
       // 数据一致
@@ -94,6 +100,7 @@ void main() {
         photoId,
         rgbHistogram: bytes.sublist(0, 1536),
         lumHistogram: bytes.sublist(1536, 2048),
+        hueHistogram: bytes.sublist(2048), // hue 720 字节
       );
 
       // 从亮度直方图计算影调

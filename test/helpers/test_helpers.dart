@@ -1,12 +1,25 @@
 // test_helpers.dart — 测试辅助工具
 import 'dart:io';
 import 'package:drift/native.dart';
+import 'package:drift/drift.dart' show Value;
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image/image.dart' as img;
 import 'package:mengtu/services/database/app_database.dart';
+import 'package:mengtu/providers/database_provider.dart';
 
 /// 创建内存数据库（测试用，每次都是全新空库）
 AppDatabase createTestDatabase() {
   return AppDatabase.forTesting(NativeDatabase.memory());
+}
+
+/// 创建测试用 ProviderContainer（用内存 DB override appDatabaseProvider）
+/// 用法：final container = createTestContainer(); ... container.dispose();
+/// 注意：用真实内存 DB 而非 mock，更贴近生产行为（skill ③ 推荐真实实现优于 mock）
+ProviderContainer createTestContainer({AppDatabase? db}) {
+  final database = db ?? createTestDatabase();
+  return ProviderContainer(overrides: [
+    appDatabaseProvider.overrideWithValue(database),
+  ]);
 }
 
 /// 创建临时目录
@@ -56,3 +69,53 @@ String generateGradientImageFile(
   File(path).writeAsBytesSync(img.encodePng(image));
   return path;
 }
+
+// ============ Fixture Builder ============
+
+/// 构建测试用 Photo companion（避免每个测试重复构造）
+/// filePath/fileName 是 required（表定义），其余可选
+PhotosCompanion buildPhotoCompanion({
+  String? id,
+  String filePath = '/test/photo.jpg',
+  String fileName = 'photo.jpg',
+  String thumbnailPath = '/test/thumb.jpg',
+  String fileHash = 'testhash',
+  int width = 1000,
+  int height = 1000,
+  int fileSize = 50000,
+  String? toneJson,
+  String? paletteJson,
+}) {
+  return PhotosCompanion.insert(
+    id: id ?? 'test-photo-${DateTime.now().microsecondsSinceEpoch}',
+    filePath: filePath,
+    fileName: fileName,
+    thumbnailPath: thumbnailPath,
+    fileHash: Value(fileHash),
+    width: Value(width),
+    height: Value(height),
+    fileSize: Value(fileSize),
+    toneJson: Value(toneJson),
+    paletteJson: Value(paletteJson),
+  );
+}
+
+/// 插入一张测试照片并返回 id
+/// 注意：fileHash 默认用 id 派生（保证唯一），避免触发 v6 的唯一约束
+Future<String> insertTestPhoto(
+  AppDatabase db, {
+  String? id,
+  String filePath = '/test/photo.jpg',
+  String fileName = 'photo.jpg',
+  String? fileHash,
+}) async {
+  final photoId = id ?? 'photo-${DateTime.now().microsecondsSinceEpoch}';
+  await db.photoDao.insertPhoto(buildPhotoCompanion(
+    id: photoId,
+    filePath: filePath,
+    fileName: fileName,
+    fileHash: fileHash ?? 'hash_$photoId',
+  ));
+  return photoId;
+}
+
