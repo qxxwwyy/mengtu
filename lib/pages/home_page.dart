@@ -340,8 +340,10 @@ class _HomePageState extends ConsumerState<HomePage> {
 
   Future<void> _pickAndImport() async {
     // 权限预检：避免用户拒绝相册权限后无提示卡死
+    // 注意：isAuth 仅匹配 authorized，会漏掉 Android 14+ 的 limited（部分授权）状态，
+    // 导致已授权用户每次导入都误弹权限提示，改用 hasAccess 兼容 limited。
     final permission = await PhotoManager.requestPermissionExtend();
-    if (!permission.isAuth) {
+    if (!permission.hasAccess) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

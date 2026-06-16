@@ -364,6 +364,7 @@ CI 流程（`.github/workflows/build.yml`）：
 24. **FutureProvider 依赖缓存不刷新** — FutureProvider A 内部 `watch(FutureProvider B.future)` 时，invalidate A 不会让 B 重算（B 缓存了旧结果）。更新 DB 后需同时 invalidate A 和 B。详见 exifInfoProvider + photoByIdProvider 的刷新链
 25. **exif 包 ISO printable 格式** — `EXIF ISOSpeedRatings` 是 SHORT/LONG 数组，`.printable` 可能输出 `"[200]"` 形式，`int.tryParse` 直接失败。需 `replaceAll(RegExp(r'[\[\]]'))` 剥离方括号
 26. **详情页永远暗色** — 作为图片查看/调色场景，详情页无论全局主题都用暗色（`DetailColors` token），不随 `themeModeProvider` 切换，避免浅色下调色分析的色彩偏差
+27. **`PermissionState.isAuth` 漏判 limited** — photo_manager 3.9.0 的 `isAuth` 仅匹配 `PermissionState.authorized`，不含 `limited`。用户选了 Android 14+ / iOS「仅允许访问选中的照片」（`limited`）时，应用其实已授权，但 `!permission.isAuth` 判为未授权，导致每次点导入都误弹"需要相册权限"。改用 `permission.hasAccess`（含 `authorized` + `limited`）
 
 ## 许可证合规
 
@@ -379,5 +380,5 @@ CI 流程（`.github/workflows/build.yml`）：
 3. **Android 最低 API 26**（Android 8.0）
 4. 所有删除操作需二次确认
 5. **绝不主动合并 main**，所有开发在 feature 分支，除非用户明确要求
-6. **导入权限预检**：`PhotoManager.requestPermissionExtend()` 在 `AssetPicker.pickAssets` 之前调用，拒绝时引导设置
+6. **导入权限预检**：`PhotoManager.requestPermissionExtend()` 在 `AssetPicker.pickAssets` 之前调用，拒绝时引导设置。**判定授权用 `permission.hasAccess`（含 `limited` 部分授权），不要用 `permission.isAuth`（仅 `authorized` 完全授权）**，否则 Android 14+ / iOS「仅允许访问选中照片」的已授权用户每次导入都会误弹权限提示
 7. **清缓存后缩略图按需重生成**：photo_card 检测 thumbnailPath 空时用原图兜底（cacheWidth:360 防 OOM）
