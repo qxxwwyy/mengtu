@@ -4,6 +4,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
+import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
@@ -27,6 +30,7 @@ class AlbumDetailPage extends ConsumerStatefulWidget {
 
 class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
   Album? _album;
+  bool _isWaterfallView = false;
 
   @override
   void initState() {
@@ -69,7 +73,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
 
     var added = 0;
     for (final photoId in result.importedPhotoIds) {
-      await db.albumDao.addPhotoToAlbum(widget.albumId, photoId);
+      await db.albumDao.addPhotoToAlbum(widget.albumId, photoId, sortOrder: added);
       added++;
     }
 
@@ -148,6 +152,37 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
     await db.albumDao.removePhotoFromAlbum(widget.albumId, photoId);
   }
 
+  void _showPhotoOptions(Photo photo) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.image_outlined),
+              title: const Text('设为相册封面'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final db = ref.read(appDatabaseProvider);
+                await db.albumDao.setCoverPhoto(widget.albumId, photo.id);
+                _loadAlbum();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle, color: Colors.red),
+              title: const Text('从相册移除', style: TextStyle(color: Colors.red)),
+              onTap: () {
+                Navigator.pop(ctx);
+                _removePhoto(photo.id);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final photosAsync = ref.watch(albumPhotosProvider(widget.albumId));
@@ -156,6 +191,11 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
       appBar: AppBar(
         title: Text(_album?.name ?? '相册'),
         actions: [
+          IconButton(
+            icon: Icon(_isWaterfallView ? Icons.grid_view : Icons.view_quilt),
+            tooltip: _isWaterfallView ? '网格视图' : '瀑布流视图',
+            onPressed: () => setState(() => _isWaterfallView = !_isWaterfallView),
+          ),
           PopupMenuButton<String>(
             onSelected: (value) {
               switch (value) {
@@ -217,7 +257,34 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
             );
           }
 
-          return GridView.builder(
+          if (_isWaterfallView) {
+            return MasonryGridView.count(
+              crossAxisCount: 2,
+              mainAxisSpacing: 6,
+              crossAxisSpacing: 6,
+              padding: const EdgeInsets.all(6),
+              itemCount: photos.length,
+              itemBuilder: (context, index) {
+                final photo = photos[index];
+                return GestureDetector(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => DetailPage(photoId: photo.id),
+                      ),
+                    );
+                  },
+                  onLongPress: () => _showPhotoOptions(photo),
+                  child: PhotoCard(
+                    photo: photo,
+                  ),
+                );
+              },
+            );
+          }
+
+          return ReorderableGridView.builder(
             padding: const EdgeInsets.all(8),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
@@ -225,9 +292,22 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
               mainAxisSpacing: 4,
             ),
             itemCount: photos.length,
+            onReorder: (oldIndex, newIndex) async {
+              final orderedPhotos = List<Photo>.from(photos);
+              final element = orderedPhotos.removeAt(oldIndex);
+              orderedPhotos.insert(newIndex, element);
+
+              final db = ref.read(appDatabaseProvider);
+              await db.albumDao.updatePhotosSortOrder(
+                albumId: widget.albumId,
+                orderedPhotoIds: orderedPhotos.map((p) => p.id).toList(),
+              );
+              HapticFeedback.mediumImpact();
+            },
             itemBuilder: (context, index) {
               final photo = photos[index];
               return GestureDetector(
+                key: ValueKey(photo.id),
                 onTap: () {
                   Navigator.push(
                     context,
@@ -236,52 +316,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                     ),
                   );
                 },
-                onLongPress: () {
-                  showModalBottomSheet(
-                    context: context,
-                    builder: (ctx) => SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ListTile(
-                            leading: const Icon(Icons.image_outlined),
-                            title: const Text('设为相册封面'),
-                            onTap: () async {
-                              Navigator.pop(ctx);
-                              final db = ref.read(appDatabaseProvider);
-                              await db.albumDao
-                                  .setCoverPhoto(widget.albumId, photo.id);
-                              if (mounted) {
-                                setState(() {
-                                  _album = _album != null
-                                      ? Album(
-                                          id: _album!.id,
-                                          name: _album!.name,
-                                          description: _album!.description,
-                                          coverPhotoId: photo.id,
-                                          createdAt: _album!.createdAt,
-                                          updatedAt: DateTime.now(),
-                                        )
-                                      : null;
-                                });
-                              }
-                            },
-                          ),
-                          ListTile(
-                            leading:
-                                const Icon(Icons.remove_circle, color: Colors.red),
-                            title: const Text('从相册移除',
-                                style: TextStyle(color: Colors.red)),
-                            onTap: () {
-                              Navigator.pop(ctx);
-                              _removePhoto(photo.id);
-                            },
-                          ),
-                        ],
-                      ),
-                    ),
-                  );
-                },
+                onLongPress: () => _showPhotoOptions(photo),
                 child: PhotoCard(
                   photo: photo,
                 ),

@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/database_provider.dart';
 
+import '../providers/theme_provider.dart';
+
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -34,6 +36,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
         children: [
+          _buildThemeSection(),
           _buildStorageSection(),
           _buildCacheSection(),
           _buildAboutSection(),
@@ -41,6 +44,68 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       ),
     );
   }
+
+  Widget _buildThemeSection() {
+    final themeMode = ref.watch(themeModeProvider);
+    String modeText = '深色模式';
+    if (themeMode == ThemeMode.light) {
+      modeText = '浅色模式';
+    } else if (themeMode == ThemeMode.system) {
+      modeText = '跟随系统';
+    }
+
+    return _SectionCard(
+      title: '外观',
+      children: [
+        ListTile(
+          leading: const Icon(Icons.palette_outlined),
+          title: const Text('主题模式'),
+          subtitle: Text(modeText),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showThemeDialog(context),
+        ),
+      ],
+    );
+  }
+
+  void _showThemeDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final currentMode = ref.watch(themeModeProvider);
+        return AlertDialog(
+          title: const Text('选择主题模式'),
+          content: RadioGroup<ThemeMode>(
+            groupValue: currentMode,
+            onChanged: (mode) {
+              if (mode != null) {
+                ref.read(themeModeProvider.notifier).setThemeMode(mode);
+              }
+              Navigator.pop(ctx);
+            },
+            child: const Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<ThemeMode>(
+                  title: Text('跟随系统'),
+                  value: ThemeMode.system,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: Text('浅色模式'),
+                  value: ThemeMode.light,
+                ),
+                RadioListTile<ThemeMode>(
+                  title: Text('深色模式'),
+                  value: ThemeMode.dark,
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
 
   Widget _buildStorageSection() {
     return FutureBuilder<({int count, int size})>(

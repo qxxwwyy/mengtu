@@ -136,4 +136,20 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
       AlbumsCompanion(coverPhotoId: Value(photoId)),
     );
   }
+
+  /// 批量更新相册照片的排序
+  Future<void> updatePhotosSortOrder({
+    required String albumId,
+    required List<String> orderedPhotoIds,
+  }) {
+    return transaction(() async {
+      for (int i = 0; i < orderedPhotoIds.length; i++) {
+        final photoId = orderedPhotoIds[i];
+        await (update(albumPhotos)
+              ..where((ap) => ap.albumId.equals(albumId) & ap.photoId.equals(photoId)))
+            .write(AlbumPhotosCompanion(sortOrder: Value(i)));
+      }
+    });
+  }
 }
+

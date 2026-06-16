@@ -13,6 +13,7 @@ class QuickToolsDock extends StatelessWidget {
   final VoidCallback onCompositionToggle;
   final VoidCallback onColorPickToggle;
   final VoidCallback onCompareTap;
+  final VoidCallback onAddToAlbumTap;
 
   const QuickToolsDock({
     super.key,
@@ -25,6 +26,7 @@ class QuickToolsDock extends StatelessWidget {
     required this.onCompositionToggle,
     required this.onColorPickToggle,
     required this.onCompareTap,
+    required this.onAddToAlbumTap,
   });
 
   @override
@@ -33,14 +35,14 @@ class QuickToolsDock extends StatelessWidget {
     final accent = theme.colorScheme.primary;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(24),
         child: BackdropFilter(
           filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
           child: Container(
             height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
             decoration: BoxDecoration(
               color: Colors.black.withValues(alpha: 0.45),
               borderRadius: BorderRadius.circular(24),
@@ -81,6 +83,13 @@ class QuickToolsDock extends StatelessWidget {
                   onTap: onColorPickToggle,
                 ),
                 _buildDockItem(
+                  icon: Icons.photo_album_outlined,
+                  label: '相册',
+                  isActive: false,
+                  accentColor: accent,
+                  onTap: onAddToAlbumTap,
+                ),
+                _buildDockItem(
                   icon: Icons.compare_outlined,
                   label: '对比',
                   isActive: false,
@@ -106,7 +115,7 @@ class QuickToolsDock extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -131,3 +140,4 @@ class QuickToolsDock extends StatelessWidget {
     );
   }
 }
+

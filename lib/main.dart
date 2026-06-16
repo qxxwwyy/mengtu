@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'pages/main_shell.dart';
 
+import 'providers/theme_provider.dart';
+
 void main() {
   // 全局错误兜底：防止 widget build 异常时显示红屏，显示友好错误页
   ErrorWidget.builder = (FlutterErrorDetails details) {
@@ -43,18 +45,21 @@ void main() {
   runApp(const ProviderScope(child: MengtuApp()));
 }
 
-class MengtuApp extends StatelessWidget {
+class MengtuApp extends ConsumerWidget {
   const MengtuApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final themeMode = ref.watch(themeModeProvider);
+
     return MaterialApp(
       title: '萌图',
       debugShowCheckedModeBanner: false,
-      theme: buildDarkTheme(),
+      theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
-      themeMode: ThemeMode.dark, // 暗色优先（摄影工具气质，不支持浅色）
+      themeMode: themeMode,
       home: const MainShell(),
     );
   }
 }
+

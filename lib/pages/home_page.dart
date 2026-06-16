@@ -9,12 +9,8 @@ import '../providers/photo_provider.dart';
 import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
-import '../services/import_service.dart' show ImportResult;
 import '../widgets/photo_card.dart';
 import 'detail_page.dart';
-
-/// 导入方式选项
-enum _ImportChoice { direct, newAlbum, existingAlbum }
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -26,9 +22,6 @@ class HomePage extends ConsumerStatefulWidget {
 class _HomePageState extends ConsumerState<HomePage> {
   bool _isSearching = false;
   final _searchController = TextEditingController();
-  bool _isImporting = false;
-  int _importProgress = 0;
-  int _importTotal = 0;
   // 多选模式
   bool _selectMode = false;
   final Set<String> _selectedIds = {};
@@ -372,78 +365,67 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
     if (assets == null || assets.isEmpty) return;
 
-    // 选完后弹出操作选项
-    if (!mounted) return;
-    final choice = await _showImportOptions();
-
-    if (choice == null) return;
-
     final filePaths = <String>[];
     for (final asset in assets) {
       final file = await asset.file;
       if (file != null) filePaths.add(file.path);
     }
+    if (filePaths.isEmpty) return;
 
-    switch (choice) {
-      case _ImportChoice.direct:
-        await _importAssets(filePaths);
-        break;
-      case _ImportChoice.newAlbum:
-        final albumName = await _askAlbumName();
-        if (albumName == null || albumName.isEmpty) {
-          await _importAssets(filePaths);
-        } else {
-          await _importAssetsAndCreateAlbum(filePaths, albumName);
-        }
-        break;
-      case _ImportChoice.existingAlbum:
-        final albumId = await _pickExistingAlbum();
-        if (albumId != null) {
-          await _importAssetsAndAddToAlbum(filePaths, albumId);
-        } else {
-          await _importAssets(filePaths);
-        }
-        break;
-    }
-  }
+    if (!mounted) return;
 
-  /// 导入后的操作选项弹窗
-  Future<_ImportChoice?> _showImportOptions() {
-    return showModalBottomSheet<_ImportChoice>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+    // 显示后台导入中的 SnackBar
+    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
           children: [
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('导入方式',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
             ),
-            ListTile(
-              leading: const Icon(Icons.photo_library_outlined),
-              title: const Text('直接导入'),
-              subtitle: const Text('照片出现在全部列表中'),
-              onTap: () => Navigator.pop(ctx, _ImportChoice.direct),
-            ),
-            ListTile(
-              leading: Icon(Icons.create_new_folder_outlined,
-                  color: Theme.of(context).colorScheme.primary),
-              title: const Text('新建相册并导入'),
-              subtitle: const Text('创建相册，本次选的照片自动放入'),
-              onTap: () => Navigator.pop(ctx, _ImportChoice.newAlbum),
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_outlined),
-              title: const Text('导入到已有相册'),
-              subtitle: const Text('选择一个已有相册'),
-              onTap: () => Navigator.pop(ctx, _ImportChoice.existingAlbum),
-            ),
-            const SizedBox(height: 8),
+            SizedBox(width: 16),
+            Text('正在后台导入照片...'),
           ],
         ),
+        duration: Duration(days: 1), // 持续显示直到导入完成
       ),
     );
+
+    try {
+      final importService = await ref.read(importServiceProvider.future);
+      final result = await importService.importPhotos(filePaths);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      if (result.importedPhotoIds.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未导入任何照片（可能已全部去重跳过）')),
+        );
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('成功导入 ${result.successCount} 张，跳过 ${result.skippedCount} 张'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: '加入相册',
+            onPressed: () {
+              _addImportedToAlbum(result.importedPhotoIds);
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导入出错: $e')),
+      );
+    }
   }
 
   /// 输入相册名称
@@ -475,132 +457,83 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
-  /// 选择已有相册
-  Future<String?> _pickExistingAlbum() async {
+  /// 将导入的照片加入相册
+  Future<void> _addImportedToAlbum(List<String> photoIds) async {
     final db = ref.read(appDatabaseProvider);
     final albums = await db.albumDao.getAllAlbums();
-    if (albums.isEmpty || !mounted) return null;
+    if (!mounted) return;
 
-    return showDialog<String>(
+    final selected = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('选择相册'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: albums.length,
-            itemBuilder: (ctx, index) {
-              final album = albums[index];
-              return ListTile(
-                leading: const Icon(Icons.photo_album_outlined),
-                title: Text(album.name),
-                onTap: () => Navigator.pop(ctx, album.id),
-              );
-            },
-          ),
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('加入相册',
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新建相册'),
+                    onPressed: () async {
+                      final name = await _askAlbumName();
+                      if (name != null && name.isNotEmpty) {
+                        final albumId = const Uuid().v4();
+                        await db.albumDao.insertAlbum(
+                          AlbumsCompanion.insert(id: albumId, name: name),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx, albumId);
+                      }
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1),
+            if (albums.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Text('没有相册，请点击右上角新建'),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: albums.length,
+                  itemBuilder: (context, index) {
+                    final album = albums[index];
+                    return ListTile(
+                      leading: const Icon(Icons.photo_album_outlined),
+                      title: Text(album.name),
+                      onTap: () => Navigator.pop(ctx, album.id),
+                    );
+                  },
+                ),
+              ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-        ],
       ),
     );
-  }
 
-  /// 导入照片并创建新相册
-  Future<void> _importAssetsAndCreateAlbum(
-      List<String> filePaths, String albumName) async {
-    // 先导入，获取精确的 photoId 列表
-    final result = await _importAssets(filePaths);
-
-    if (result.importedPhotoIds.isEmpty) {
+    if (selected != null) {
+      for (final photoId in photoIds) {
+        await db.albumDao.addPhotoToAlbum(selected, photoId);
+      }
+      final album = await db.albumDao.getAlbumById(selected);
+      final albumName = album?.name ?? '相册';
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有照片可导入')),
+          SnackBar(content: Text('已成功将 ${photoIds.length} 张照片加入相册「$albumName」')),
         );
       }
-      return;
     }
-
-    // 创建相册
-    final db = ref.read(appDatabaseProvider);
-    final albumId = const Uuid().v4();
-    await db.albumDao.insertAlbum(
-      AlbumsCompanion.insert(id: albumId, name: albumName),
-    );
-
-    // 把导入的照片加入相册（用精确的 photoId，不做 fileName 模糊匹配）
-    for (final photoId in result.importedPhotoIds) {
-      await db.albumDao.addPhotoToAlbum(albumId, photoId);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入 ${result.importedPhotoIds.length} 张照片到相册「$albumName」')),
-      );
-    }
-  }
-
-  /// 导入照片并添加到已有相册
-  Future<void> _importAssetsAndAddToAlbum(
-      List<String> filePaths, String albumId) async {
-    // 先导入，获取精确的 photoId 列表
-    final result = await _importAssets(filePaths);
-
-    if (result.importedPhotoIds.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有照片可导入')),
-        );
-      }
-      return;
-    }
-
-    // 把导入的照片加入相册
-    final db = ref.read(appDatabaseProvider);
-    final album = await db.albumDao.getAlbumById(albumId);
-    final albumName = album?.name ?? '相册';
-    for (final photoId in result.importedPhotoIds) {
-      await db.albumDao.addPhotoToAlbum(albumId, photoId);
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已导入 ${result.importedPhotoIds.length} 张照片到相册「$albumName」')),
-      );
-    }
-  }
-
-  Future<ImportResult> _importAssets(List<String> filePaths) async {
-    setState(() {
-      _isImporting = true;
-      _importTotal = filePaths.length;
-    });
-
-    final importService = await ref.read(importServiceProvider.future);
-
-    final result = await importService.importPhotos(
-      filePaths,
-      onProgress: (processed, total) {
-        setState(() => _importProgress = processed);
-      },
-    );
-
-    setState(() => _isImporting = false);
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-              '导入 ${result.successCount} 张, 跳过 ${result.skippedCount} 张'),
-        ),
-      );
-    }
-
-    return result;
   }
 
   void _navigateToDetail(String photoId) {
@@ -692,9 +625,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
-      body: _isImporting
-          ? _buildImportProgress()
-          : photosAsync.when(
+      body: photosAsync.when(
               loading: () => _buildLoadingGrid(),
               error: (e, _) => Center(child: Text('错误: $e')),
               data: (photos) {
@@ -843,43 +774,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                 );
               },
             ),
-      floatingActionButton: _isImporting
-          ? null
-          : FloatingActionButton(
-              onPressed: _pickAndImport,
-              child: const Icon(Icons.add_photo_alternate),
-            ),
-    );
-  }
-
-  Widget _buildImportProgress() {
-    final percent = _importTotal > 0
-        ? (_importProgress / _importTotal * 100).round()
-        : 0;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 48),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.cloud_download,
-                size: 48, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(height: 24),
-            LinearProgressIndicator(
-              value: _importTotal > 0 ? _importProgress / _importTotal : null,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _importTotal > 0
-                  ? '导入中 $_importProgress / $_importTotal（$percent%）'
-                  : '正在准备...',
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
-                fontSize: 13,
-              ),
-            ),
-          ],
-        ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: _pickAndImport,
+        child: const Icon(Icons.add_photo_alternate),
       ),
     );
   }
@@ -904,38 +801,85 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildEmptyState() {
+    final theme = Theme.of(context);
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
+            // Glowing camera container
             Container(
-              width: 96,
-              height: 96,
+              width: 120,
+              height: 120,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary.withValues(alpha: 0.15),
+                    theme.colorScheme.primary.withValues(alpha: 0.03),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                    blurRadius: 24,
+                    spreadRadius: 4,
+                  ),
+                ],
+                border: Border.all(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                  width: 1.5,
+                ),
               ),
-              child: Icon(
-                Icons.photo_library,
-                size: 44,
-                color: Theme.of(context).colorScheme.primary,
+              child: Center(
+                child: Icon(
+                  Icons.camera_alt_outlined,
+                  size: 48,
+                  color: theme.colorScheme.primary,
+                ),
               ),
             ),
-            const SizedBox(height: 24),
-            Text('还没有照片',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-                )),
-            const SizedBox(height: 8),
+            const SizedBox(height: 32),
             Text(
-              '点击右下角按钮，导入你的摄影作品',
+              '还没有照片',
               style: TextStyle(
-                fontSize: 13,
-                color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 0.5,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                '开始你的摄影美学之旅吧！导入作品进行影调分析与直方图调色参考',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  height: 1.5,
+                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ),
+            const SizedBox(height: 32),
+            // Premium CTA Button
+            ElevatedButton.icon(
+              onPressed: _pickAndImport,
+              icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
+              label: const Text('导入作品', style: TextStyle(fontWeight: FontWeight.w600)),
+              style: ElevatedButton.styleFrom(
+                foregroundColor: theme.colorScheme.onPrimary,
+                backgroundColor: theme.colorScheme.primary,
+                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                ),
+                elevation: 4,
+                shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
               ),
             ),
           ],
