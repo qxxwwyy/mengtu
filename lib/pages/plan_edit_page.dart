@@ -116,16 +116,12 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEdit ? '编辑策划' : '新建策划'),
-        actions: [
-          TextButton(
-            onPressed: _save,
-            child: const Text('保存'),
-          ),
-        ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.all(16),
+      body: Stack(
         children: [
+          ListView(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
+            children: [
           // 基本信息
           TextField(
             controller: _titleCtrl,
@@ -199,31 +195,20 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             onChanged: (v) => setState(() => _status = v ?? 'planning'),
           ),
           const SizedBox(height: 24),
-          // shot list 编辑器
+          // shot list 编辑器（子组件隔离，避免光标漂移）
           _SectionTitle(title: 'Shot List', count: _shotList.length),
           ..._shotList.asMap().entries.map((entry) {
             final i = entry.key;
             final item = entry.value;
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Checkbox(
-                value: item.done,
-                onChanged: (v) => setState(() => _shotList[i] =
-                    ShotItem(desc: item.desc, done: v ?? false)),
-              ),
-              title: TextField(
-                controller: TextEditingController(text: item.desc),
-                decoration: const InputDecoration(
-                  border: InputBorder.none,
-                  isDense: true,
-                ),
-                onChanged: (text) => _shotList[i] =
-                    ShotItem(desc: text, done: item.done),
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
-                onPressed: () => setState(() => _shotList.removeAt(i)),
-              ),
+            return EditableShotRow(
+              key: ValueKey('shot_$i'),
+              initialDesc: item.desc,
+              isDone: item.done,
+              onDoneChanged: (v) =>
+                  setState(() => _shotList[i] = ShotItem(desc: item.desc, done: v)),
+              onDescChanged: (text) =>
+                  _shotList[i] = ShotItem(desc: text, done: item.done),
+              onDelete: () => setState(() => _shotList.removeAt(i)),
             );
           }),
           TextButton.icon(
@@ -238,22 +223,12 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
           ..._gearList.asMap().entries.map((entry) {
             final i = entry.key;
             final item = entry.value;
-            return ListTile(
-              contentPadding: EdgeInsets.zero,
-              title: TextField(
-                controller: TextEditingController(text: item.lens),
-                decoration: const InputDecoration(
-                  hintText: '如：85mm f/1.4',
-                  border: InputBorder.none,
-                  isDense: true,
-                ),
-                onChanged: (text) => _gearList[i] =
-                    GearItem(lens: text, note: item.note),
-              ),
-              trailing: IconButton(
-                icon: const Icon(Icons.delete_outline, size: 20),
-                onPressed: () => setState(() => _gearList.removeAt(i)),
-              ),
+            return EditableGearRow(
+              key: ValueKey('gear_$i'),
+              initialLens: item.lens,
+              onChanged: (text) =>
+                  _gearList[i] = GearItem(lens: text, note: item.note),
+              onDelete: () => setState(() => _gearList.removeAt(i)),
             );
           }),
           TextButton.icon(
@@ -263,6 +238,43 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
                 setState(() => _gearList.add(const GearItem(lens: ''))),
           ),
           const SizedBox(height: 32),
+            ],
+          ),
+          // 吸底保存按钮（拇指热区 Easy 区）
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Theme.of(context).colorScheme.surface.withValues(alpha: 0),
+                    Theme.of(context).colorScheme.surface,
+                  ],
+                ),
+              ),
+              child: SafeArea(
+                top: false,
+                child: ElevatedButton(
+                  onPressed: _save,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).colorScheme.primary,
+                    foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  child: const Text('保存策划',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -287,6 +299,141 @@ class _SectionTitle extends StatelessWidget {
           fontWeight: FontWeight.w600,
           color: theme.colorScheme.primary,
         ),
+      ),
+    );
+  }
+}
+
+/// Shot list 可编辑行（独立 StatefulWidget，避免光标漂移）
+/// 内部管理 TextEditingController + FocusNode，失焦时才回传数据
+class EditableShotRow extends StatefulWidget {
+  final String initialDesc;
+  final bool isDone;
+  final ValueChanged<bool> onDoneChanged;
+  final ValueChanged<String> onDescChanged;
+  final VoidCallback onDelete;
+
+  const EditableShotRow({
+    super.key,
+    required this.initialDesc,
+    required this.isDone,
+    required this.onDoneChanged,
+    required this.onDescChanged,
+    required this.onDelete,
+  });
+
+  @override
+  State<EditableShotRow> createState() => _EditableShotRowState();
+}
+
+class _EditableShotRowState extends State<EditableShotRow> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialDesc);
+    _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) {
+        widget.onDescChanged(_controller.text.trim());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      leading: Checkbox(
+        value: widget.isDone,
+        onChanged: (v) => widget.onDoneChanged(v ?? false),
+      ),
+      title: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        decoration: const InputDecoration(
+          hintText: '描述构图、光影或参考...',
+          border: InputBorder.none,
+          isDense: true,
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (val) => widget.onDescChanged(val.trim()),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, size: 20),
+        onPressed: widget.onDelete,
+      ),
+    );
+  }
+}
+
+/// 器材清单可编辑行（同理，独立状态隔离）
+class EditableGearRow extends StatefulWidget {
+  final String initialLens;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onDelete;
+
+  const EditableGearRow({
+    super.key,
+    required this.initialLens,
+    required this.onChanged,
+    required this.onDelete,
+  });
+
+  @override
+  State<EditableGearRow> createState() => _EditableGearRowState();
+}
+
+class _EditableGearRowState extends State<EditableGearRow> {
+  late final TextEditingController _controller;
+  late final FocusNode _focusNode;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialLens);
+    _focusNode = FocusNode();
+    _focusNode.addListener(() {
+      if (!_focusNode.hasFocus) {
+        widget.onChanged(_controller.text.trim());
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      title: TextField(
+        controller: _controller,
+        focusNode: _focusNode,
+        decoration: const InputDecoration(
+          hintText: '如：85mm f/1.4',
+          border: InputBorder.none,
+          isDense: true,
+        ),
+        textInputAction: TextInputAction.done,
+        onSubmitted: (val) => widget.onChanged(val.trim()),
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, size: 20),
+        onPressed: widget.onDelete,
       ),
     );
   }

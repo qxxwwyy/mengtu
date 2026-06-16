@@ -15,6 +15,7 @@ import '../providers/clipping_provider.dart';
 import '../services/database/app_database.dart';
 import 'compare_page.dart';
 import '../widgets/analysis_panel.dart' show AnalysisPanel, colorPinsProvider;
+import '../widgets/quick_tools_dock.dart';
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
@@ -214,6 +215,27 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   flex: 2,
                   child: _buildImageViewer(photo.filePath),
                 ),
+                // 悬浮毛玻璃工具 Dock（拇指热区，取色模式下隐藏避免手势冲突）
+                if (!_colorPickMode)
+                  QuickToolsDock(
+                    isBlackWhite: _isBlackWhite,
+                    showClipping: _showClipping,
+                    isColorPickMode: _colorPickMode,
+                    hasComposition: _compositionMode != CompositionMode.none,
+                    onBlackWhiteToggle: () =>
+                        setState(() => _isBlackWhite = !_isBlackWhite),
+                    onClippingToggle: () =>
+                        setState(() => _showClipping = !_showClipping),
+                    onCompositionToggle: () => setState(() {
+                      const modes = CompositionMode.values;
+                      final nextIndex =
+                          (modes.indexOf(_compositionMode) + 1) % modes.length;
+                      _compositionMode = modes[nextIndex];
+                    }),
+                    onColorPickToggle: () =>
+                        setState(() => _colorPickMode = !_colorPickMode),
+                    onCompareTap: () => _showComparePicker(),
+                  ),
                 // 分析面板
                 AnalysisPanel(
                   photoId: photo.id,

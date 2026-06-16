@@ -167,6 +167,38 @@ class _HomePageState extends ConsumerState<HomePage> {
     );
   }
 
+  /// 批量删除选中照片
+  Future<void> _batchDelete() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除照片'),
+        content: Text('确定删除选中的 ${_selectedIds.length} 张照片吗？\n'
+            '原始照片文件不会被删除，仅移除应用内记录。'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('删除', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final importService = await ref.read(importServiceProvider.future);
+    for (final photoId in _selectedIds) {
+      await importService.deletePhoto(photoId);
+    }
+    if (mounted) {
+      setState(() {
+        _selectMode = false;
+        _selectedIds.clear();
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已删除 ${_selectedIds.length} 张照片')),
+      );
+    }
+  }
+
   /// 批量把选中照片加入相册
   Future<void> _batchAddToAlbum() async {
     final db = ref.read(appDatabaseProvider);
@@ -787,6 +819,15 @@ class _HomePageState extends ConsumerState<HomePage> {
                               onPressed: _selectedIds.isEmpty
                                   ? null
                                   : () => _batchAddTag(),
+                            ),
+                            TextButton.icon(
+                              icon: const Icon(Icons.delete_outline,
+                                  size: 20, color: Colors.red),
+                              label: const Text('删除',
+                                  style: TextStyle(color: Colors.red)),
+                              onPressed: _selectedIds.isEmpty
+                                  ? null
+                                  : () => _batchDelete(),
                             ),
                             TextButton(
                               onPressed: () => setState(() {
