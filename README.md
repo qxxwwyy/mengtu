@@ -60,55 +60,6 @@
 
 ---
 
-## 💻 本地开发指南
-
-由于项目采用便携隔离式安装 Flutter SDK，本地执行 `flutter` 命令时需临时配置环境变量（或使用隔离激活脚本）：
-
-### 1. 激活环境
-**Windows cmd 终端**：
-```cmd
-call C:\Users\10492\flutter-sdk-activate.bat
-```
-**Windows PowerShell 终端**：
-```powershell
-$env:FLUTTER_HOME="C:\Users\10492\flutter-sdk"
-$env:PATH="$env:FLUTTER_HOME\bin;$env:PATH"
-$env:FLUTTER_STORAGE_BASE_URL="https://storage.flutter-io.cn"
-$env:PUB_HOSTED_URL="https://pub.flutter-io.cn"
-```
-
-### 2. 初始化项目并生成代码
-```bash
-# 获取依赖项
-flutter pub get
-
-# 自动生成 Drift/Riverpod 模板代码
-dart run build_runner build
-```
-
-### 3. 静态检查与运行测试
-```bash
-# 静态分析检查（应保证 0 issues）
-flutter analyze
-
-# 运行 230+ 自动化测试
-flutter test
-```
-
-> ⚠️ **注意**：本地因设置了国内镜像源可能会改动 `pubspec.lock` 中的 `url` 字段（例如 `pub.dev` 变成 `pub.flutter-io.cn`），请在提交 Git 前执行 `git restore pubspec.lock` 以防污染 CI 环境。
-
----
-
-## 🚀 CI/CD 自动化流水线
-
-萌图所有构建分发均在 GitHub Actions CI 中自动化完成。
-
-* **CI 触发流程**：任何推送到 `feature/release-prep` 或是 `main` 分支的提交都会自动触发 `.github/workflows/build.yml` 工作流。
-* **执行任务**：`pub get` -> `build_runner` 代码生成 -> `flutter analyze` 静态分析（包含 info 级别的严格检查） -> `flutter test` (单元/widget/DAO/集成测试) -> 解密 keystore 签名 -> `flutter build apk --release`。
-* **体积优化**：CI 中指定了 `--release` 模式构建，并过滤 `ndk.abiFilters=["arm64-v8a"]`。产物包体积从原本 debug 的 150MB 骤降至约 **30MB**。
-
----
-
 ## 📄 开源许可证
 
 本项目基于 [MIT License](LICENSE) 开源。
