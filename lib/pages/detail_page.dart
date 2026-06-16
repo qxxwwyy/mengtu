@@ -183,27 +183,28 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   child: _buildImageViewer(photo.filePath),
                 ),
                 // 统一底部面板（高频工具行 + 展开 TabBarView）
-                // 取色模式下隐藏避免手势冲突
-                if (!_colorPickMode)
-                  DetailBottomPanel(
-                    photoId: photo.id,
-                    isBlackWhite: _isBlackWhite,
-                    showClipping: _showClipping,
-                    isColorPickMode: _colorPickMode,
-                    hasComposition: _compositionMode != CompositionMode.none,
-                    onBlackWhiteToggle: () =>
-                        setState(() => _isBlackWhite = !_isBlackWhite),
-                    onClippingToggle: () =>
-                        setState(() => _showClipping = !_showClipping),
-                    onCompositionToggle: () => setState(() {
-                      const modes = CompositionMode.values;
-                      final nextIndex =
-                          (modes.indexOf(_compositionMode) + 1) % modes.length;
-                      _compositionMode = modes[nextIndex];
-                    }),
-                    onColorPickToggle: () =>
-                        setState(() => _colorPickMode = !_colorPickMode),
-                  ),
+                // 始终保留工具行（取色模式需通过"取色"按钮退出，不能整块隐藏）
+                DetailBottomPanel(
+                  photoId: photo.id,
+                  isBlackWhite: _isBlackWhite,
+                  showClipping: _showClipping,
+                  isColorPickMode: _colorPickMode,
+                  hasComposition: _compositionMode != CompositionMode.none,
+                  // 取色模式强制收起（避免 TabBarView 与取色放大镜/pin 标记重叠争夺空间）
+                  forceCollapsed: _colorPickMode,
+                  onBlackWhiteToggle: () =>
+                      setState(() => _isBlackWhite = !_isBlackWhite),
+                  onClippingToggle: () =>
+                      setState(() => _showClipping = !_showClipping),
+                  onCompositionToggle: () => setState(() {
+                    const modes = CompositionMode.values;
+                    final nextIndex =
+                        (modes.indexOf(_compositionMode) + 1) % modes.length;
+                    _compositionMode = modes[nextIndex];
+                  }),
+                  onColorPickToggle: () =>
+                      setState(() => _colorPickMode = !_colorPickMode),
+                ),
               ],
             ),
           );
@@ -557,22 +558,26 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     itemBuilder: (ctx) => [
                       const PopupMenuItem(
                         value: 'album',
-                        child: ListTile(
-                          leading: Icon(Icons.photo_album_outlined,
-                              color: DetailColors.textPrimary, size: 20),
-                          title: Text('加入相册'),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
+                        height: 44,
+                        child: Row(
+                          children: [
+                            Icon(Icons.photo_album_outlined,
+                                color: DetailColors.textPrimary, size: 20),
+                            SizedBox(width: 12),
+                            Text('加入相册'),
+                          ],
                         ),
                       ),
                       const PopupMenuItem(
                         value: 'compare',
-                        child: ListTile(
-                          leading: Icon(Icons.compare_outlined,
-                              color: DetailColors.textPrimary, size: 20),
-                          title: Text('照片对比'),
-                          contentPadding: EdgeInsets.zero,
-                          dense: true,
+                        height: 44,
+                        child: Row(
+                          children: [
+                            Icon(Icons.compare_outlined,
+                                color: DetailColors.textPrimary, size: 20),
+                            SizedBox(width: 12),
+                            Text('照片对比'),
+                          ],
                         ),
                       ),
                     ],

@@ -40,17 +40,17 @@ class DetailColors {
   /// 详情页底色（纯黑，最大化照片对比度）
   static const background = Color(0xFF000000);
 
-  /// 顶栏/底部面板的毛玻璃基底色（半透明黑）
-  static const glassBase = Color(0x00000000);
-
   /// 底部面板不透明背景（surface 角色，比纯黑略亮以区分层级）
   static const panelSurface = Color(0xFF1A1A1A);
 
-  /// 常驻工具栏毛玻璃遮罩色
-  static const dockScrim = Color(0x73000000); // 黑 45%
+  /// 卡片/列表项背景（信息卡片、取色点 tile）
+  static const cardSurface = Color(0xFF242424);
 
-  /// 工具栏边框
-  static const dockBorder = Color(0x14FFFFFF); // 白 8%
+  /// 嵌套控件背景（分段选择器底色、chips 容器）
+  static const controlSurface = Color(0xFF2A2A2A);
+
+  /// 小标签/chip 背景（信息 chip、坐标标签）
+  static const chipSurface = Color(0xFF333333);
 
   /// 主文字色（高对比度，用于文件名、关键数值）
   static const textPrimary = Color(0xFFE8E8E8);

@@ -46,6 +46,10 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
   /// 展开/收起变化回调（父组件可借此在收起时让图片获得更多空间）
   final ValueChanged<bool>? onExpandChanged;
 
+  /// 强制收起（取色模式时为 true）：保留工具行可见，但禁止展开 TabBarView
+  /// 避免 TabBarView 与取色放大镜/pin 标记重叠争夺空间
+  final bool forceCollapsed;
+
   const DetailBottomPanel({
     super.key,
     required this.photoId,
@@ -58,6 +62,7 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
     required this.onCompositionToggle,
     required this.onColorPickToggle,
     this.onExpandChanged,
+    this.forceCollapsed = false,
   });
 
   @override
@@ -68,7 +73,11 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
   bool _expanded = false;
   HistogramMode _histMode = HistogramMode.rgb;
 
+  /// 实际是否展开（forceCollapsed 时强制 false）
+  bool get _effectiveExpanded => _expanded && !widget.forceCollapsed;
+
   void _toggleExpand() {
+    if (widget.forceCollapsed) return; // 取色模式禁止展开
     setState(() => _expanded = !_expanded);
     widget.onExpandChanged?.call(_expanded);
   }
@@ -88,15 +97,15 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
           ),
         ),
         constraints: BoxConstraints(
-          maxHeight: _expanded ? 380 : 72,
+          maxHeight: _effectiveExpanded ? 380 : 72,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 常驻工具行（始终可见）
+            // 常驻工具行（始终可见，取色模式也保留以供退出）
             _buildToolRow(),
-            // 展开内容
-            if (_expanded)
+            // 展开内容（取色模式 forceCollapsed 时不显示）
+            if (_effectiveExpanded)
               SizedBox(
                 height: 308,
                 child: DefaultTabController(
@@ -153,37 +162,59 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
             height: 28,
             color: DetailColors.divider,
           ),
-          // 展开把手（占满剩余空间，点击展开/收起）
+          // 右侧：展开把手（取色模式时显示取色提示，不可展开）
           Expanded(
-            child: GestureDetector(
-              onTap: _toggleExpand,
-              behavior: HitTestBehavior.opaque,
-              child: Padding(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      _expanded ? '收起' : '分析 / 信息',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: DetailColors.textSecondary,
-                        fontWeight: FontWeight.w500,
+            child: widget.forceCollapsed
+                ? // 取色模式：提示长按取点，不可点展开
+                  Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(Icons.touch_app,
+                              size: 14, color: DetailColors.textMuted),
+                          SizedBox(width: 4),
+                          Text('长按图片取色点',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: DetailColors.textMuted,
+                              )),
+                        ],
+                      ),
+                    )
+                : GestureDetector(
+                    onTap: _toggleExpand,
+                    behavior: HitTestBehavior.opaque,
+                    child: Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _effectiveExpanded ? '收起' : '分析 / 信息',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: DetailColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          // 展开时向上（可收起），收起时向下（可展开）
+                          Icon(
+                            _effectiveExpanded
+                                ? Icons.expand_less
+                                : Icons.expand_more,
+                            size: 18,
+                            color: DetailColors.textSecondary,
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 4),
-                    // 修正图标方向：展开时向上（可收起），收起时向下（可展开）
-                    Icon(
-                      _expanded ? Icons.expand_less : Icons.expand_more,
-                      size: 18,
-                      color: DetailColors.textSecondary,
-                    ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
           ),
         ],
       ),
@@ -251,14 +282,20 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
           data: (exif) => _ExifSection(
             photoId: widget.photoId,
             exif: exif,
-            onReread: () => ref.invalidate(exifInfoProvider(widget.photoId)),
+            // 同时 invalidate photoByIdProvider：exifInfoProvider 依赖它，
+            // 而 photoByIdProvider 是 FutureProvider（非 stream）会缓存旧 Photo，
+            // 不 invalidate 它的话拿到的仍是 exifJson=null 的旧对象
+            onReread: () {
+              ref.invalidate(photoByIdProvider(widget.photoId));
+              ref.invalidate(exifInfoProvider(widget.photoId));
+            },
           ),
         ),
         const SizedBox(height: 10),
         // 文件信息
         photoAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (e, _) => _buildErrorText('文件信息加载失败'),
           data: (photo) =>
               photo == null ? const SizedBox.shrink() : _FileInfoSection(photo: photo),
         ),
@@ -266,7 +303,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
         // 标签管理
         tagsAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (e, _) => _buildErrorText('标签加载失败'),
           data: (tags) => _TagSection(
             photoId: widget.photoId,
             tags: tags,
@@ -329,7 +366,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
         Expanded(
           child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF2A2A2A),
+              color: DetailColors.controlSurface,
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
@@ -385,7 +422,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
               decoration: BoxDecoration(
                 color: !isMainMode
                     ? accent.withValues(alpha: 0.2)
-                    : const Color(0xFF2A2A2A),
+                    : DetailColors.controlSurface,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Row(
@@ -832,7 +869,7 @@ class _InfoCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
-        color: const Color(0xFF242424),
+        color: DetailColors.cardSurface,
         borderRadius: BorderRadius.circular(10),
       ),
       child: Column(
@@ -885,7 +922,7 @@ class _InfoChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
-        color: const Color(0xFF333333),
+        color: DetailColors.chipSurface,
         borderRadius: BorderRadius.circular(6),
       ),
       child: Text(label,
@@ -921,7 +958,7 @@ class _ColorPinTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
-      color: const Color(0xFF242424),
+      color: DetailColors.cardSurface,
       elevation: 0,
       child: Padding(
         padding: const EdgeInsets.all(10),
@@ -954,7 +991,7 @@ class _ColorPinTile extends StatelessWidget {
                         padding: const EdgeInsets.symmetric(
                             horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: const Color(0xFF333333),
+                          color: DetailColors.chipSurface,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(

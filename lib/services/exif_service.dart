@@ -36,7 +36,10 @@ Future<String?> extractExifJson(Uint8List bytes) async {
 
     int? parseInt(String? raw) {
       if (raw == null) return null;
-      return int.tryParse(raw);
+      // exif 包对数组类型（如 ISOSpeedRatings 是 SHORT/LONG 数组）的 printable
+      // 可能输出 "[200]" 形式，需剥离方括号后解析
+      final stripped = raw.replaceAll(RegExp(r'[\[\]]'), '').trim();
+      return int.tryParse(stripped);
     }
 
     // EXIF DateTimeOriginal 格式 "YYYY:MM:DD HH:MM:SS"
