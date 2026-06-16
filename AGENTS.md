@@ -42,6 +42,8 @@
 - ✅ v2.0 自适应主题（暗色/浅色/跟随系统，SharedPreferences 持久化）
 - ✅ v2.0 相册拖拽排序（ReorderableGridView + HapticFeedback）
 - ✅ v2.0 策划编辑器吸底保存（拇指热区 Easy 区 + 子组件状态隔离）
+- ✅ v2.0 EXIF 拍摄参数（exif 包 + Isolate 解析 JPEG + schemaVersion v7→v8 + 历史照片补全）
+- ✅ v2.0 详情页统一底部面板重构（融合 Quick Dock + AnalysisPanel 为单一组件 + 黑白入口去重 + 顶栏更多菜单归位低频功能 + 信息 Tab）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -82,6 +84,7 @@ flutter test
 | sqlite3_flutter_libs | ^0.5.0 | drift 原生库 |
 | image | ^4.9.1 | 图片解码+像素操作 |
 | material_color_utilities | ^0.13.0 | Google 色彩算法（QuantizerCelebi+Score） |
+| exif | ^3.3.0 | EXIF 拍摄参数解析（纯 Dart，Isolate 内读取 JPEG 字节） |
 | wechat_assets_picker | ^10.1.2 | 微信风格图片多选 |
 | photo_manager | ^3.9.0 | 相册管理 |
 | flutter_staggered_grid_view | ^0.7.0 | 瀑布流 |
@@ -125,19 +128,23 @@ mengtu/
 │   ├── main.dart                    # 应用入口（ErrorWidget 兜底 + MainShell）
 │   ├── models/
 │   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）
-│   │   └── palette_result.dart      # PaletteColor + PaletteResult
+│   │   ├── palette_result.dart      # PaletteColor + PaletteResult
+│   │   └── exif_info.dart           # ExifInfo 强类型 + JSON 序列化 + 格式化（f/2.8、1/250s）
+│   ├── theme/
+│   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=7）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=8）
 │   │   │   ├── tables.dart          # 表定义（9张表，见下）
 │   │   │   └── daos/
-│   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + 缓存更新 + 清缩略图
+│   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + 缓存更新 + 清缩略图 + updateExifCache
 │   │   │       ├── tag_dao.dart     # 标签CRUD + 关联管理
 │   │   │       ├── album_dao.dart   # 相册CRUD + 关联 + getCoverPhoto
 │   │   │       ├── color_pin_dao.dart # 取色点CRUD
 │   │   │       ├── plan_dao.dart    # 拍摄策划CRUD + shot list/gear序列化 + 模板
 │   │   │       └── *.g.dart        # 自动生成（gitignore）
-│   │   ├── import_service.dart      # 导入去重+缩略图+删除+regenerateThumbnail
+│   │   ├── import_service.dart      # 导入去重+缩略图+EXIF解析+删除+regenerateThumbnail+readExifForExistingPhoto
+│   │   ├── exif_service.dart        # EXIF 解析纯函数（extractExifJson，Isolate 内调用）
 │   │   ├── histogram_service.dart   # 直方图计算（Isolate）
 │   │   ├── tone_service.dart        # 影调分析（5区域 + 合并段基调判定）
 │   │   ├── palette_service.dart     # 色卡提取
@@ -147,10 +154,10 @@ mengtu/
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
 │   │   ├── home_page.dart           # 作品库（瀑布流+标签chips+长按多选+静默导入）
-│   │   ├── detail_page.dart         # 照片详情（Quick Dock悬浮工具+渐进式分层）
+│   │   ├── detail_page.dart         # 照片详情（顶栏更多菜单 + 统一底部面板 + 永远暗色）
 │   │   ├── compare_page.dart        # 多图对比
 │   │   ├── album_page.dart          # 相册列表（封面卡片+编辑描述）
-│   │   ├── album_detail_page.dart   # 相册详情（3列网格+设封面+拖拽排序+加入相册）
+│   │   ├── album_detail_page.dart   # 相册详情（3列网格+设封面+拖拽排序+点击进详情）
 │   │   ├── plan_list_page.dart      # 策划列表（状态筛选chips+卡片）
 │   │   ├── plan_edit_page.dart      # 策划创建/编辑（EditableShotRow子组件隔离+吸底保存）
 │   │   ├── plan_detail_page.dart    # 策划详情（shot完成度+实拍照片）
@@ -159,9 +166,8 @@ mengtu/
 │   │   └── tag_manage_page.dart     # 标签管理（分组显示）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层+快速标签）
-│   │   ├── quick_tools_dock.dart    # 详情页悬浮毛玻璃工具栏（拇指热区）
+│   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行 + 展开 TabBarView：信息/直方图/色卡/影调/和谐/取色）
 │   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
-│   │   ├── analysis_panel.dart      # 展开/收起式分析面板（AnimatedSize 340）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
 │   │   ├── color_card.dart          # 色卡展示
 │   │   ├── harmony_card.dart        # 配色和谐度
@@ -174,6 +180,7 @@ mengtu/
 │   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序
 │   │   ├── tag_provider.dart        # 标签流 + TagActions
 │   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存
+│   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
 │   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
@@ -196,7 +203,7 @@ mengtu/
 │   ├── dao/                         # photo_dao/tag_dao/album_dao/color_pin_dao/plan_dao
 │   ├── integration/                 # analysis_flow/import_flow 全链路测试
 │   ├── unit/                        # color_utils/file_hash/histogram/tone/harmony/clipping/migration
-│   ├── widget/                      # analysis_panel/histogram_painter/photo_card Widget 测试
+│   ├── widget/                      # tone_info_card/histogram_painter/photo_card Widget 测试
 │   └── helpers/test_helpers.dart    # 测试工具（图片生成、内存DB、ProviderContainer、fixture builder）
 ├── .github/workflows/build.yml      # CI: build_runner → analyze → test → release APK
 ├── AGENTS.md                        # 本文件
@@ -208,8 +215,8 @@ mengtu/
 └── pubspec.yaml                     # version: 1.2.0+1
 ```
 
-**数据库表（9 张，schemaVersion=7）：**
-- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ fileHash 唯一索引
+**数据库表（9 张，schemaVersion=8）：**
+- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引
 - `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）
 - `PhotoTags` — 照片-标签多对多
 - `ColorPins` — 取色点（v4）
@@ -242,6 +249,7 @@ mengtu/
 - 直方图计算：`compute()` 函数
 - 图片哈希：`compute()` 函数
 - 缩略图生成：`compute()` 函数
+- EXIF 拍摄参数解析：`compute()` 函数（`readExifFromBytes` 返回 Future，Isolate 内 await）
 - 使用 `image` 包的 `decodeImage()` + `copyResize()`
 
 ### 图片处理
@@ -256,15 +264,20 @@ mengtu/
 - **基调判定**：`dark = blacks + shadows`、`light = highlights + whites`，两端占比都 >15% 即全长调（合并段判定，单看 shadows/highlights 会漏判高对比图）
 - **缓存兼容**：旧 3 段 JSON 缺 blacks/whites 键 → `fromJson` 强转抛 TypeError → `fromJsonString` 的 try/catch 兜底返回 null → provider 自动重算，**无需数据库迁移**
 
-### 分析面板布局
+### 详情页底部面板布局（v2.0 重构后）
+- **统一组件 `DetailBottomPanel`**：融合原 QuickToolsDock + AnalysisPanel 为单一组件，消除两套割裂的工具系统
+- **常驻工具行**（始终可见）：高频调色工具（黑白/溢出/构图/取色）+ 展开/收起把手
+- **展开内容**：TabBarView（信息/直方图/色卡/影调/和谐/取色），`AnimatedSize` 切换（220ms，收起 72 / 展开 380）
+- **取色模式特殊处理**：`forceCollapsed=true` 时只保留工具行可见（可点"取色"退出），收起 TabBarView 避免与取色放大镜争夺空间；把手显示"长按图片取色点"提示
 - **不使用 `DraggableScrollableSheet`**（真机上与 InteractiveViewer 手势冲突）
-- 改用 `AnimatedSize` + 展开/收起按钮（200ms easeInOut, maxHeight 340/52 切换）
+- 黑白控制**统一为工具行 1 处入口**（删除原顶栏快捷栏 + AnalysisPanel Switch 的重复）
 - 黑白状态通过 Widget state + 回调传递（不使用 Riverpod family provider）
-- 展开高度 `340px`（maxHeight `380px`），容纳 5 段影调占比条 + 统计指标网格
+- **永远暗色**：详情页 `DetailColors` token（不随全局主题切换），让照片色彩最准确
 
 ### UI/UX 设计原则（v2.0 审查后确立）
-- **拇指热区**：高频操作（Quick Dock 工具/导入 FAB/多选操作栏/保存按钮）放在屏幕底部 Easy 区；低频操作（返回/删除/更多）放顶部
-- **渐进式披露**：详情页工具分层（常驻顶栏 → Quick Dock → 更多 BottomSheet → 分析面板）
+- **拇指热区**：高频操作（底部面板工具行/导入 FAB/多选操作栏/保存按钮）放在屏幕底部 Easy 区；低频操作（返回/删除/更多菜单/对比/加入相册）放顶部
+- **渐进式披露**：详情页工具分层（常驻顶栏 → 底部面板常驻工具行 → 展开 TabBarView 信息/分析）
+- **工具入口去重**：同一功能（如黑白）只保留一个入口，避免 Dock toggle + Switch 多处重复造成困惑
 - **子组件状态隔离**：表单编辑（shot list/gear list）用独立 StatefulWidget 管理 controller，避免光标漂移
 - **静默导入**：选图后不弹分类弹窗，直接导入 + SnackBar 延后分类
 
@@ -273,7 +286,7 @@ mengtu/
 - **相册 Tab**：相册列表（封面卡片）→ 相册详情（3 列网格 + 拖拽排序 + 设封面）
 - **策划 Tab**：策划列表 → 创建/编辑（EditableShotRow 子组件 + 吸底保存）→ 详情（shot list + 实拍照片）
 - **我的 Tab**：统计 + 标签管理 + 设置（含主题切换）
-- **详情页**：常驻顶栏（返回+文件名+更多+删除）→ Quick Dock 悬浮毛玻璃工具栏（黑白/溢出/构图/取色/对比，拇指热区）→ 更多 BottomSheet（加标签/加入相册/对比）→ 分析面板（AnimatedSize 收起/展开）
+- **详情页**：常驻顶栏（返回+文件名+删除+⋮更多菜单[加入相册/照片对比]）→ 统一底部面板 DetailBottomPanel（常驻工具行：黑白/溢出/构图/取色 + 展开 TabBarView：信息[EXIF/文件/标签]/直方图/色卡/影调/和谐/取色）。永远暗色背景
 - **主题**：暗色（默认）/浅色/跟随系统，`theme_provider.dart` + SharedPreferences 持久化
 - **导入**：静默导入（选图后直接导入，SnackBar 带延后"加入相册"action，不弹分类弹窗）
 
@@ -347,6 +360,10 @@ CI 流程（`.github/workflows/build.yml`）：
 20. **TextField 光标漂移** — 在 `build()` 中创建 `TextEditingController(text: value)` 会在每次 setState 时重建 controller，导致光标跳到末尾。必须用独立 StatefulWidget 子组件管理 controller 生命周期，失焦时才回传数据
 21. **StateNotifierProvider 已移除** — Riverpod 3.x 没有 StateNotifierProvider。主题持久化用 `NotifierProvider` + `SharedPreferences`，不用 StateNotifier
 22. **`git add -A` 误提交无关文件** — `.gemini/`、`.agents/` 等技能/配置目录会被 `-A` 一并加入。提交前用 `git add <具体文件>` 或在 `.gitignore` 排除这些目录
+23. **取色模式隐藏面板导致死锁** — 用 `if(!_colorPickMode)` 整块隐藏 DetailBottomPanel 会让"取色"按钮一起消失，用户无法退出取色模式。正确做法是面板始终保留、用 `forceCollapsed` 只收起 TabBarView（工具行可见可退出）
+24. **FutureProvider 依赖缓存不刷新** — FutureProvider A 内部 `watch(FutureProvider B.future)` 时，invalidate A 不会让 B 重算（B 缓存了旧结果）。更新 DB 后需同时 invalidate A 和 B。详见 exifInfoProvider + photoByIdProvider 的刷新链
+25. **exif 包 ISO printable 格式** — `EXIF ISOSpeedRatings` 是 SHORT/LONG 数组，`.printable` 可能输出 `"[200]"` 形式，`int.tryParse` 直接失败。需 `replaceAll(RegExp(r'[\[\]]'))` 剥离方括号
+26. **详情页永远暗色** — 作为图片查看/调色场景，详情页无论全局主题都用暗色（`DetailColors` token），不随 `themeModeProvider` 切换，避免浅色下调色分析的色彩偏差
 
 ## 许可证合规
 
