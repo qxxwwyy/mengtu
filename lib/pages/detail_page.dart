@@ -9,17 +9,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../providers/photo_provider.dart';
-import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/clipping_provider.dart';
+import '../providers/exif_provider.dart' show colorPinsProvider;
 import '../services/database/app_database.dart';
 import 'compare_page.dart';
-import '../widgets/analysis_panel.dart' show AnalysisPanel, colorPinsProvider;
-import '../widgets/quick_tools_dock.dart';
+import '../widgets/detail_bottom_panel.dart';
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
 import '../services/pixel_picker_service.dart';
+import '../theme/app_theme.dart';
 import '../utils/color_utils.dart';
 
 class DetailPage extends ConsumerStatefulWidget {
@@ -154,70 +154,39 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     );
   }
 
-  void _showTagDialog() {
-    showDialog(
-      context: context,
-      builder: (ctx) {
-        String newTag = '';
-        return AlertDialog(
-          title: const Text('添加标签'),
-          content: TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入标签名',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (v) => newTag = v,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                if (newTag.trim().isNotEmpty) {
-                  ref
-                      .read(tagActionsProvider.notifier)
-                      .addTagToPhoto(widget.photoId, newTag.trim());
-                }
-                Navigator.pop(ctx);
-              },
-              child: const Text('添加'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final photoAsync = ref.watch(photoByIdProvider(widget.photoId));
-    final tagsAsync = ref.watch(photoTagsProvider(widget.photoId));
 
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: DetailColors.background,
       body: photoAsync.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('错误: $e')),
+        error: (e, _) => Center(
+          child: Text('错误: $e',
+              style: const TextStyle(color: DetailColors.textPrimary)),
+        ),
         data: (photo) {
           if (photo == null) {
-            return const Center(child: Text('照片不存在'));
+            return const Center(
+                child: Text('照片不存在',
+                    style: TextStyle(color: DetailColors.textPrimary)));
           }
           return SafeArea(
             child: Column(
               children: [
-                // 顶部毛玻璃工具栏
+                // 顶部毛玻璃工具栏（返回 + 文件名 + 删除 + 更多菜单）
                 _buildTopBar(photo.fileName),
                 // 图片区域
                 Expanded(
                   flex: 2,
                   child: _buildImageViewer(photo.filePath),
                 ),
-                // 悬浮毛玻璃工具 Dock（拇指热区，取色模式下隐藏避免手势冲突）
+                // 统一底部面板（高频工具行 + 展开 TabBarView）
+                // 取色模式下隐藏避免手势冲突
                 if (!_colorPickMode)
-                  QuickToolsDock(
+                  DetailBottomPanel(
+                    photoId: photo.id,
                     isBlackWhite: _isBlackWhite,
                     showClipping: _showClipping,
                     isColorPickMode: _colorPickMode,
@@ -234,46 +203,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     }),
                     onColorPickToggle: () =>
                         setState(() => _colorPickMode = !_colorPickMode),
-                    onCompareTap: () => _showComparePicker(),
-                    onAddToAlbumTap: () => _showAddToAlbumPicker(),
                   ),
-                // 分析面板
-                AnalysisPanel(
-                  photoId: photo.id,
-                  isBlackWhite: _isBlackWhite,
-                  onBlackWhiteChanged: (v) => setState(() => _isBlackWhite = v),
-                ),
-                // 标签栏
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: tagsAsync.when(
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (tags) => Wrap(
-                      spacing: 4,
-                      runSpacing: 2,
-                      children: [
-                        ...tags.map((tag) {
-                          return Chip(
-                            label: Text(tag.name,
-                                style: const TextStyle(fontSize: 11)),
-                            deleteIcon: const Icon(Icons.close, size: 14),
-                            onDeleted: () => ref
-                                .read(tagActionsProvider.notifier)
-                                .removeTagFromPhoto(widget.photoId, tag.id),
-                            visualDensity: VisualDensity.compact,
-                          );
-                        }),
-                        InputChip(
-                          avatar: const Icon(Icons.add, size: 14),
-                          label: const Text('添加标签', style: TextStyle(fontSize: 11)),
-                          onPressed: _showTagDialog,
-                          visualDensity: VisualDensity.compact,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ],
             ),
           );
@@ -298,7 +228,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           cacheWidth:
               (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
           errorBuilder: (_, error, ___) => const Center(
-            child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+            child: Icon(Icons.broken_image, color: DetailColors.textSecondary, size: 64),
           ),
         ),
       ),
@@ -407,7 +337,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       cacheWidth:
           (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
       errorBuilder: (_, error, ___) => const Center(
-        child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+        child: Icon(Icons.broken_image, color: DetailColors.textSecondary, size: 64),
       ),
     );
 
@@ -536,7 +466,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                             errorBuilder: (_, __, ___) => Container(
                               width: 48,
                               height: 48,
-                              color: Colors.white12,
+                              color: DetailColors.divider,
                               child: const Icon(Icons.image, size: 24),
                             )),
                       ),
@@ -566,6 +496,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   }
 
   /// 毛玻璃顶栏（BackdropFilter + 渐变遮罩）
+  /// 返回 + 文件名 + 删除 + ⋮更多菜单（加入相册/照片对比）
   Widget _buildTopBar(String fileName) {
     return ClipRect(
       child: BackdropFilter(
@@ -584,12 +515,12 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // 第一行：返回 + 文件名 + 更多 + 删除（常驻，极简）
+              // 第一行：返回 + 文件名 + 删除 + 更多菜单
               Row(
                 children: [
                   IconButton(
-                    icon: Icon(Icons.arrow_back,
-                        color: Theme.of(context).colorScheme.onSurface),
+                    icon: const Icon(Icons.arrow_back,
+                        color: DetailColors.textPrimary),
                     tooltip: '返回',
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -598,85 +529,60 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       fileName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 14,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7),
+                        color: DetailColors.textSecondary,
                       ),
                     ),
                   ),
-
                   IconButton(
-                    icon: Icon(Icons.delete_outline,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.7)),
+                    icon: const Icon(Icons.delete_outline,
+                        color: DetailColors.textSecondary),
                     tooltip: '删除照片',
                     onPressed: _confirmDelete,
                   ),
-                  const SizedBox(width: 8),
+                  // ⋮ 更多菜单：低频功能（加入相册 / 照片对比）
+                  PopupMenuButton<String>(
+                    icon: const Icon(Icons.more_vert,
+                        color: DetailColors.textSecondary),
+                    tooltip: '更多',
+                    color: DetailColors.panelSurface,
+                    onSelected: (value) {
+                      if (value == 'album') {
+                        _showAddToAlbumPicker();
+                      } else if (value == 'compare') {
+                        _showComparePicker();
+                      }
+                    },
+                    itemBuilder: (ctx) => [
+                      const PopupMenuItem(
+                        value: 'album',
+                        child: ListTile(
+                          leading: Icon(Icons.photo_album_outlined,
+                              color: DetailColors.textPrimary, size: 20),
+                          title: Text('加入相册'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'compare',
+                        child: ListTile(
+                          leading: Icon(Icons.compare_outlined,
+                              color: DetailColors.textPrimary, size: 20),
+                          title: Text('照片对比'),
+                          contentPadding: EdgeInsets.zero,
+                          dense: true,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
               ),
-              // 第二行：对比度/曝光滑块（仅黑白模式）
+              // 第二行：对比度/曝光滑块（仅黑白模式，黑白激活后的参数调节）
               if (_isBlackWhite) _buildAdjustmentSliders(),
-              // 第三行：激活中的工具快捷开关（黑白/clipping/构图/取色 激活时显示，方便关闭）
-              if (_isBlackWhite || _showClipping || _compositionMode != CompositionMode.none || _colorPickMode)
-                _buildActiveToolsBar(),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  /// 激活工具的快捷关闭栏（只显示当前激活的工具，方便快速关闭）
-  Widget _buildActiveToolsBar() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            if (_isBlackWhite)
-              _toolButton(
-                icon: Icons.brightness_6,
-                label: '黑白',
-                isActive: true,
-                onPressed: () =>
-                    setState(() => _isBlackWhite = !_isBlackWhite),
-              ),
-            if (_showClipping)
-              _toolButton(
-                icon: Icons.remove_red_eye,
-                label: 'Clipping',
-                isActive: true,
-                onPressed: () =>
-                    setState(() => _showClipping = !_showClipping),
-              ),
-            if (_compositionMode != CompositionMode.none)
-              _toolButton(
-                icon: Icons.grid_on,
-                label: '构图',
-                isActive: true,
-                onPressed: () => setState(() {
-                  const modes = CompositionMode.values;
-                  final nextIndex =
-                      (modes.indexOf(_compositionMode) + 1) % modes.length;
-                  _compositionMode = modes[nextIndex];
-                }),
-              ),
-            if (_colorPickMode)
-              _toolButton(
-                icon: Icons.colorize,
-                label: '取色',
-                isActive: true,
-                onPressed: () =>
-                    setState(() => _colorPickMode = !_colorPickMode),
-              ),
-          ],
         ),
       ),
     );
@@ -732,55 +638,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
   }
 
-  /// 工具按钮
-  Widget _toolButton({
-    required IconData icon,
-    required String label,
-    required bool isActive,
-    required VoidCallback onPressed,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: GestureDetector(
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isActive
-                ? colorScheme.primary.withValues(alpha: 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isActive
-                  ? colorScheme.primary.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.1),
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon,
-                  size: 16,
-                  color: isActive
-                      ? colorScheme.primary
-                      : Colors.white.withValues(alpha: 0.7)),
-              const SizedBox(width: 4),
-              Text(label,
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: isActive
-                        ? colorScheme.primary
-                        : Colors.white.withValues(alpha: 0.7),
-                  )),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// 对比度/曝光调节滑块
+  /// 对比度/曝光调节滑块（黑白激活时显示）
   Widget _buildAdjustmentSliders() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -789,7 +647,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         children: [
           Row(
             children: [
-              const Icon(Icons.contrast, size: 14, color: Colors.white54),
+              const Icon(Icons.contrast, size: 14, color: DetailColors.textSecondary),
               const SizedBox(width: 4),
               Expanded(
                 child: SliderTheme(
@@ -808,13 +666,13 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               SizedBox(
                 width: 36,
                 child: Text('${_contrast.round()}',
-                    style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                    style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10)),
               ),
             ],
           ),
           Row(
             children: [
-              const Icon(Icons.exposure, size: 14, color: Colors.white54),
+              const Icon(Icons.exposure, size: 14, color: DetailColors.textSecondary),
               const SizedBox(width: 4),
               Expanded(
                 child: SliderTheme(
@@ -834,7 +692,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               SizedBox(
                 width: 36,
                 child: Text('${_exposure.toStringAsFixed(1)}EV',
-                    style: const TextStyle(color: Colors.white54, fontSize: 10)),
+                    style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10)),
               ),
             ],
           ),

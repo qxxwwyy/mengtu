@@ -29,6 +29,45 @@ class AppColors {
   static const lightTextMuted = Color(0xFF999999);
 }
 
+/// 详情页专用暗色 Token
+///
+/// 详情页作为图片查看/调色场景，无论全局主题如何都使用暗色背景，
+/// 让照片色彩最准确（符合 Google Photos / Apple Photos 惯例）。
+/// 这里集中维护详情页所有颜色，替代散落的 Colors.white54 / Colors.black 硬编码。
+class DetailColors {
+  DetailColors._();
+
+  /// 详情页底色（纯黑，最大化照片对比度）
+  static const background = Color(0xFF000000);
+
+  /// 顶栏/底部面板的毛玻璃基底色（半透明黑）
+  static const glassBase = Color(0x00000000);
+
+  /// 底部面板不透明背景（surface 角色，比纯黑略亮以区分层级）
+  static const panelSurface = Color(0xFF1A1A1A);
+
+  /// 常驻工具栏毛玻璃遮罩色
+  static const dockScrim = Color(0x73000000); // 黑 45%
+
+  /// 工具栏边框
+  static const dockBorder = Color(0x14FFFFFF); // 白 8%
+
+  /// 主文字色（高对比度，用于文件名、关键数值）
+  static const textPrimary = Color(0xFFE8E8E8);
+
+  /// 次要文字色（用于图标、滑块标签等辅助信息）
+  static const textSecondary = Color(0x8AFFFFFF); // 白 54%
+
+  /// 弱化文字色（用于占位、提示）
+  static const textMuted = Color(0x55FFFFFF); // 白 33%
+
+  /// 分隔线
+  static const divider = Color(0x1FFFFFFF); // 白 12%
+
+  /// 错误/警告色（用于溢出警告高亮）
+  static const warning = Color(0xFFFF5252);
+}
+
 /// 暗色主题（默认）
 ThemeData buildDarkTheme() {
   const accent = AppColors.darkAccent;

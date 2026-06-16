@@ -1,7 +1,7 @@
-// analysis_panel_test.dart — ToneInfoCard Widget 测试
+// tone_info_card_test.dart — ToneInfoCard Widget 测试
 //
-// 注：AnalysisPanel 和 ColorCard 依赖 DB provider，需要完整的数据库 mock，
-// 在 flutter_test 中有 timer/async 问题。这里只测 ToneInfoCard（纯 UI 组件）。
+// 注：ToneInfoCard 是纯 UI 组件，可直接测试。
+// ColorCard / DetailBottomPanel 依赖 DB provider，需要完整数据库 mock，在 flutter_test 中有 timer/async 问题。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/widgets/tone_info_card.dart';

@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 7;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -76,6 +76,10 @@ class AppDatabase extends _$AppDatabase {
             await m.createTable(shootingPlans);
             await m.createTable(planPhotos);
             await m.createTable(planTemplates);
+          }
+          if (from < 8) {
+            // v2.0: 照片 EXIF 拍摄参数（单列 JSON，导入时解析回填）
+            await m.addColumn(photos, photos.exifJson);
           }
         },
       );

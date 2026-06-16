@@ -8,6 +8,7 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'database/app_database.dart';
+import 'exif_service.dart';
 
 const _uuid = Uuid();
 
@@ -94,6 +95,7 @@ class ImportService {
             fileHash: Value(result.hash),
             width: Value(result.width),
             height: Value(result.height),
+            exifJson: Value(result.exifJson), // EXIF 拍摄参数（v2.0）
           ));
 
           importedPhotoIds.add(photoId);
@@ -159,9 +161,9 @@ class ImportService {
     }
   }
 
-  /// 为单张照片重新生成缩略图（清缓存后 photo_card 按需调用）
-  /// 返回新的缩略图路径；失败返回空字符串
-  Future<String> regenerateThumbnail(String photoId) async {
+/// 为单张照片重新生成缩略图（清缓存后 photo_card 按需调用）
+/// 返回新的缩略图路径；失败返回空字符串
+Future<String> regenerateThumbnail(String photoId) async {
     final photo = await _db.photoDao.getPhotoById(photoId);
     if (photo == null) return '';
 
@@ -178,6 +180,25 @@ class ImportService {
       return '';
     }
   }
+
+  /// 为已导入的旧照片补全 EXIF 拍摄参数（exifJson 为 null 时调用）
+  /// 仅读取 EXIF 回填 DB，不重新生成缩略图。返回是否成功写入。
+  Future<bool> readExifForExistingPhoto(String photoId) async {
+    final photo = await _db.photoDao.getPhotoById(photoId);
+    if (photo == null) return false;
+
+    try {
+      final exifJson = await compute(
+        _readExifIsolate,
+        photo.filePath,
+      );
+      await _db.photoDao.updateExifCache(photoId, exifJson);
+      return exifJson != null;
+    } catch (e) {
+      debugPrint('Read EXIF failed: $photoId — $e');
+      return false;
+    }
+  }
 }
 
 /// Isolate 入口参数
@@ -186,20 +207,26 @@ class _PhotoProcessResult {
   final String thumbPath;
   final int width;
   final int height;
+  final String? exifJson; // EXIF 拍摄参数 JSON（v2.0），无 EXIF 时为 null
 
-  _PhotoProcessResult(this.hash, this.thumbPath, this.width, this.height);
+  _PhotoProcessResult(
+      this.hash, this.thumbPath, this.width, this.height, this.exifJson);
 }
 
-/// 合并 Isolate：一次读取 → SHA256 → 解码 → 缩略图 + 宽高
+/// 合并 Isolate：一次读取 → SHA256 → EXIF → 解码 → 缩略图 + 宽高
 /// 替代之前 3 个独立 Isolate（hash + thumbnail + dimensions）
-_PhotoProcessResult _processPhotoIsolate((String, String) args) {
+/// async：readExifFromBytes 返回 Future，在 Isolate 内 await（非 UI 线程）
+Future<_PhotoProcessResult> _processPhotoIsolate((String, String) args) async {
   final (srcPath, thumbDir) = args;
   final bytes = File(srcPath).readAsBytesSync();
 
   // 1. SHA256（crypto 包）
   final hash = sha256.convert(bytes).toString();
 
-  // 2. 解码图片
+  // 2. EXIF 拍摄参数（在解码前解析，解码失败也不影响 EXIF 提取）
+  final exifJson = await extractExifJson(bytes);
+
+  // 3. 解码图片
   final decoded = img.decodeImage(bytes);
   if (decoded == null) {
     // 解码失败：抛异常，由 importPhotos 外层 catch 捕获并计入 failedFiles
@@ -207,7 +234,7 @@ _PhotoProcessResult _processPhotoIsolate((String, String) args) {
     throw FormatException('无法解码图片: $srcPath');
   }
 
-  // 3. 解码成功才生成缩略图 + 真实宽高
+  // 4. 解码成功才生成缩略图 + 真实宽高
   final width = decoded.width;
   final height = decoded.height;
   final thumbId = _uuid.v4();
@@ -216,7 +243,14 @@ _PhotoProcessResult _processPhotoIsolate((String, String) args) {
   final thumbBytes = img.encodeJpg(thumb, quality: 85);
   File(thumbPath).writeAsBytesSync(thumbBytes);
 
-  return _PhotoProcessResult(hash, thumbPath, width, height);
+  return _PhotoProcessResult(hash, thumbPath, width, height, exifJson);
+}
+
+/// Isolate 入口：仅读取 EXIF（历史照片补全，不生成缩略图）
+/// 返回 EXIF JSON 字符串；无 EXIF 或失败返回 null
+Future<String?> _readExifIsolate(String srcPath) async {
+  final bytes = File(srcPath).readAsBytesSync();
+  return extractExifJson(bytes);
 }
 
 /// Isolate 入口：仅生成缩略图（用于清缓存后按需重生成）

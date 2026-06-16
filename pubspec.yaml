@@ -25,6 +25,9 @@ dependencies:
   image: ^4.9.1
   material_color_utilities: ^0.13.0
 
+  # EXIF 元数据解析（纯 Dart，可在 Isolate 内读取 JPEG 字节）
+  exif: ^3.3.0
+
   # 照片选择
   wechat_assets_picker: ^10.1.2
   photo_manager: ^3.9.0

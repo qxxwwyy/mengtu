@@ -14,6 +14,10 @@ class Photos extends Table {
   IntColumn get height => integer().withDefault(const Constant(0))();
   DateTimeColumn get importedAt => dateTime().withDefault(currentDateAndTime)();
 
+  // EXIF 拍摄参数（v2.0 新增）—— JSON 存储相机/镜头/曝光/拍摄时间等
+  // 详见 models/exif_info.dart，导入时由 Isolate 解析 JPEG EXIF 段写入
+  TextColumn get exifJson => text().nullable()();
+
   // 分析缓存（首次计算后存储，二次打开即时显示）
   // 注意：直方图使用 Uint16List（每 bin 2 字节），详见 tone_result.dart
   BlobColumn get rgbHistogram => blob().nullable()(); // 256×3 bins × 2 bytes = 1536 bytes
