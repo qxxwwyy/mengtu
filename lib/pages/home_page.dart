@@ -6,6 +6,7 @@ import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../providers/photo_provider.dart';
+import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../services/import_service.dart' show ImportResult;
@@ -522,21 +523,68 @@ class _HomePageState extends ConsumerState<HomePage> {
                 final sorted = sortOrder == SortOrder.oldest
                     ? photos.reversed.toList()
                     : photos;
-                return MasonryGridView.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 6,
-                  crossAxisSpacing: 6,
-                  padding: const EdgeInsets.all(6),
-                  // 限制预渲染范围，避免 1000+ 照片时 keepAlive 缓存过多 Image 解码器
-                  cacheExtent: 500,
-                  itemCount: sorted.length,
-                  itemBuilder: (context, index) {
-                    return PhotoCard(
-                      photo: sorted[index],
-                      onTap: () => _navigateToDetail(sorted[index].id),
-                      onTagTap: () => _quickAddTag(sorted[index].id),
-                    );
-                  },
+                // 标签筛选 chips（点击切换筛选，复用 searchQueryProvider）
+                final tagsAsync = ref.watch(allTagsProvider);
+                final currentQuery = ref.watch(searchQueryProvider);
+                return Column(
+                  children: [
+                    // 标签 chips 筛选条
+                    tagsAsync.when(
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                      data: (tags) {
+                        if (tags.isEmpty) return const SizedBox.shrink();
+                        return SizedBox(
+                          height: 40,
+                          child: ListView(
+                            scrollDirection: Axis.horizontal,
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            children: [
+                              FilterChip(
+                                label: const Text('全部'),
+                                selected: currentQuery == null,
+                                onSelected: (_) => ref
+                                    .read(searchQueryProvider.notifier)
+                                    .set(null),
+                              ),
+                              const SizedBox(width: 6),
+                              ...tags.map((tag) {
+                                final selected = currentQuery == tag.name;
+                                return Padding(
+                                  padding: const EdgeInsets.only(right: 6),
+                                  child: FilterChip(
+                                    label: Text(tag.name),
+                                    selected: selected,
+                                    onSelected: (_) => ref
+                                        .read(searchQueryProvider.notifier)
+                                        .set(selected ? null : tag.name),
+                                  ),
+                                );
+                              }),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
+                    // 瀑布流
+                    Expanded(
+                      child: MasonryGridView.count(
+                        crossAxisCount: 2,
+                        mainAxisSpacing: 6,
+                        crossAxisSpacing: 6,
+                        padding: const EdgeInsets.all(6),
+                        cacheExtent: 500,
+                        itemCount: sorted.length,
+                        itemBuilder: (context, index) {
+                          return PhotoCard(
+                            photo: sorted[index],
+                            onTap: () => _navigateToDetail(sorted[index].id),
+                            onTagTap: () => _quickAddTag(sorted[index].id),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
                 );
               },
             ),
