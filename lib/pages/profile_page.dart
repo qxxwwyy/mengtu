@@ -3,45 +3,26 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'tag_manage_page.dart';
 import 'settings_page.dart';
-import '../providers/database_provider.dart';
+import '../providers/photo_provider.dart';
+import '../providers/tag_provider.dart';
+import '../utils/app_info.dart';
+import 'album_page.dart' show albumsProvider;
 
-class ProfilePage extends ConsumerStatefulWidget {
+class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
-  ConsumerState<ProfilePage> createState() => _ProfilePageState();
-}
-
-class _ProfilePageState extends ConsumerState<ProfilePage> {
-  int _photoCount = 0;
-  int _tagCount = 0;
-  int _albumCount = 0;
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadStats();
-  }
-
-  Future<void> _loadStats() async {
-    final db = ref.read(appDatabaseProvider);
-    final photos = await db.photoDao.getAllPhotos();
-    final tags = await db.tagDao.getAllTags();
-    final albums = await db.albumDao.getAllAlbums();
-    if (mounted) {
-      setState(() {
-        _photoCount = photos.length;
-        _tagCount = tags.length;
-        _albumCount = albums.length;
-        _loading = false;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = Theme.of(context);
+    // Reactive 统计：watch 三个 stream，IndexedStack 常驻下也能随 DB 变化刷新。
+    final photosAsync = ref.watch(allPhotosProvider);
+    final tagsAsync = ref.watch(allTagsProvider);
+    final albumsAsync = ref.watch(albumsProvider);
+
+    final photoCount = photosAsync.maybeWhen(data: (l) => l.length, orElse: () => null);
+    final tagCount = tagsAsync.maybeWhen(data: (l) => l.length, orElse: () => null);
+    final albumCount = albumsAsync.maybeWhen(data: (l) => l.length, orElse: () => null);
+
     return Scaffold(
       appBar: AppBar(
         title: Text('我的',
@@ -60,16 +41,22 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
               color: theme.colorScheme.surface,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: _loading
+            child: photoCount == null && tagCount == null && albumCount == null
                 ? const Center(child: CircularProgressIndicator())
                 : Row(
                     children: [
                       _StatItem(
-                          icon: Icons.photo_library, label: '照片', value: _photoCount),
+                          icon: Icons.photo_library,
+                          label: '照片',
+                          value: photoCount),
                       _StatItem(
-                          icon: Icons.local_offer, label: '标签', value: _tagCount),
+                          icon: Icons.local_offer,
+                          label: '标签',
+                          value: tagCount),
                       _StatItem(
-                          icon: Icons.photo_album, label: '相册', value: _albumCount),
+                          icon: Icons.photo_album,
+                          label: '相册',
+                          value: albumCount),
                     ],
                   ),
           ),
@@ -90,7 +77,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
           ),
           const SizedBox(height: 24),
           Center(
-            child: Text('萌图 Mengtu v2.0.0',
+            child: Text(appVersionLabel,
                 style: TextStyle(
                     fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
           ),
@@ -103,7 +90,7 @@ class _ProfilePageState extends ConsumerState<ProfilePage> {
 class _StatItem extends StatelessWidget {
   final IconData icon;
   final String label;
-  final int value;
+  final int? value; // null 表示加载中
 
   const _StatItem(
       {required this.icon, required this.label, required this.value});
@@ -116,7 +103,7 @@ class _StatItem extends StatelessWidget {
         children: [
           Icon(icon, color: theme.colorScheme.primary, size: 24),
           const SizedBox(height: 8),
-          Text('$value',
+          Text(value == null ? '—' : '$value',
               style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w600,

@@ -21,10 +21,18 @@ class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
   Future<List<Tag>> getTagsByGroup(String group) =>
       (select(tags)..where((t) => t.group.equals(group))).get();
 
-  /// 按名称模糊查询标签（转义 LIKE 通配符 % 和 _）
+  /// 按名称模糊查询标签
+  ///
+  /// 转义 LIKE 通配符（\、% 和 _）并带 escapeChar（坑 #15 在 drift 2.34+ 已支持
+  /// escape 参数）。不带 escapeChar 时 SQLite 默认 LIKE 无转义符，\% 仍按
+  /// 反斜杠+通配符处理，含 _ 的标签名会误匹配（如 "a_b" 命中 "axb"）。
   Future<List<Tag>> searchTagsByName(String name) {
-    final escaped = name.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
-    return (select(tags)..where((t) => t.name.like('%$escaped%'))).get();
+    final escaped =
+        name.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
+    return (select(tags)
+          ..where((t) => t.name.like('%$escaped%', escapeChar: r'\'))
+          ..orderBy([(t) => OrderingTerm.desc(t.createdAt)]))
+        .get();
   }
 
   /// 创建标签

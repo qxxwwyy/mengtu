@@ -43,7 +43,7 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
     final db = ref.read(appDatabaseProvider);
     final item = _shotList[index];
     setState(() {
-      _shotList[index] = ShotItem(desc: item.desc, done: !item.done);
+      _shotList[index] = ShotItem(id: item.id, desc: item.desc, done: !item.done);
     });
     final plan = await db.planDao.getPlanById(widget.planId);
     if (plan != null) {

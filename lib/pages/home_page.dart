@@ -178,6 +178,8 @@ class _HomePageState extends ConsumerState<HomePage> {
     if (confirmed != true) return;
 
     final importService = await ref.read(importServiceProvider.future);
+    // 先记录数量再 clear，否则 SnackBar 永远显示"已删除 0 张"
+    final deletedCount = _selectedIds.length;
     for (final photoId in _selectedIds) {
       await importService.deletePhoto(photoId);
     }
@@ -187,7 +189,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         _selectedIds.clear();
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('已删除 ${_selectedIds.length} 张照片')),
+        SnackBar(content: Text('已删除 $deletedCount 张照片')),
       );
     }
   }
@@ -275,6 +277,9 @@ class _HomePageState extends ConsumerState<HomePage> {
                               ? null
                               : () async {
                                   Navigator.pop(ctx);
+                                  // 先记录数量再 clear，否则 SnackBar 显示"0 张"
+                                  final photoCount = _selectedIds.length;
+                                  final tagCount = selectedTagIds.length;
                                   for (final photoId in _selectedIds) {
                                     for (final tagId in selectedTagIds) {
                                       await db.tagDao
@@ -288,7 +293,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                                     });
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(content: Text(
-                                          '已给 ${_selectedIds.length} 张照片添加 ${selectedTagIds.length} 个标签')),
+                                          '已给 $photoCount 张照片添加 $tagCount 个标签')),
                                     );
                                   }
                                 },

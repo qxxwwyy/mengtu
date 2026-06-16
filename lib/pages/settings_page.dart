@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/database_provider.dart';
+import '../utils/app_info.dart';
 
 import '../providers/theme_provider.dart';
 
@@ -149,7 +150,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       title: '关于',
       children: [
         const _InfoRow(label: '应用名称', value: '萌图'),
-        const _InfoRow(label: '版本', value: 'v1.2.0'),
+        _InfoRow(label: '版本', value: 'v$appVersion'),
         ListTile(
           leading: const Icon(Icons.code),
           title: const Text('开源协议'),
@@ -224,7 +225,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     showLicensePage(
       context: context,
       applicationName: '萌图',
-      applicationVersion: '1.2.0',
+      applicationVersion: appVersion,
     );
   }
 
@@ -237,7 +238,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('萌图 Mengtu v1.2.0'),
+            Text(appVersionLabel),
             SizedBox(height: 12),
             Text(
               '面向摄影爱好者的照片灵感收集与调色参考工具。\n\n'

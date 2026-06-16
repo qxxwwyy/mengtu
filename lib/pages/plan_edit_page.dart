@@ -42,17 +42,24 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
   Future<void> _loadPlan() async {
     final db = ref.read(appDatabaseProvider);
     final plan = await db.planDao.getPlanById(widget.planId!);
-    if (plan != null && mounted) {
-      _titleCtrl.text = plan.title;
-      _themeCtrl.text = plan.theme;
-      _styleCtrl.text = plan.style;
-      _locationCtrl.text = plan.location;
-      _plannedDate = plan.plannedDate;
-      _status = plan.status;
-      _shotList = db.planDao.parseShotList(plan.shotList);
-      _gearList = db.planDao.parseGearList(plan.gearList);
-      setState(() => _loading = false);
+    if (!mounted) return;
+    if (plan == null) {
+      // 策划已被删除：提示并返回，否则页面卡死在转圈
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('策划不存在或已被删除')),
+      );
+      Navigator.of(context).maybePop();
+      return;
     }
+    _titleCtrl.text = plan.title;
+    _themeCtrl.text = plan.theme;
+    _styleCtrl.text = plan.style;
+    _locationCtrl.text = plan.location;
+    _plannedDate = plan.plannedDate;
+    _status = plan.status;
+    _shotList = db.planDao.parseShotList(plan.shotList);
+    _gearList = db.planDao.parseGearList(plan.gearList);
+    setState(() => _loading = false);
   }
 
   @override
@@ -200,14 +207,16 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
           ..._shotList.asMap().entries.map((entry) {
             final i = entry.key;
             final item = entry.value;
+            // 用 item.id 作 ValueKey（而非 index），删除中间项时下方行
+            // 不会因 index 变化被错误复用，避免 TextEditingController 文本错位。
             return EditableShotRow(
-              key: ValueKey('shot_$i'),
+              key: ValueKey('shot_${item.id}'),
               initialDesc: item.desc,
               isDone: item.done,
-              onDoneChanged: (v) =>
-                  setState(() => _shotList[i] = ShotItem(desc: item.desc, done: v)),
+              onDoneChanged: (v) => setState(() =>
+                  _shotList[i] = ShotItem(id: item.id, desc: item.desc, done: v)),
               onDescChanged: (text) =>
-                  _shotList[i] = ShotItem(desc: text, done: item.done),
+                  _shotList[i] = ShotItem(id: item.id, desc: text, done: item.done),
               onDelete: () => setState(() => _shotList.removeAt(i)),
             );
           }),
@@ -215,7 +224,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             icon: const Icon(Icons.add),
             label: const Text('添加 shot'),
             onPressed: () =>
-                setState(() => _shotList.add(const ShotItem(desc: ''))),
+                setState(() => _shotList.add(ShotItem.create(''))),
           ),
           const SizedBox(height: 16),
           // 器材清单
@@ -224,10 +233,10 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             final i = entry.key;
             final item = entry.value;
             return EditableGearRow(
-              key: ValueKey('gear_$i'),
+              key: ValueKey('gear_${item.id}'),
               initialLens: item.lens,
               onChanged: (text) =>
-                  _gearList[i] = GearItem(lens: text, note: item.note),
+                  _gearList[i] = GearItem(id: item.id, lens: text, note: item.note),
               onDelete: () => setState(() => _gearList.removeAt(i)),
             );
           }),
@@ -235,7 +244,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             icon: const Icon(Icons.add),
             label: const Text('添加器材'),
             onPressed: () =>
-                setState(() => _gearList.add(const GearItem(lens: ''))),
+                setState(() => _gearList.add(GearItem.create(''))),
           ),
           const SizedBox(height: 32),
             ],

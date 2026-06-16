@@ -7,12 +7,15 @@ import '../services/tone_service.dart';
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
 import 'database_provider.dart';
+import 'photo_provider.dart';
 
 /// 直方图数据
 final histogramProvider =
     FutureProvider.family<HistogramData, String>((ref, photoId) async {
   final db = ref.watch(appDatabaseProvider);
-  final photo = await db.photoDao.getPhotoById(photoId);
+  // watch photoByIdProvider 而非直连 DAO：invalidating photoByIdProvider
+  // 会级联刷新本 provider（gotcha #24）。否则 EXIF 重读后直方图仍显示旧缓存。
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) throw Exception('Photo not found');
 
   // 有缓存则读缓存（v1.0.0 新增 hue 独立存储）
@@ -47,7 +50,7 @@ typedef PaletteParams = ({String photoId, PaletteAlgorithm algorithm, int desire
 final paletteProvider =
     FutureProvider.family<PaletteResult, PaletteParams>((ref, params) async {
   final db = ref.watch(appDatabaseProvider);
-  final photo = await db.photoDao.getPhotoById(params.photoId);
+  final photo = await ref.watch(photoByIdProvider(params.photoId).future);
   if (photo == null) throw Exception('Photo not found');
 
   // 仅默认参数（Celebi + 5色）使用 DB 缓存
@@ -78,7 +81,7 @@ final paletteProvider =
 final toneProvider =
     FutureProvider.family<ToneResult, String>((ref, photoId) async {
   final db = ref.watch(appDatabaseProvider);
-  final photo = await db.photoDao.getPhotoById(photoId);
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) throw Exception('Photo not found');
 
   // 读缓存

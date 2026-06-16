@@ -52,7 +52,7 @@ class _PhotoCardState extends State<PhotoCard>
     final imageFile = File(thumbExists ? thumbPath : photo.filePath);
 
     return GestureDetector(
-      onTap: widget.selectMode ? widget.onTap : widget.onTap,
+      onTap: widget.onTap,
       onLongPress: widget.onLongPress,
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) => setState(() => _isPressed = false),

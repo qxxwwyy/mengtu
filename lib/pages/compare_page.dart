@@ -74,6 +74,9 @@ class ComparePage extends ConsumerWidget {
         child: Image.file(
           File(filePath),
           fit: BoxFit.contain,
+          // 限制解码尺寸，避免双图全分辨率解码 OOM
+          // （对比页两图并排，全分辨率大图内存翻倍）
+          cacheWidth: 1000,
           errorBuilder: (_, __, ___) => const Icon(
             Icons.broken_image,
             color: Colors.white54,

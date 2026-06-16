@@ -44,6 +44,9 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   bool _colorPickMode = false;
   ColorPickResult? _currentPick;
   Offset? _loupePosition;
+  // 正在进行中的取色 future：onEnd 时 await 它，避免手指抬起早于
+  // _pickColorAt 的 async 完成（compute 解码）而静默丢弃取色点。
+  Future<ColorPickResult?>? _pendingPick;
 
   @override
   void dispose() {
@@ -57,72 +60,86 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     setState(() {
       _loupePosition = details.localPosition;
     });
-    _pickColorAt(details.globalPosition);
+    _pendingPick = _pickColorAt(details.globalPosition);
   }
 
   void _handleColorPickUpdate(LongPressMoveUpdateDetails details) {
-    if (!_colorPickMode || _currentPick == null) return;
+    if (!_colorPickMode) return;
     setState(() {
       _loupePosition = details.localPosition;
     });
-    _pickColorAt(details.globalPosition);
+    _pendingPick = _pickColorAt(details.globalPosition);
   }
 
-  void _handleColorPickEnd(LongPressEndDetails details) {
-    if (!_colorPickMode || _currentPick == null) return;
+  Future<void> _handleColorPickEnd(LongPressEndDetails details) async {
+    if (!_colorPickMode) return;
+    // 等待最后一次取色完成，确保手指抬起时拿到结果再落点
+    await _pendingPick;
+    _pendingPick = null;
+    final pick = _currentPick;
+    if (pick == null) return;
     // 持久化取色点到数据库
     final pinId = const Uuid().v4();
     final pin = ColorPinsCompanion.insert(
       id: pinId,
       photoId: widget.photoId,
-      x: _currentPick!.pixel.x,
-      y: _currentPick!.pixel.y,
-      r: _currentPick!.pixel.r,
-      g: _currentPick!.pixel.g,
-      b: _currentPick!.pixel.b,
+      x: pick.pixel.x,
+      y: pick.pixel.y,
+      r: pick.pixel.r,
+      g: pick.pixel.g,
+      b: pick.pixel.b,
     );
     // 写入 DB（colorPinsProvider 的 watch 会自动刷新 UI）
     ref.read(appDatabaseProvider).colorPinDao.insertPin(pin);
 
-    setState(() {
-      _currentPick = null;
-      _loupePosition = null;
-    });
+    if (mounted) {
+      setState(() {
+        _currentPick = null;
+        _loupePosition = null;
+      });
+    }
   }
 
   /// 从全局坐标计算图片像素坐标
   /// globalPosition 和 _calculateImageDisplayRect 都使用全局坐标系，保持一致
-  Future<void> _pickColorAt(Offset globalPosition) async {
-    final photoAsync = ref.read(photoByIdProvider(widget.photoId));
-    Photo? photo;
-    photoAsync.whenData((data) => photo = data);
-    if (photo == null) return;
+  Future<ColorPickResult?> _pickColorAt(Offset globalPosition) async {
+    // 用 .future await 确保拿到最新且非 loading 的 Photo，避免
+    // photoByIdProvider 处于 loading（如 EXIF 重读 invalidate）时静默失败。
+    final Photo? photo;
+    try {
+      photo = await ref.read(photoByIdProvider(widget.photoId).future);
+    } catch (_) {
+      return null;
+    }
+    if (!mounted || photo == null) return null;
 
     final rect = _calculateImageDisplayRect();
-    if (rect == null) return;
+    if (rect == null) return null;
 
-    final imageWidth = photo!.width;
-    final imageHeight = photo!.height;
+    final imageWidth = photo.width;
+    final imageHeight = photo.height;
 
     // 全局坐标 → 图片像素坐标
     final imageX = ((globalPosition.dx - rect.left) / rect.width * imageWidth).round();
     final imageY = ((globalPosition.dy - rect.top) / rect.height * imageHeight).round();
 
     if (imageX < 0 || imageX >= imageWidth || imageY < 0 || imageY >= imageHeight) {
-      return;
+      return null;
     }
 
     try {
       final result = await pickColor(
-        photo!.filePath, imageX, imageY, imageWidth, imageHeight,
+        photo.filePath, imageX, imageY, imageWidth, imageHeight,
       );
       if (mounted) {
         setState(() {
           _currentPick = result;
         });
       }
+      return result;
     } catch (e) {
       // 忽略取色错误
+      return null;
     }
   }
 
@@ -180,7 +197,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                 // 图片区域
                 Expanded(
                   flex: 2,
-                  child: _buildImageViewer(photo.filePath),
+                  child: _buildImageViewer(photo),
                 ),
                 // 统一底部面板（高频工具行 + 展开 TabBarView）
                 // 始终保留工具行（取色模式需通过"取色"按钮退出，不能整块隐藏）
@@ -213,7 +230,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     );
   }
 
-  Widget _buildImageViewer(String filePath) {
+  Widget _buildImageViewer(Photo photo) {
+    final filePath = photo.filePath;
     final clippingAsync = _showClipping
         ? ref.watch(clippingProvider(widget.photoId))
         : null;
@@ -270,9 +288,6 @@ class _DetailPageState extends ConsumerState<DetailPage> {
 
     // 取色模式：添加手势检测和取色点标记
     if (_colorPickMode) {
-      final photoAsync = ref.watch(photoByIdProvider(widget.photoId));
-      Photo? photo;
-      photoAsync.whenData((data) => photo = data);
       // 取色标记从 DB 唯一数据源读取
       final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
 
@@ -292,16 +307,13 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               child: Stack(
                 children: [
                   // Image（保留原 viewer 的非取色增强：黑白/clipping/构图）
-                  Center(
-                    child: _buildImageWithOverlays(filePath, clippingAsync),
-                  ),
+                  Center(child: viewer),
                   // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
-                  if (photo != null)
-                    pinsAsync.when(
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
-                      data: (pins) => _buildPinMarkers(pins, photo!),
-                    ),
+                  pinsAsync.when(
+                    loading: () => const SizedBox.shrink(),
+                    error: (_, __) => const SizedBox.shrink(),
+                    data: (pins) => _buildPinMarkers(pins, photo),
+                  ),
                 ],
               ),
             ),
@@ -327,42 +339,6 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
 
     return viewer;
-  }
-
-  /// 构建 Image + 黑白/clipping/构图 overlay（取色模式下复用，放进 InteractiveViewer 内）
-  Widget _buildImageWithOverlays(String filePath, dynamic clippingAsync) {
-    Widget image = Image.file(
-      key: _imageKey,
-      File(filePath),
-      fit: BoxFit.contain,
-      cacheWidth:
-          (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
-      errorBuilder: (_, error, ___) => const Center(
-        child: Icon(Icons.broken_image, color: DetailColors.textSecondary, size: 64),
-      ),
-    );
-
-    if (_isBlackWhite) {
-      final matrix = _buildAdjustmentMatrix();
-      image = ColorFiltered(colorFilter: ColorFilter.matrix(matrix), child: image);
-    }
-
-    if (_showClipping && clippingAsync != null) {
-      image = Stack(children: [
-        image,
-        clippingAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (result) => ClippingOverlay(result: result),
-        ),
-      ]);
-    }
-
-    if (_compositionMode != CompositionMode.none) {
-      image = Stack(children: [image, CompositionOverlay(mode: _compositionMode)]);
-    }
-
-    return image;
   }
 
   /// 构建取色点标记列表（局部坐标，基于 Image 的 RenderBox size）

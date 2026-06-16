@@ -47,6 +47,25 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
   }
 
   Future<void> _addPhotos() async {
+    // 权限预检：与 home_page 一致（注意事项 #6）。
+    // 用 hasAccess（含 limited 部分授权）而非 isAuth（仅 authorized），
+    // 避免 Android 14+/iOS「仅允许访问选中照片」的已授权用户误弹权限提示。
+    final permission = await PhotoManager.requestPermissionExtend();
+    if (!permission.hasAccess) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('需要相册权限才能导入照片，请在设置中开启'),
+          action: SnackBarAction(
+            label: '设置',
+            onPressed: () => PhotoManager.openSetting(),
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (!mounted) return;
     final assets = await AssetPicker.pickAssets(
       context,
       pickerConfig: const AssetPickerConfig(
@@ -266,7 +285,13 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
               itemCount: photos.length,
               itemBuilder: (context, index) {
                 final photo = photos[index];
-                return GestureDetector(
+                // 回调传给 PhotoCard（与 home_page 一致），不外包 GestureDetector：
+                // PhotoCard 内部 GestureDetector 注册了按压动画 recognizer，
+                // 若外部再包一层 GestureDetector 且 PhotoCard.onTap 为 null，
+                // 内部 recognizer 会赢得手势竞技场并吞掉 tap，外层永远收不到。
+                return PhotoCard(
+                  key: ValueKey(photo.id),
+                  photo: photo,
                   onTap: () {
                     Navigator.push(
                       context,
@@ -276,9 +301,6 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                     );
                   },
                   onLongPress: () => _showPhotoOptions(photo),
-                  child: PhotoCard(
-                    photo: photo,
-                  ),
                 );
               },
             );
@@ -294,8 +316,11 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
             itemCount: photos.length,
             onReorder: (oldIndex, newIndex) async {
               final orderedPhotos = List<Photo>.from(photos);
+              // 标准 Flutter reorder 语义：向下移动时 newIndex 需 -1 修正
+              final adjustedIndex =
+                  newIndex > oldIndex ? newIndex - 1 : newIndex;
               final element = orderedPhotos.removeAt(oldIndex);
-              orderedPhotos.insert(newIndex, element);
+              orderedPhotos.insert(adjustedIndex, element);
 
               final db = ref.read(appDatabaseProvider);
               await db.albumDao.updatePhotosSortOrder(
@@ -306,8 +331,10 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
             },
             itemBuilder: (context, index) {
               final photo = photos[index];
-              return GestureDetector(
+              // 同上：回调传给 PhotoCard，不外包 GestureDetector
+              return PhotoCard(
                 key: ValueKey(photo.id),
+                photo: photo,
                 onTap: () {
                   Navigator.push(
                     context,
@@ -317,9 +344,6 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                   );
                 },
                 onLongPress: () => _showPhotoOptions(photo),
-                child: PhotoCard(
-                  photo: photo,
-                ),
               );
             },
           );

@@ -19,6 +19,7 @@ import '../providers/tag_provider.dart';
 import '../services/database/app_database.dart';
 import '../services/palette_service.dart';
 import '../theme/app_theme.dart';
+import '../utils/color_utils.dart';
 import 'color_card.dart';
 import 'harmony_card.dart';
 import 'histogram_painter.dart';
@@ -69,9 +70,20 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
   ConsumerState<DetailBottomPanel> createState() => _DetailBottomPanelState();
 }
 
-class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
+class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
+    with TickerProviderStateMixin {
   bool _expanded = false;
   HistogramMode _histMode = HistogramMode.rgb;
+  // 自管 TabController：DefaultTabController 会随展开/收起被卸载重建，
+  // 导致每次展开回到"信息"tab。hoist 后 tab 索引跨展开/收起保留。
+  late final TabController _tabController =
+      TabController(length: 6, vsync: this);
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   /// 实际是否展开（forceCollapsed 时强制 false）
   bool get _effectiveExpanded => _expanded && !widget.forceCollapsed;
@@ -108,14 +120,11 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
             if (_effectiveExpanded)
               SizedBox(
                 height: 308,
-                child: DefaultTabController(
-                  length: 6,
-                  child: Column(
-                    children: [
-                      _buildTabBar(),
-                      Expanded(child: _buildTabBarView()),
-                    ],
-                  ),
+                child: Column(
+                  children: [
+                    _buildTabBar(),
+                    Expanded(child: _buildTabBarView()),
+                  ],
                 ),
               ),
           ],
@@ -225,6 +234,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
 
   Widget _buildTabBar() {
     return TabBar(
+      controller: _tabController,
       isScrollable: true,
       tabAlignment: TabAlignment.start,
       labelColor: AppColors.darkAccent,
@@ -247,6 +257,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
 
   Widget _buildTabBarView() {
     return TabBarView(
+      controller: _tabController,
       children: [
         _buildInfoTab(),
         _buildHistogramTab(),
@@ -317,6 +328,16 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
 
   Widget _buildHistogramTab() {
     final histAsync = ref.watch(histogramProvider(widget.photoId));
+    // 色相模式时联动标注取色点（灰点 r==g==b → 无色相，过滤掉）
+    final pinHues = _histMode == HistogramMode.hue
+        ? ref.watch(colorPinsProvider(widget.photoId)).maybeWhen(
+              data: (pins) => pins
+                  .map((p) => rgbToHue(p.r, p.g, p.b))
+                  .where((h) => h >= 0)
+                  .toList(),
+              orElse: () => const <int>[],
+            )
+        : const <int>[];
     return histAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('计算失败: $e'),
@@ -330,7 +351,13 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
               SizedBox(
                 height: 100,
                 child: CustomPaint(
-                  painter: HistogramPainter(data: hist, mode: _histMode),
+                  painter: HistogramPainter(
+                    data: hist,
+                    mode: _histMode,
+                    colorPinHues: _histMode == HistogramMode.hue
+                        ? pinHues
+                        : null,
+                  ),
                   child: Container(),
                 ),
               ),

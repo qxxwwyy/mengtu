@@ -1,31 +1,53 @@
 // plan_dao.dart — 拍摄策划 DAO（v2.0）
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:flutter/foundation.dart';
 import '../app_database.dart';
 import '../tables.dart';
 
 part 'plan_dao.g.dart';
 
 /// Shot list 条目
+/// id 用于 UI 层 ValueKey 稳定标识，避免按 index 做 key 时
+/// 删除中间项导致下方行的 TextEditingController 错位（光标漂移同源）。
+@immutable
 class ShotItem {
+  final String id;
   final String desc;
   final bool done;
-  const ShotItem({required this.desc, this.done = false});
+  const ShotItem({required this.id, required this.desc, this.done = false});
 
-  Map<String, dynamic> toJson() => {'desc': desc, 'done': done};
-  factory ShotItem.fromJson(Map<String, dynamic> j) =>
-      ShotItem(desc: j['desc'] as String, done: j['done'] as bool? ?? false);
+  /// 创建新条目的便捷构造（自动生成 id）
+  factory ShotItem.create(String desc, {bool done = false}) =>
+      ShotItem(id: shortHash(Object()), desc: desc, done: done);
+
+  Map<String, dynamic> toJson() => {'id': id, 'desc': desc, 'done': done};
+  factory ShotItem.fromJson(Map<String, dynamic> j) => ShotItem(
+        // 兼容旧数据（无 id 字段）：用 desc 兜底，避免 null
+        id: (j['id'] as String?) ?? j['desc'] as String? ?? '',
+        desc: j['desc'] as String,
+        done: j['done'] as bool? ?? false,
+      );
 }
 
 /// 器材条目
+@immutable
 class GearItem {
+  final String id;
   final String lens;
   final String note;
-  const GearItem({required this.lens, this.note = ''});
+  const GearItem({required this.id, required this.lens, this.note = ''});
 
-  Map<String, dynamic> toJson() => {'lens': lens, 'note': note};
-  factory GearItem.fromJson(Map<String, dynamic> j) =>
-      GearItem(lens: j['lens'] as String, note: j['note'] as String? ?? '');
+  /// 创建新条目的便捷构造（自动生成 id）
+  factory GearItem.create(String lens, {String note = ''}) =>
+      GearItem(id: shortHash(Object()), lens: lens, note: note);
+
+  Map<String, dynamic> toJson() => {'id': id, 'lens': lens, 'note': note};
+  factory GearItem.fromJson(Map<String, dynamic> j) => GearItem(
+        id: (j['id'] as String?) ?? j['lens'] as String? ?? '',
+        lens: j['lens'] as String,
+        note: j['note'] as String? ?? '',
+      );
 }
 
 @DriftAccessor(tables: [ShootingPlans, PlanPhotos, PlanTemplates, Photos])
@@ -53,8 +75,15 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       (update(shootingPlans)..where((t) => t.id.equals(plan.id.value)))
           .write(plan);
 
-  Future<void> deletePlan(String id) =>
-      (delete(shootingPlans)..where((t) => t.id.equals(id))).go();
+  Future<void> deletePlan(String id) async {
+    // 级联删除：先删 planPhotos 关联，再删 plan 本身
+    // 外键已开启（PRAGMA foreign_keys=ON）且无 ON DELETE CASCADE，
+    // 直接删 plan 会因 planPhotos 残留引用抛 FK 约束失败崩溃。
+    await transaction(() async {
+      await (delete(planPhotos)..where((t) => t.planId.equals(id))).go();
+      await (delete(shootingPlans)..where((t) => t.id.equals(id))).go();
+    });
+  }
 
   // ============ shot list / gear list 序列化辅助 ============
 
@@ -91,6 +120,10 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       (delete(planPhotos)
             ..where((t) => t.planId.equals(planId) & t.photoId.equals(photoId)))
           .go();
+
+  /// 从所有策划中移除照片（删除照片时调用，避免 FK 约束失败）
+  Future<int> removePhotoFromAllPlans(String photoId) =>
+      (delete(planPhotos)..where((t) => t.photoId.equals(photoId))).go();
 
   /// 获取策划的所有照片（含角色）
   Future<List<PlanPhoto>> getPlanPhotos(String planId) =>
@@ -151,15 +184,15 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       id: 'builtin-portrait',
       name: '人像外拍',
       gearList: Value(encodeGearList(const [
-        GearItem(lens: '85mm f/1.4', note: '主拍半身/特写'),
-        GearItem(lens: '35mm f/1.4', note: '环境人像'),
+        GearItem(id: 'portrait-g1', lens: '85mm f/1.4', note: '主拍半身/特写'),
+        GearItem(id: 'portrait-g2', lens: '35mm f/1.4', note: '环境人像'),
       ])),
       shotList: Value(encodeShotList(const [
-        ShotItem(desc: '全身环境人像'),
-        ShotItem(desc: '半身特写'),
-        ShotItem(desc: '面部特写'),
-        ShotItem(desc: '逆光剪影'),
-        ShotItem(desc: '背影/侧影'),
+        ShotItem(id: 'portrait-s1', desc: '全身环境人像'),
+        ShotItem(id: 'portrait-s2', desc: '半身特写'),
+        ShotItem(id: 'portrait-s3', desc: '面部特写'),
+        ShotItem(id: 'portrait-s4', desc: '逆光剪影'),
+        ShotItem(id: 'portrait-s5', desc: '背影/侧影'),
       ])),
     ));
 
@@ -168,13 +201,13 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       id: 'builtin-street',
       name: '街头摄影',
       gearList: Value(encodeGearList(const [
-        GearItem(lens: '35mm f/2', note: '挂机头'),
+        GearItem(id: 'street-g1', lens: '35mm f/2', note: '挂机头'),
       ])),
       shotList: Value(encodeShotList(const [
-        ShotItem(desc: '建筑线条/几何'),
-        ShotItem(desc: '街头人物瞬间'),
-        ShotItem(desc: '光影对比'),
-        ShotItem(desc: '橱窗反射'),
+        ShotItem(id: 'street-s1', desc: '建筑线条/几何'),
+        ShotItem(id: 'street-s2', desc: '街头人物瞬间'),
+        ShotItem(id: 'street-s3', desc: '光影对比'),
+        ShotItem(id: 'street-s4', desc: '橱窗反射'),
       ])),
     ));
 
@@ -183,12 +216,12 @@ class PlanDao extends DatabaseAccessor<AppDatabase> with _$PlanDaoMixin {
       id: 'builtin-stilllife',
       name: '静物/产品',
       gearList: Value(encodeGearList(const [
-        GearItem(lens: '50mm f/2.8 微距', note: '细节'),
+        GearItem(id: 'still-g1', lens: '50mm f/2.8 微距', note: '细节'),
       ])),
       shotList: Value(encodeShotList(const [
-        ShotItem(desc: '整体场景'),
-        ShotItem(desc: '材质细节特写'),
-        ShotItem(desc: '45度俯拍'),
+        ShotItem(id: 'still-s1', desc: '整体场景'),
+        ShotItem(id: 'still-s2', desc: '材质细节特写'),
+        ShotItem(id: 'still-s3', desc: '45度俯拍'),
       ])),
     ));
   }

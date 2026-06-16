@@ -79,8 +79,8 @@ void main() {
   group('PlanDao shot list / gear 序列化', () {
     test('encodeShotList + parseShotList 往返', () {
       final items = [
-        const ShotItem(desc: '全身', done: false),
-        const ShotItem(desc: '特写', done: true),
+        const ShotItem(id: 't1', desc: '全身', done: false),
+        const ShotItem(id: 't2', desc: '特写', done: true),
       ];
       final json = db.planDao.encodeShotList(items);
       final restored = db.planDao.parseShotList(json);
@@ -94,8 +94,8 @@ void main() {
 
     test('encodeGearList + parseGearList 往返', () {
       final items = [
-        const GearItem(lens: '85mm', note: '主拍'),
-        const GearItem(lens: '35mm'),
+        const GearItem(id: 'g1', lens: '85mm', note: '主拍'),
+        const GearItem(id: 'g2', lens: '35mm'),
       ];
       final json = db.planDao.encodeGearList(items);
       final restored = db.planDao.parseGearList(json);
