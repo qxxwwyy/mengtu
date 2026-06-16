@@ -8,6 +8,9 @@ class PhotoCard extends StatefulWidget {
   final Photo photo;
   final VoidCallback? onTap;
   final VoidCallback? onTagTap; // 快速加标签（右下角图标）
+  final VoidCallback? onLongPress; // 长按进入多选
+  final bool selectMode; // 是否处于多选模式
+  final bool isSelected; // 多选模式下是否被选中
   final double aspectRatio;
 
   const PhotoCard({
@@ -15,6 +18,9 @@ class PhotoCard extends StatefulWidget {
     required this.photo,
     this.onTap,
     this.onTagTap,
+    this.onLongPress,
+    this.selectMode = false,
+    this.isSelected = false,
     this.aspectRatio = 0.75,
   });
 
@@ -46,7 +52,8 @@ class _PhotoCardState extends State<PhotoCard>
     final imageFile = File(thumbExists ? thumbPath : photo.filePath);
 
     return GestureDetector(
-      onTap: widget.onTap,
+      onTap: widget.selectMode ? widget.onTap : widget.onTap,
+      onLongPress: widget.onLongPress,
       onTapDown: (_) => setState(() => _isPressed = true),
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
@@ -115,7 +122,8 @@ class _PhotoCardState extends State<PhotoCard>
                   ),
                 ),
                 // 右下角快速加标签按钮（渐进式披露：不进详情就能加标签）
-                if (widget.onTagTap != null)
+                // 多选模式下隐藏标签按钮
+                if (widget.onTagTap != null && !widget.selectMode)
                   Positioned(
                     right: 6,
                     bottom: 6,
@@ -132,6 +140,26 @@ class _PhotoCardState extends State<PhotoCard>
                       ),
                     ),
                   ),
+                // 多选模式：选中蒙层 + 左上角勾
+                if (widget.selectMode) ...[
+                  if (widget.isSelected)
+                    Container(
+                      color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
+                    ),
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Icon(
+                      widget.isSelected
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 24,
+                      color: widget.isSelected
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.white.withValues(alpha: 0.7),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

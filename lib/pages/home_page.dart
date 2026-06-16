@@ -29,6 +29,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   bool _isImporting = false;
   int _importProgress = 0;
   int _importTotal = 0;
+  // 多选模式
+  bool _selectMode = false;
+  final Set<String> _selectedIds = {};
 
   @override
   void dispose() {
@@ -161,6 +164,152 @@ class _HomePageState extends ConsumerState<HomePage> {
           ),
         ],
       ),
+    );
+  }
+
+  /// 批量把选中照片加入相册
+  Future<void> _batchAddToAlbum() async {
+    final db = ref.read(appDatabaseProvider);
+    final albums = await db.albumDao.getAllAlbums();
+    if (!mounted) return;
+    if (albums.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有相册，请先创建')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('选择相册',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            const Divider(height: 1),
+            ...albums.map((a) => ListTile(
+                  leading: const Icon(Icons.photo_album_outlined),
+                  title: Text(a.name),
+                  onTap: () => Navigator.pop(ctx, a.id),
+                )),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      for (final photoId in _selectedIds) {
+        await db.albumDao.addPhotoToAlbum(selected, photoId);
+      }
+      if (mounted) {
+        setState(() {
+          _selectMode = false;
+          _selectedIds.clear();
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已加入相册')),
+        );
+      }
+    }
+  }
+
+  /// 批量给选中照片加标签
+  Future<void> _batchAddTag() async {
+    final db = ref.read(appDatabaseProvider);
+    final allTags = await db.tagDao.getAllTags();
+    if (!mounted) return;
+    if (allTags.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有标签，请先创建')),
+      );
+      return;
+    }
+    final selectedTagIds = <String>{};
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        Text('选择标签（${_selectedIds.length} 张照片）',
+                            style: const TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: selectedTagIds.isEmpty
+                              ? null
+                              : () async {
+                                  Navigator.pop(ctx);
+                                  for (final photoId in _selectedIds) {
+                                    for (final tagId in selectedTagIds) {
+                                      await db.tagDao
+                                          .addTagToPhoto(tagId, photoId);
+                                    }
+                                  }
+                                  if (mounted) {
+                                    setState(() {
+                                      _selectMode = false;
+                                      _selectedIds.clear();
+                                    });
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text(
+                                          '已给 ${_selectedIds.length} 张照片添加 ${selectedTagIds.length} 个标签')),
+                                    );
+                                  }
+                                },
+                          child: const Text('完成'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                    ),
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: allTags.length,
+                      itemBuilder: (_, i) {
+                        final tag = allTags[i];
+                        final isSelected = selectedTagIds.contains(tag.id);
+                        return ListTile(
+                          leading: Icon(
+                            isSelected ? Icons.check_circle : Icons.label_outline,
+                            color: isSelected
+                                ? Theme.of(ctx).colorScheme.primary
+                                : null,
+                          ),
+                          title: Text(tag.name),
+                          onTap: () {
+                            setSheetState(() {
+                              if (isSelected) {
+                                selectedTagIds.remove(tag.id);
+                              } else {
+                                selectedTagIds.add(tag.id);
+                              }
+                            });
+                          },
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -576,14 +725,79 @@ class _HomePageState extends ConsumerState<HomePage> {
                         cacheExtent: 500,
                         itemCount: sorted.length,
                         itemBuilder: (context, index) {
+                          final photo = sorted[index];
                           return PhotoCard(
-                            photo: sorted[index],
-                            onTap: () => _navigateToDetail(sorted[index].id),
-                            onTagTap: () => _quickAddTag(sorted[index].id),
+                            photo: photo,
+                            selectMode: _selectMode,
+                            isSelected: _selectedIds.contains(photo.id),
+                            onTap: () {
+                              if (_selectMode) {
+                                setState(() {
+                                  if (_selectedIds.contains(photo.id)) {
+                                    _selectedIds.remove(photo.id);
+                                    if (_selectedIds.isEmpty) _selectMode = false;
+                                  } else {
+                                    _selectedIds.add(photo.id);
+                                  }
+                                });
+                              } else {
+                                _navigateToDetail(photo.id);
+                              }
+                            },
+                            onLongPress: () {
+                              setState(() {
+                                _selectMode = true;
+                                _selectedIds.add(photo.id);
+                              });
+                            },
+                            onTagTap: _selectMode ? null : () => _quickAddTag(photo.id),
                           );
                         },
                       ),
                     ),
+                    // 多选模式底部操作栏
+                    if (_selectMode)
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          border: Border(
+                            top: BorderSide(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withValues(alpha: 0.1),
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceAround,
+                          children: [
+                            TextButton.icon(
+                              icon: const Icon(Icons.photo_album_outlined, size: 20),
+                              label: Text('加入相册 (${_selectedIds.length})'),
+                              onPressed: _selectedIds.isEmpty
+                                  ? null
+                                  : () => _batchAddToAlbum(),
+                            ),
+                            TextButton.icon(
+                              icon: const Icon(Icons.local_offer_outlined, size: 20),
+                              label: const Text('加标签'),
+                              onPressed: _selectedIds.isEmpty
+                                  ? null
+                                  : () => _batchAddTag(),
+                            ),
+                            TextButton(
+                              onPressed: () => setState(() {
+                                _selectMode = false;
+                                _selectedIds.clear();
+                              }),
+                              child: const Text('取消'),
+                            ),
+                          ],
+                        ),
+                      ),
                   ],
                 );
               },
