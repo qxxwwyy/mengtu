@@ -1,6 +1,7 @@
 // album_page.dart — 相册列表页
 //
 // 显示所有相册，支持创建/编辑/删除
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart' show Value;
@@ -67,17 +68,32 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
 
   void _editAlbum(Album album) {
     final nameController = TextEditingController(text: album.name);
+    final descController = TextEditingController(text: album.description);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('编辑相册'),
-        content: TextField(
-          controller: nameController,
-          autofocus: true,
-          decoration: const InputDecoration(
-            hintText: '输入相册名称',
-            border: OutlineInputBorder(),
-          ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              autofocus: true,
+              decoration: const InputDecoration(
+                hintText: '相册名称',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: descController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                hintText: '描述（可选）',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ],
         ),
         actions: [
           TextButton(
@@ -94,6 +110,7 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
                 AlbumsCompanion(
                   id: Value(album.id),
                   name: Value(name),
+                  description: Value(descController.text.trim()),
                   updatedAt: Value(DateTime.now()),
                 ),
               );
@@ -243,7 +260,7 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
   }
 }
 
-/// 相册卡片
+/// 相册卡片（封面图 + 名称 + 数量）
 class _AlbumCard extends ConsumerWidget {
   final Album album;
   final VoidCallback onTap;
@@ -258,47 +275,97 @@ class _AlbumCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final db = ref.watch(appDatabaseProvider);
+    final theme = Theme.of(context);
 
     return GestureDetector(
       onTap: onTap,
       onLongPress: onLongPress,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.photo_album,
-              size: 48,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              album.name,
-              style: Theme.of(context).textTheme.titleSmall,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 4),
-            FutureBuilder<int>(
-              future: db.albumDao.getPhotoCount(album.id),
-              builder: (context, snapshot) {
-                final count = snapshot.data ?? 0;
-                return Text(
-                  '$count 张照片',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.5),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          height: 180,
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surfaceContainerHighest,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // 封面图（自动取首张或 coverPhotoId）
+              FutureBuilder<Photo?>(
+                future: db.albumDao.getCoverPhoto(album.id,
+                    coverPhotoId: album.coverPhotoId),
+                builder: (context, snapshot) {
+                  final cover = snapshot.data;
+                  if (cover == null) {
+                    return Center(
+                      child: Icon(Icons.photo_album,
+                          size: 40,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                    );
+                  }
+                  final path = cover.thumbnailPath.isNotEmpty
+                      ? cover.thumbnailPath
+                      : cover.filePath;
+                  return Image.file(
+                    File(path),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => Center(
+                      child: Icon(Icons.broken_image,
+                          size: 40,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                    ),
+                  );
+                },
+              ),
+              // 底部渐变遮罩 + 信息
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(10, 24, 10, 8),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.7),
+                      ],
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        album.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                );
-              },
-            ),
-          ],
+                      FutureBuilder<int>(
+                        future: db.albumDao.getPhotoCount(album.id),
+                        builder: (context, snapshot) {
+                          return Text(
+                            '${snapshot.data ?? 0} 张',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.white.withValues(alpha: 0.7),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

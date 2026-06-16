@@ -758,12 +758,68 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   _showTagDialog();
                 },
               ),
+              ListTile(
+                leading: const Icon(Icons.photo_album_outlined),
+                title: const Text('加入相册'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _showAddToAlbumPicker();
+                },
+              ),
               const SizedBox(height: 8),
             ],
           ),
         );
       },
     );
+  }
+
+  /// 把当前照片加入相册（弹出相册列表选择）
+  Future<void> _showAddToAlbumPicker() async {
+    final db = ref.read(appDatabaseProvider);
+    final albums = await db.albumDao.getAllAlbums();
+    if (!mounted) return;
+    if (albums.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有相册，请先在相册 Tab 创建')),
+      );
+      return;
+    }
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('选择相册',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+            ),
+            const Divider(height: 1),
+            Expanded(
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: albums.length,
+                itemBuilder: (_, i) => ListTile(
+                  leading: const Icon(Icons.photo_album_outlined),
+                  title: Text(albums[i].name),
+                  onTap: () => Navigator.pop(ctx, albums[i].id),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (selected != null) {
+      await db.albumDao.addPhotoToAlbum(selected, widget.photoId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已加入相册')),
+        );
+      }
+    }
   }
 
   /// 工具按钮

@@ -1,8 +1,9 @@
 // main_shell.dart — 底部导航壳（v2.0 信息架构）
-// 3 Tab：作品库 / 策划 / 我的，用 NavigationBar + IndexedStack
+// 4 Tab：作品库 / 相册 / 策划 / 我的，用 NavigationBar + IndexedStack
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'home_page.dart';
+import 'album_page.dart';
 import 'plan_list_page.dart';
 import 'profile_page.dart';
 
@@ -34,6 +35,7 @@ class _MainShellState extends ConsumerState<MainShell> {
         index: tabIndex,
         children: const [
           HomePage(),
+          AlbumPage(),
           PlanListPage(),
           ProfilePage(),
         ],
@@ -57,6 +59,13 @@ class _MainShellState extends ConsumerState<MainShell> {
             selectedIcon: Icon(Icons.photo_library,
                 color: theme.colorScheme.primary),
             label: '作品库',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.photo_album_outlined,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+            selectedIcon: Icon(Icons.photo_album,
+                color: theme.colorScheme.primary),
+            label: '相册',
           ),
           NavigationDestination(
             icon: Icon(Icons.assignment_outlined,

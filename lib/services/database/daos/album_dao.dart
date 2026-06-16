@@ -86,6 +86,30 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
     return query.map((row) => row.readTable(photos)).get();
   }
 
+  /// 获取相册封面照片（优先 coverPhotoId，否则取首张）
+  Future<Photo?> getCoverPhoto(String albumId, {String? coverPhotoId}) async {
+    // 如果设置了封面，优先用封面
+    if (coverPhotoId != null && coverPhotoId.isNotEmpty) {
+      final cover = await getPhotoById(coverPhotoId);
+      if (cover != null) return cover;
+    }
+    // 否则取首张照片
+    final query = select(albumPhotos).join([
+      innerJoin(photos, photos.id.equalsExp(albumPhotos.photoId)),
+    ])
+      ..where(albumPhotos.albumId.equals(albumId))
+      ..orderBy([OrderingTerm.asc(albumPhotos.sortOrder)])
+      ..limit(1);
+    final rows = await query.get();
+    return rows.isEmpty ? null : rows.first.readTable(photos);
+  }
+
+  /// 通过 photoId 查单张照片（辅助方法，getCoverPhoto 用）
+  Future<Photo?> getPhotoById(String photoId) {
+    return (select(photos)..where((t) => t.id.equals(photoId)))
+        .getSingleOrNull();
+  }
+
   /// 监听相册内的照片变化
   Stream<List<Photo>> watchPhotosInAlbum(String albumId) {
     final query = select(albumPhotos).join([

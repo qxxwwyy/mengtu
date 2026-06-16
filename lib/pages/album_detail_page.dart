@@ -240,15 +240,44 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                   showModalBottomSheet(
                     context: context,
                     builder: (ctx) => SafeArea(
-                      child: ListTile(
-                        leading:
-                            const Icon(Icons.remove_circle, color: Colors.red),
-                        title: const Text('从相册移除',
-                            style: TextStyle(color: Colors.red)),
-                        onTap: () {
-                          Navigator.pop(ctx);
-                          _removePhoto(photo.id);
-                        },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.image_outlined),
+                            title: const Text('设为相册封面'),
+                            onTap: () async {
+                              Navigator.pop(ctx);
+                              final db = ref.read(appDatabaseProvider);
+                              await db.albumDao
+                                  .setCoverPhoto(widget.albumId, photo.id);
+                              if (mounted) {
+                                setState(() {
+                                  _album = _album != null
+                                      ? Album(
+                                          id: _album!.id,
+                                          name: _album!.name,
+                                          description: _album!.description,
+                                          coverPhotoId: photo.id,
+                                          createdAt: _album!.createdAt,
+                                          updatedAt: DateTime.now(),
+                                        )
+                                      : null;
+                                });
+                              }
+                            },
+                          ),
+                          ListTile(
+                            leading:
+                                const Icon(Icons.remove_circle, color: Colors.red),
+                            title: const Text('从相册移除',
+                                style: TextStyle(color: Colors.red)),
+                            onTap: () {
+                              Navigator.pop(ctx);
+                              _removePhoto(photo.id);
+                            },
+                          ),
+                        ],
                       ),
                     ),
                   );
