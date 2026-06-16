@@ -37,10 +37,14 @@
 - ✅ v2.0 相册系统（封面卡片 + 设封面 + 编辑描述 + 详情页/瀑布流加入相册）
 - ✅ v2.0 拍摄策划（shooting_plans 三表 + 列表/创建/详情 + 内置模板 + shot list）
 - ✅ v2.0 标签筛选 chips（作品库顶部横向标签快速筛选）
+- ✅ v2.0 UI/UX 审查修复（光标漂移修复/批量删除/Quick Dock 悬浮工具栏）
+- ✅ v2.0 静默导入（非阻断式导入 + SnackBar 延后分类加入相册）
+- ✅ v2.0 自适应主题（暗色/浅色/跟随系统，SharedPreferences 持久化）
+- ✅ v2.0 相册拖拽排序（ReorderableGridView + HapticFeedback）
+- ✅ v2.0 策划编辑器吸底保存（拇指热区 Easy 区 + 子组件状态隔离）
 
 ### 待开发
-- ⬜ 瀑布流批量删除操作（多选模式底部栏当前只有加入相册/加标签）
-- ⬜ 相册照片拖拽排序（AlbumPhotos.sortOrder 已有字段，无 UI）
+- ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
 - ⬜ Windows 适配 + 开源发布
 
 ## 开发环境
@@ -85,6 +89,8 @@ flutter test
 | path_provider | ^2.0.0 | 应用目录 |
 | path | ^1.8.0 | 路径工具 |
 | crypto | ^3.0.7 | SHA256 哈希 |
+| reorderable_grid_view | ^2.2.8 | 相册照片拖拽排序 |
+| shared_preferences | ^2.5.5 | 主题模式持久化 |
 
 dev_dependencies: drift_dev, riverpod_generator, build_runner, flutter_lints
 
@@ -140,19 +146,20 @@ mengtu/
 │   │   └── pixel_picker_service.dart # 取色器像素拾取
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
-│   │   ├── home_page.dart           # 作品库（瀑布流+标签chips+长按多选+导入）
-│   │   ├── detail_page.dart         # 照片详情（渐进式分层工具栏）
+│   │   ├── home_page.dart           # 作品库（瀑布流+标签chips+长按多选+静默导入）
+│   │   ├── detail_page.dart         # 照片详情（Quick Dock悬浮工具+渐进式分层）
 │   │   ├── compare_page.dart        # 多图对比
 │   │   ├── album_page.dart          # 相册列表（封面卡片+编辑描述）
-│   │   ├── album_detail_page.dart   # 相册详情（3列网格+设封面+加入相册）
+│   │   ├── album_detail_page.dart   # 相册详情（3列网格+设封面+拖拽排序+加入相册）
 │   │   ├── plan_list_page.dart      # 策划列表（状态筛选chips+卡片）
-│   │   ├── plan_edit_page.dart      # 策划创建/编辑（shot list+器材编辑器）
+│   │   ├── plan_edit_page.dart      # 策划创建/编辑（EditableShotRow子组件隔离+吸底保存）
 │   │   ├── plan_detail_page.dart    # 策划详情（shot完成度+实拍照片）
 │   │   ├── profile_page.dart        # 我的（统计+标签管理+设置入口）
-│   │   ├── settings_page.dart       # 设置（存储统计+清理缓存+版本1.2.0）
+│   │   ├── settings_page.dart       # 设置（存储+缓存+主题切换+版本）
 │   │   └── tag_manage_page.dart     # 标签管理（分组显示）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层+快速标签）
+│   │   ├── quick_tools_dock.dart    # 详情页悬浮毛玻璃工具栏（拇指热区）
 │   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
 │   │   ├── analysis_panel.dart      # 展开/收起式分析面板（AnimatedSize 340）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
@@ -168,7 +175,8 @@ mengtu/
 │   │   ├── tag_provider.dart        # 标签流 + TagActions
 │   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存
 │   │   ├── clipping_provider.dart   # 溢出状态
-│   │   └── plan_provider.dart       # 策划流 + 模板 + 状态筛选
+│   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
+│   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
 │       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度
 │       └── file_hash.dart           # 纯Dart SHA256
@@ -250,16 +258,24 @@ mengtu/
 
 ### 分析面板布局
 - **不使用 `DraggableScrollableSheet`**（真机上与 InteractiveViewer 手势冲突）
-- 改用 `AnimatedContainer` + 展开/收起按钮
+- 改用 `AnimatedSize` + 展开/收起按钮（200ms easeInOut, maxHeight 340/52 切换）
 - 黑白状态通过 Widget state + 回调传递（不使用 Riverpod family provider）
-- 展开高度 `340px`（maxHeight `380px`），容纳 5 段影调占比条 + 统计指标网格（曾用 268px 装 5 段会溢出需滚动）
+- 展开高度 `340px`（maxHeight `380px`），容纳 5 段影调占比条 + 统计指标网格
+
+### UI/UX 设计原则（v2.0 审查后确立）
+- **拇指热区**：高频操作（Quick Dock 工具/导入 FAB/多选操作栏/保存按钮）放在屏幕底部 Easy 区；低频操作（返回/删除/更多）放顶部
+- **渐进式披露**：详情页工具分层（常驻顶栏 → Quick Dock → 更多 BottomSheet → 分析面板）
+- **子组件状态隔离**：表单编辑（shot list/gear list）用独立 StatefulWidget 管理 controller，避免光标漂移
+- **静默导入**：选图后不弹分类弹窗，直接导入 + SnackBar 延后分类
 
 ### 信息架构（v2.0 底部导航 4 Tab）
-- **作品库 Tab**：瀑布流（全部照片）+ 标签 chips 筛选 + 长按多选 + FAB 导入 + 快速加标签
-- **相册 Tab**：相册列表（封面卡片）→ 相册详情（3 列网格 + 设封面）
-- **策划 Tab**：策划列表 → 创建/编辑 → 详情（shot list + 实拍照片）
-- **我的 Tab**：统计 + 标签管理 + 设置入口
-- **详情页渐进式**：常驻（返回+文件名+更多+删除）→ 激活工具栏 → 更多 BottomSheet → 分析面板（AnimatedSize 收起/展开）
+- **作品库 Tab**：瀑布流（全部照片）+ 标签 chips 筛选 + 长按多选（加入相册/加标签/删除）+ FAB 静默导入 + 快速加标签
+- **相册 Tab**：相册列表（封面卡片）→ 相册详情（3 列网格 + 拖拽排序 + 设封面）
+- **策划 Tab**：策划列表 → 创建/编辑（EditableShotRow 子组件 + 吸底保存）→ 详情（shot list + 实拍照片）
+- **我的 Tab**：统计 + 标签管理 + 设置（含主题切换）
+- **详情页**：常驻顶栏（返回+文件名+更多+删除）→ Quick Dock 悬浮毛玻璃工具栏（黑白/溢出/构图/取色/对比，拇指热区）→ 更多 BottomSheet（加标签/加入相册/对比）→ 分析面板（AnimatedSize 收起/展开）
+- **主题**：暗色（默认）/浅色/跟随系统，`theme_provider.dart` + SharedPreferences 持久化
+- **导入**：静默导入（选图后直接导入，SnackBar 带延后"加入相册"action，不弹分类弹窗）
 
 ## Android 配置
 
@@ -328,6 +344,9 @@ CI 流程（`.github/workflows/build.yml`）：
 17. **相册入口断链** — 从 ⋮ 菜单移除功能后，必须在底部 Tab 或其他入口补上，否则页面成死代码。v2.0 改造时漏补相册入口导致 album_page 不可达
 18. **Uint16List 溢出** — 直方图 bin 计数超过 65535 时序列化截断，纯色大图（如 75 万像素集中在一个 bin）会丢失数据。`toBytes` 前必须 clamp 到 65535
 19. **Kotlin 变量遮蔽** — `signingConfigs` 块内局部变量不能与 SigningConfig 同名属性重名（如 `val keyAlias` vs `this.keyAlias`），加前缀规避（`ciKeyAlias`）
+20. **TextField 光标漂移** — 在 `build()` 中创建 `TextEditingController(text: value)` 会在每次 setState 时重建 controller，导致光标跳到末尾。必须用独立 StatefulWidget 子组件管理 controller 生命周期，失焦时才回传数据
+21. **StateNotifierProvider 已移除** — Riverpod 3.x 没有 StateNotifierProvider。主题持久化用 `NotifierProvider` + `SharedPreferences`，不用 StateNotifier
+22. **`git add -A` 误提交无关文件** — `.gemini/`、`.agents/` 等技能/配置目录会被 `-A` 一并加入。提交前用 `git add <具体文件>` 或在 `.gitignore` 排除这些目录
 
 ## 许可证合规
 
