@@ -143,8 +143,8 @@ class ImportService {
     if (photo == null) return;
 
     // DB 操作包在事务中（删关联 + 删记录）
+    // v2.1：标签迁移到相册后，照片不再有标签，removeTagsByPhoto 已移除
     await _db.transaction(() async {
-      await _db.tagDao.removeTagsByPhoto(photoId);
       await _db.colorPinDao.deletePinsByPhotoId(photoId);
       await _db.albumDao.removePhotoFromAllAlbums(photoId);
       await _db.planDao.removePhotoFromAllPlans(photoId);

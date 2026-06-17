@@ -1,7 +1,8 @@
-// detail_page.dart — 照片详情页（大图 + 分析面板 + 标签 + 辅助工具）
+// detail_page.dart — 照片详情页（大图 + 分析面板 + 辅助工具）
 //
 // 暗房美学：全黑底让照片跳出来，毛玻璃工具栏
 // v1.1.0: Clipping 警告 + 构图参考线 + 取色 + 对比度/曝光调节
+// v2.1: 标签体系迁移到相册，本页不再有标签 UI（加入相册在底部面板「所属相册」/ ⋮ 菜单）
 import 'dart:io';
 import 'dart:ui';
 import 'dart:math' as math;
@@ -32,7 +33,6 @@ class DetailPage extends ConsumerStatefulWidget {
 }
 
 class _DetailPageState extends ConsumerState<DetailPage> {
-  final _tagInputController = TextEditingController();
   final _imageKey = GlobalKey();
   bool _isBlackWhite = false;
   bool _showClipping = false;
@@ -47,12 +47,6 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   // 正在进行中的取色 future：onEnd 时 await 它，避免手指抬起早于
   // _pickColorAt 的 async 完成（compute 解码）而静默丢弃取色点。
   Future<ColorPickResult?>? _pendingPick;
-
-  @override
-  void dispose() {
-    _tagInputController.dispose();
-    super.dispose();
-  }
 
   /// 处理取色手势 — 使用 globalPosition 与 _calculateImageDisplayRect 统一坐标系
   void _handleColorPickStart(LongPressStartDetails details) {

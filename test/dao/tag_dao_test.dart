@@ -1,4 +1,7 @@
 // tag_dao_test.dart — 标签 DAO 测试（内存数据库）
+//
+// v2.1：标签是相册的子系统。照片不再有标签，关联改为 AlbumTags。
+// 本测试覆盖全局标签 CRUD + 相册-标签关联管理。
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/services/database/app_database.dart';
@@ -22,8 +25,11 @@ void main() {
       name: name,
       group: Value(group),
     ));
-    return (await db.tagDao.getAllTags())
-        .firstWhere((t) => t.id == id);
+    return (await db.tagDao.getAllTags()).firstWhere((t) => t.id == id);
+  }
+
+  Future<void> insertAlbum(String id, String name) async {
+    await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: id, name: name));
   }
 
   group('TagDao CRUD', () {
@@ -53,26 +59,20 @@ void main() {
       expect(tags, isEmpty);
     });
 
-    test('deleteTag 级联删除 photo_tags 关联', () async {
-      // 插入照片和标签
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p1',
-        filePath: '/p1.jpg',
-        thumbnailPath: '/t1.jpg',
-        fileName: 'p1.jpg',
-      ));
+    test('deleteTag 级联删除 album_tags 关联', () async {
+      await insertAlbum('a1', '相册1');
       await insertTag('t1', '日系');
-      await db.tagDao.addTagToPhoto('p1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't1');
 
       // 验证关联存在
-      var tags = await db.tagDao.getTagsForPhoto('p1');
+      var tags = await db.tagDao.getTagsForAlbum('a1');
       expect(tags.length, 1);
 
       // 删标签
       await db.tagDao.deleteTag('t1');
 
       // 关联应被清除
-      tags = await db.tagDao.getTagsForPhoto('p1');
+      tags = await db.tagDao.getTagsForAlbum('a1');
       expect(tags, isEmpty);
     });
   });
@@ -113,97 +113,93 @@ void main() {
     });
   });
 
-  group('TagDao 照片标签关联', () {
+  group('TagDao 相册标签关联', () {
     setUp(() async {
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p1', filePath: '/p1.jpg',
-        thumbnailPath: '/t1.jpg', fileName: 'p1.jpg',
-      ));
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p2', filePath: '/p2.jpg',
-        thumbnailPath: '/t2.jpg', fileName: 'p2.jpg',
-      ));
+      await insertAlbum('a1', '相册1');
+      await insertAlbum('a2', '相册2');
       await insertTag('t1', '日系');
       await insertTag('t2', '户外');
     });
 
-    test('addTagToPhoto + getTagsForPhoto', () async {
-      await db.tagDao.addTagToPhoto('p1', 't1');
-      await db.tagDao.addTagToPhoto('p1', 't2');
+    test('addTagToAlbum + getTagsForAlbum', () async {
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't2');
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
+      final tags = await db.tagDao.getTagsForAlbum('a1');
       expect(tags.length, 2);
     });
 
-    test('removeTagFromPhoto 移除关联', () async {
-      await db.tagDao.addTagToPhoto('p1', 't1');
-      await db.tagDao.removeTagFromPhoto('p1', 't1');
+    test('全局可复用：同一标签可关联多个相册', () async {
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a2', 't1');
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
-      expect(tags, isEmpty);
+      expect((await db.tagDao.getTagsForAlbum('a1')).length, 1);
+      expect((await db.tagDao.getTagsForAlbum('a2')).length, 1);
+      // a2 也有"日系"
+      expect(
+        (await db.tagDao.getTagsForAlbum('a2')).any((t) => t.name == '日系'),
+        isTrue,
+      );
     });
 
-    test('addTagToPhoto 幂等（insertOrIgnore）', () async {
-      await db.tagDao.addTagToPhoto('p1', 't1');
-      // 重复添加不报错
-      await db.tagDao.addTagToPhoto('p1', 't1');
+    test('removeTagFromAlbum 移除单个关联', () async {
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't2');
+      await db.tagDao.removeTagFromAlbum('a1', 't1');
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
+      final tags = await db.tagDao.getTagsForAlbum('a1');
+      expect(tags.length, 1);
+      expect(tags.first.id, 't2');
+    });
+
+    test('addTagToAlbum 幂等（insertOrIgnore）', () async {
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      // 重复添加不报错
+      await db.tagDao.addTagToAlbum('a1', 't1');
+
+      final tags = await db.tagDao.getTagsForAlbum('a1');
       expect(tags.length, 1);
     });
 
-    test('watchTagsForPhoto 流自动刷新', () async {
-      final stream = db.tagDao.watchTagsForPhoto('p1');
+    test('watchTagsForAlbum 流自动刷新', () async {
+      final stream = db.tagDao.watchTagsForAlbum('a1');
       var firstEmission = await stream.first;
       expect(firstEmission, isEmpty);
 
-      await db.tagDao.addTagToPhoto('p1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't1');
       firstEmission = await stream.first;
       expect(firstEmission.length, 1);
     });
 
-    test('removeTagsByPhoto 清除照片所有关联', () async {
-      await db.tagDao.addTagToPhoto('p1', 't1');
-      await db.tagDao.addTagToPhoto('p1', 't2');
-      await db.tagDao.removeTagsByPhoto('p1');
+    test('removeTagsFromAlbum 清除相册所有关联', () async {
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't2');
+      await db.tagDao.removeTagsFromAlbum('a1');
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
+      final tags = await db.tagDao.getTagsForAlbum('a1');
       expect(tags, isEmpty);
     });
   });
 
   group('TagDao 批量打标签', () {
     setUp(() async {
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p1', filePath: '/p1.jpg',
-        thumbnailPath: '/t1.jpg', fileName: 'p1.jpg',
-      ));
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p2', filePath: '/p2.jpg',
-        thumbnailPath: '/t2.jpg', fileName: 'p2.jpg',
-      ));
-      await db.photoDao.insertPhoto(PhotosCompanion.insert(
-        id: 'p3', filePath: '/p3.jpg',
-        thumbnailPath: '/t3.jpg', fileName: 'p3.jpg',
-      ));
+      await insertAlbum('a1', '相册1');
       await insertTag('t1', '精选');
+      await insertTag('t2', '候选');
     });
 
-    test('addTagToPhotos 批量关联', () async {
-      await db.tagDao.addTagToPhotos(['p1', 'p2', 'p3'], 't1');
-
-      expect((await db.tagDao.getTagsForPhoto('p1')).length, 1);
-      expect((await db.tagDao.getTagsForPhoto('p2')).length, 1);
-      expect((await db.tagDao.getTagsForPhoto('p3')).length, 1);
+    test('addTagsToAlbum 批量关联', () async {
+      await db.tagDao.addTagsToAlbum('a1', ['t1', 't2']);
+      expect((await db.tagDao.getTagsForAlbum('a1')).length, 2);
     });
 
-    test('addTagToPhotos 幂等（insertOrIgnore）', () async {
-      await db.tagDao.addTagToPhotos(['p1', 'p2'], 't1');
+    test('addTagsToAlbum 幂等（insertOrIgnore）', () async {
+      await db.tagDao.addTagsToAlbum('a1', ['t1', 't2']);
       // 重复执行不报错
-      await db.tagDao.addTagToPhotos(['p1', 'p2'], 't1');
+      await db.tagDao.addTagsToAlbum('a1', ['t1', 't2']);
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
-      expect(tags.length, 1);
+      final tags = await db.tagDao.getTagsForAlbum('a1');
+      expect(tags.length, 2);
     });
   });
 

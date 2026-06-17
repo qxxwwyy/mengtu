@@ -145,29 +145,29 @@ void main() {
       expect(await db.photoDao.getPhotoCount(), 0);
     });
 
-    test('删除照片 → 标签关联被清除', () async {
+    test('删除照片 → 相册关联被清除', () async {
       await db.photoDao.insertPhoto(PhotosCompanion.insert(
         id: 'p1',
         filePath: '/photos/p1.jpg',
         thumbnailPath: '/thumbs/p1.jpg',
         fileName: 'p1.jpg',
       ));
-      await db.tagDao.insertTag(TagsCompanion.insert(
-          id: 't1', name: 'test'));
-      await db.tagDao.addTagToPhoto('p1', 't1');
+      await db.albumDao.insertAlbum(
+          AlbumsCompanion.insert(id: 'a1', name: '相册'));
+      await db.albumDao.addPhotoToAlbum('a1', 'p1');
 
-      expect((await db.tagDao.getTagsForPhoto('p1')).length, 1);
+      expect(await db.albumDao.getPhotoCount('a1'), 1);
 
-      // 模拟 ImportService.deletePhoto 的事务
+      // 模拟 ImportService.deletePhoto 的事务（v2.1：照片不再有标签）
       await db.transaction(() async {
-        await db.tagDao.removeTagsByPhoto('p1');
+        await db.albumDao.removePhotoFromAllAlbums('p1');
         await db.photoDao.deletePhoto('p1');
       });
 
-      expect((await db.tagDao.getTagsForPhoto('p1')), isEmpty);
+      expect(await db.albumDao.getPhotoCount('a1'), 0);
       expect(await db.photoDao.getPhotoCount(), 0);
-      // 标签本身仍存在
-      expect((await db.tagDao.getAllTags()).length, 1);
+      // 相册本身仍存在
+      expect((await db.albumDao.getAllAlbums()).length, 1);
     });
   });
 

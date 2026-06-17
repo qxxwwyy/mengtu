@@ -1,4 +1,7 @@
-// tables.dart — drift 表定义（photos, tags, photo_tags, color_pins, albums, album_photos）
+// tables.dart — drift 表定义（photos, tags, color_pins, albums, album_photos, album_tags）
+//
+// v2.1：标签体系从「照片」迁移到「相册」。原 PhotoTags 表已删除（v9 migration
+// 尽力迁移其数据到 AlbumTags 后 drop）。照片不再有标签。
 import 'package:drift/drift.dart';
 
 /// 照片表
@@ -41,14 +44,8 @@ class Tags extends Table {
   Set<Column> get primaryKey => {id};
 }
 
-/// 照片-标签关联表（多对多）
-class PhotoTags extends Table {
-  TextColumn get photoId => text().references(Photos, #id)();
-  TextColumn get tagId => text().references(Tags, #id)();
-
-  @override
-  Set<Column> get primaryKey => {photoId, tagId};
-}
+/// 照片-标签关联表已在 v2.1 移除（标签迁移到相册）。
+/// 历史表名 photo_tags，v9 migration 尽力迁移其数据到 [AlbumTags] 后 drop。
 
 /// 取色点表（v1.1.0 新增）
 class ColorPins extends Table {
@@ -86,6 +83,19 @@ class AlbumPhotos extends Table {
 
   @override
   Set<Column> get primaryKey => {albumId, photoId};
+}
+
+/// 相册-标签关联表（v2.1 新增）—— 标签是相册的子系统
+///
+/// 标签 [Tags] 全局定义一次，可复用于多个相册（多对多）。
+/// 删除相册时由 [AlbumDao.deleteAlbum] 事务内清除此关联；
+/// 删除标签时由 [TagDao.deleteTag] 事务内清除此关联。
+class AlbumTags extends Table {
+  TextColumn get albumId => text().references(Albums, #id)();
+  TextColumn get tagId => text().references(Tags, #id)();
+
+  @override
+  Set<Column> get primaryKey => {albumId, tagId};
 }
 
 // ============ v2.0 拍摄策划 ============

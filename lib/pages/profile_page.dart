@@ -5,8 +5,8 @@ import 'tag_manage_page.dart';
 import 'settings_page.dart';
 import '../providers/photo_provider.dart';
 import '../providers/tag_provider.dart';
+import '../providers/album_provider.dart';
 import '../utils/app_info.dart';
-import 'album_page.dart' show albumsProvider;
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -64,7 +64,7 @@ class ProfilePage extends ConsumerWidget {
           _MenuItem(
             icon: Icons.local_offer_outlined,
             title: '标签管理',
-            subtitle: '管理氛围、场景、情绪标签',
+            subtitle: '管理相册标签（全局可复用）',
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const TagManagePage())),
           ),

@@ -1,11 +1,15 @@
 // tag_dao.dart — 标签数据访问对象
+//
+// v2.1：标签体系从「照片」迁移到「相册」。标签全局定义、可复用，
+// 通过 [AlbumTags] 多对多关联到相册。本 DAO 只保留标签定义 CRUD
+// 与相册-标签关联管理。
 import 'package:drift/drift.dart';
 import '../app_database.dart';
 import '../tables.dart';
 
 part 'tag_dao.g.dart';
 
-@DriftAccessor(tables: [Tags, PhotoTags])
+@DriftAccessor(tables: [Tags, AlbumTags])
 class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
   TagDao(super.db);
 
@@ -45,57 +49,59 @@ class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
   Future<int> updateTag(Tag tag) =>
       (update(tags)..where((t) => t.id.equals(tag.id))).write(tag);
 
-  /// 删除标签（同时级联删除关联）
+  /// 删除标签（同时级联清除相册-标签关联）
   Future<int> deleteTag(String id) async {
-    await (delete(photoTags)..where((t) => t.tagId.equals(id))).go();
+    await (delete(albumTags)..where((t) => t.tagId.equals(id))).go();
     return (delete(tags)..where((t) => t.id.equals(id))).go();
   }
 
-  /// 为照片打标签
-  Future<void> addTagToPhoto(String photoId, String tagId) =>
-      into(photoTags).insert(PhotoTagsCompanion(
-        photoId: Value(photoId),
+  // ============ 相册-标签关联 ============
+
+  /// 为相册打标签（幂等，重复关联会被忽略）
+  Future<void> addTagToAlbum(String albumId, String tagId) =>
+      into(albumTags).insert(AlbumTagsCompanion(
+        albumId: Value(albumId),
         tagId: Value(tagId),
       ), mode: InsertMode.insertOrIgnore);
 
-  /// 移除照片标签
-  Future<int> removeTagFromPhoto(String photoId, String tagId) =>
-      (delete(photoTags)
-            ..where((t) => t.photoId.equals(photoId) & t.tagId.equals(tagId)))
+  /// 移除相册标签
+  Future<int> removeTagFromAlbum(String albumId, String tagId) =>
+      (delete(albumTags)
+            ..where((t) => t.albumId.equals(albumId) & t.tagId.equals(tagId)))
           .go();
 
-  /// 删除照片的所有标签关联（删除照片时调用）
-  Future<int> removeTagsByPhoto(String photoId) =>
-      (delete(photoTags)..where((t) => t.photoId.equals(photoId))).go();
+  /// 删除相册的所有标签关联（删除相册时调用）
+  Future<int> removeTagsFromAlbum(String albumId) =>
+      (delete(albumTags)..where((t) => t.albumId.equals(albumId))).go();
 
-  /// 获取照片的所有标签
-  Future<List<Tag>> getTagsForPhoto(String photoId) async {
+  /// 获取相册的所有标签
+  Future<List<Tag>> getTagsForAlbum(String albumId) async {
     final query = select(tags).join([
-      innerJoin(photoTags, photoTags.tagId.equalsExp(tags.id)),
+      innerJoin(albumTags, albumTags.tagId.equalsExp(tags.id)),
     ])
-      ..where(photoTags.photoId.equals(photoId));
+      ..where(albumTags.albumId.equals(albumId));
     final rows = await query.get();
     return rows.map((row) => row.readTable(tags)).toList();
   }
 
-  /// 获取照片的标签流（实时监听）
-  Stream<List<Tag>> watchTagsForPhoto(String photoId) {
+  /// 获取相册的标签流（实时监听）
+  Stream<List<Tag>> watchTagsForAlbum(String albumId) {
     final query = select(tags).join([
-      innerJoin(photoTags, photoTags.tagId.equalsExp(tags.id)),
+      innerJoin(albumTags, albumTags.tagId.equalsExp(tags.id)),
     ])
-      ..where(photoTags.photoId.equals(photoId));
+      ..where(albumTags.albumId.equals(albumId));
     return query.watch().map(
         (rows) => rows.map((row) => row.readTable(tags)).toList());
   }
 
-  /// 批量打标签
-  Future<void> addTagToPhotos(List<String> photoIds, String tagId) async {
+  /// 批量为相册打标签（多对一相册）
+  Future<void> addTagsToAlbum(String albumId, List<String> tagIds) async {
     await batch((b) {
       b.insertAll(
-        photoTags,
-        photoIds.map((pid) => PhotoTagsCompanion(
-              photoId: Value(pid),
-              tagId: Value(tagId),
+        albumTags,
+        tagIds.map((tid) => AlbumTagsCompanion(
+              albumId: Value(albumId),
+              tagId: Value(tid),
             )),
         mode: InsertMode.insertOrIgnore,
       );

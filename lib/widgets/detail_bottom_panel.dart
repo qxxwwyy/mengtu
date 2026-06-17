@@ -9,13 +9,15 @@
 // 对比/加入相册等低频功能移到 detail_page 顶栏更多菜单
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/exif_info.dart';
+import '../pages/album_detail_page.dart';
+import '../providers/album_provider.dart';
 import '../providers/analysis_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/exif_provider.dart';
 import '../providers/photo_provider.dart';
-import '../providers/tag_provider.dart';
 import '../services/database/app_database.dart';
 import '../services/palette_service.dart';
 import '../theme/app_theme.dart';
@@ -269,12 +271,12 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
     );
   }
 
-  // ============ 信息 Tab（新增：EXIF + 文件信息 + 标签）============
+  // ============ 信息 Tab（新增：EXIF + 文件信息 + 所属相册）============
 
   Widget _buildInfoTab() {
     final photoAsync = ref.watch(photoByIdProvider(widget.photoId));
     final exifAsync = ref.watch(exifInfoProvider(widget.photoId));
-    final tagsAsync = ref.watch(photoTagsProvider(widget.photoId));
+    final albumsAsync = ref.watch(photoAlbumsProvider(widget.photoId));
 
     return ListView(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
@@ -311,13 +313,13 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
               photo == null ? const SizedBox.shrink() : _FileInfoSection(photo: photo),
         ),
         const SizedBox(height: 10),
-        // 标签管理
-        tagsAsync.when(
+        // 所属相册（v2.1：照片不再有标签，标签是相册的子系统）
+        albumsAsync.when(
           loading: () => const SizedBox.shrink(),
-          error: (e, _) => _buildErrorText('标签加载失败'),
-          data: (tags) => _TagSection(
+          error: (e, _) => _buildErrorText('相册加载失败'),
+          data: (albums) => _AlbumsSection(
             photoId: widget.photoId,
-            tags: tags,
+            albums: albums,
           ),
         ),
       ],
@@ -797,78 +799,146 @@ class _FileInfoSection extends StatelessWidget {
   }
 }
 
-/// 标签管理区
-class _TagSection extends ConsumerStatefulWidget {
+/// 所属相册区（v2.1：照片不再有标签，标签是相册的子系统）
+///
+/// 列出该照片所在的所有相册，点击跳转相册详情；末尾「加入相册」ActionChip
+/// 弹出相册选择器（支持新建）。
+class _AlbumsSection extends ConsumerWidget {
   final String photoId;
-  final List<Tag> tags;
+  final List<Album> albums;
 
-  const _TagSection({required this.photoId, required this.tags});
+  const _AlbumsSection({required this.photoId, required this.albums});
 
-  @override
-  ConsumerState<_TagSection> createState() => _TagSectionState();
-}
+  Future<void> _addToAlbum(BuildContext context, WidgetRef ref) async {
+    final db = ref.read(appDatabaseProvider);
+    final allAlbums = await db.albumDao.getAllAlbums();
+    if (!context.mounted) return;
 
-class _TagSectionState extends ConsumerState<_TagSection> {
-  void _showTagDialog() {
-    showDialog(
+    final controller = TextEditingController();
+    final selected = await showModalBottomSheet<String>(
       context: context,
-      builder: (ctx) {
-        String newTag = '';
-        return AlertDialog(
-          title: const Text('添加标签'),
-          content: TextField(
-            autofocus: true,
-            decoration: const InputDecoration(
-              hintText: '输入标签名',
-              border: OutlineInputBorder(),
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('加入相册',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w600)),
+                  TextButton.icon(
+                    icon: const Icon(Icons.add, size: 18),
+                    label: const Text('新建相册'),
+                    onPressed: () async {
+                      final name = await showDialog<String>(
+                        context: ctx,
+                        builder: (dctx) => AlertDialog(
+                          title: const Text('新建相册'),
+                          content: TextField(
+                            controller: controller,
+                            autofocus: true,
+                            decoration: const InputDecoration(
+                                hintText: '相册名称',
+                                border: OutlineInputBorder()),
+                          ),
+                          actions: [
+                            TextButton(
+                                onPressed: () => Navigator.pop(dctx),
+                                child: const Text('取消')),
+                            TextButton(
+                                onPressed: () =>
+                                    Navigator.pop(dctx, controller.text.trim()),
+                                child: const Text('创建')),
+                          ],
+                        ),
+                      );
+                      if (name != null && name.isNotEmpty) {
+                        final albumId = const Uuid().v4();
+                        await db.albumDao.insertAlbum(
+                          AlbumsCompanion.insert(id: albumId, name: name),
+                        );
+                        if (ctx.mounted) Navigator.pop(ctx, albumId);
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-            onChanged: (v) => newTag = v,
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () {
-                if (newTag.trim().isNotEmpty) {
-                  ref
-                      .read(tagActionsProvider.notifier)
-                      .addTagToPhoto(widget.photoId, newTag.trim());
-                }
-                Navigator.pop(ctx);
-              },
-              child: const Text('添加'),
-            ),
+            const Divider(height: 1),
+            if (allAlbums.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(32),
+                child: Text('没有相册，请点击右上角新建'),
+              )
+            else
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                ),
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: allAlbums.length,
+                  itemBuilder: (_, i) {
+                    final album = allAlbums[i];
+                    return ListTile(
+                      leading: const Icon(Icons.photo_album_outlined),
+                      title: Text(album.name),
+                      onTap: () => Navigator.pop(ctx, album.id),
+                    );
+                  },
+                ),
+              ),
           ],
-        );
-      },
+        ),
+      ),
     );
+
+    if (selected != null) {
+      await db.albumDao.addPhotoToAlbum(selected, photoId);
+    }
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return _InfoCard(
-      icon: Icons.local_offer_outlined,
-      title: '标签',
+      icon: Icons.photo_album_outlined,
+      title: '所属相册',
       child: Wrap(
         spacing: 6,
         runSpacing: 4,
         children: [
-          ...widget.tags.map((tag) => Chip(
-                label: Text(tag.name,
+          ...albums.map((album) => ActionChip(
+                avatar:
+                    const Icon(Icons.photo_album_outlined, size: 14),
+                label: Text(album.name,
                     style: const TextStyle(fontSize: 11)),
-                deleteIcon: const Icon(Icons.close, size: 14),
-                onDeleted: () => ref
-                    .read(tagActionsProvider.notifier)
-                    .removeTagFromPhoto(widget.photoId, tag.id),
+                onPressed: () {
+                  // 切换到相册详情页
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) =>
+                          AlbumDetailPage(albumId: album.id),
+                    ),
+                  );
+                },
                 visualDensity: VisualDensity.compact,
                 materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
               )),
+          if (albums.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 4),
+              child: Text('未加入任何相册',
+                  style: TextStyle(fontSize: 11, color: Colors.white54)),
+            ),
           ActionChip(
             avatar: const Icon(Icons.add, size: 14),
-            label: const Text('添加标签', style: TextStyle(fontSize: 11)),
-            onPressed: _showTagDialog,
+            label: const Text('加入相册', style: TextStyle(fontSize: 11)),
+            onPressed: () => _addToAlbum(context, ref),
             visualDensity: VisualDensity.compact,
             materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
           ),

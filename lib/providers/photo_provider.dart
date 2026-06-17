@@ -41,11 +41,14 @@ class SearchQueryNotifier extends Notifier<String?> {
 final searchQueryProvider =
     NotifierProvider<SearchQueryNotifier, String?>(SearchQueryNotifier.new);
 
-/// 按标签搜索的照片流（自动刷新）
-final photosByTagSearchProvider = StreamProvider.family<List<Photo>, String>(
-    (ref, tagName) {
+/// 按文件名搜索的照片流（自动刷新）
+///
+/// v2.1：标签迁移到相册后，作品库搜索框从"按标签名搜照片"改为
+/// "按文件名搜照片"。searchQueryProvider 同时驱动搜索框与结果。
+final photosByNameSearchProvider = StreamProvider.family<List<Photo>, String>(
+    (ref, fileName) {
   final db = ref.watch(appDatabaseProvider);
-  return db.photoDao.watchPhotosByTagName(tagName);
+  return db.photoDao.watchPhotosByName(fileName);
 });
 
 /// 排序状态

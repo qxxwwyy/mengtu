@@ -109,65 +109,42 @@ void main() {
     });
   });
 
-  group('PhotoDao 按标签查询', () {
+  group('PhotoDao 按文件名搜索', () {
     setUp(() async {
-      await insertPhoto('p1');
-      await insertPhoto('p2');
-      await insertPhoto('p3');
-
-      // 创建标签
-      await db.tagDao.insertTag(TagsCompanion.insert(
-        id: 't1',
-        name: '日系',
-        group: const Value('atmosphere'),
-      ));
-      await db.tagDao.insertTag(TagsCompanion.insert(
-        id: 't2',
-        name: '户外',
-        group: const Value('scene'),
-      ));
-
-      // p1 和 p2 打上"日系"标签
-      await db.tagDao.addTagToPhoto('p1', 't1');
-      await db.tagDao.addTagToPhoto('p2', 't1');
-      // p3 打上"户外"
-      await db.tagDao.addTagToPhoto('p3', 't2');
+      await insertPhoto('p1', ); // fileName: p1.jpg
+      await insertPhoto('p2', );
+      await insertPhoto('p3', );
     });
 
-    test('watchPhotosByTagName 模糊匹配', () async {
-      final photos = await db.photoDao
-          .watchPhotosByTagName('日')
-          .first;
-      expect(photos.length, 2);
-      expect(photos.map((p) => p.id).toSet(), {'p1', 'p2'});
+    test('watchPhotosByName 模糊匹配', () async {
+      final photos = await db.photoDao.watchPhotosByName('p').first;
+      expect(photos.length, 3);
     });
 
-    test('getPhotosByTag 按 tagId 查询', () async {
-      final photos = await db.photoDao.getPhotosByTag('t2');
+    test('watchPhotosByName 精确前缀匹配', () async {
+      final photos = await db.photoDao.watchPhotosByName('p2').first;
       expect(photos.length, 1);
-      expect(photos.first.id, 'p3');
+      expect(photos.first.id, 'p2');
     });
 
-    test('searchPhotosByTagName 模糊搜索', () async {
-      final photos = await db.photoDao.searchPhotosByTagName('户');
-      expect(photos.length, 1);
-      expect(photos.first.id, 'p3');
+    test('watchPhotosByName 无匹配返回空', () async {
+      final photos = await db.photoDao.watchPhotosByName('不存在的文件').first;
+      expect(photos, isEmpty);
     });
   });
 
   group('PhotoDao 外键级联', () {
-    test('删除照片后 photo_tags 关联被清除', () async {
+    test('删除照片后 album 关联被清除', () async {
       await insertPhoto('p1');
-      await db.tagDao.insertTag(TagsCompanion.insert(
-          id: 't1', name: 'test', group: const Value('custom')));
-      await db.tagDao.addTagToPhoto('p1', 't1');
+      await db.albumDao.insertAlbum(
+          AlbumsCompanion.insert(id: 'a1', name: '相册'));
+      await db.albumDao.addPhotoToAlbum('a1', 'p1');
 
-      // 删照片（应通过 removeTagsByPhoto 清理关联）
-      await db.tagDao.removeTagsByPhoto('p1');
+      // 通过 removePhotoFromAllAlbums 清理关联（import_service.deletePhoto 同款逻辑）
+      await db.albumDao.removePhotoFromAllAlbums('p1');
       await db.photoDao.deletePhoto('p1');
 
-      final tags = await db.tagDao.getTagsForPhoto('p1');
-      expect(tags, isEmpty);
+      expect(await db.albumDao.getPhotoCount('a1'), 0);
     });
   });
 

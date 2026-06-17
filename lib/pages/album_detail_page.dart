@@ -1,6 +1,7 @@
 // album_detail_page.dart — 相册详情页
 //
-// 显示相册内的照片，支持添加/移除照片
+// 显示相册内的照片，支持添加/移除照片。
+// v2.1：顶部新增标签编辑面板（标签是相册的子系统）；AppBar 标题改为 reactive。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
@@ -8,16 +9,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:reorderable_grid_view/reorderable_grid_view.dart';
 import '../providers/database_provider.dart';
+import '../providers/album_provider.dart';
+import '../providers/tag_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
 import 'detail_page.dart';
-
-/// 相册照片 Provider
-final albumPhotosProvider =
-    StreamProvider.family<List<Photo>, String>((ref, albumId) async* {
-  final db = ref.watch(appDatabaseProvider);
-  yield* db.albumDao.watchPhotosInAlbum(albumId);
-});
 
 class AlbumDetailPage extends ConsumerStatefulWidget {
   final String albumId;
@@ -29,22 +25,7 @@ class AlbumDetailPage extends ConsumerStatefulWidget {
 }
 
 class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
-  Album? _album;
   bool _isWaterfallView = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _loadAlbum();
-  }
-
-  Future<void> _loadAlbum() async {
-    final db = ref.read(appDatabaseProvider);
-    final album = await db.albumDao.getAlbumById(widget.albumId);
-    if (mounted) {
-      setState(() => _album = album);
-    }
-  }
 
   Future<void> _addPhotos() async {
     // 权限预检：与 home_page 一致（注意事项 #6）。
@@ -124,12 +105,17 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
 
     // 全屏选择页
     if (!mounted) return;
+    final albumName =
+        ref.read(albumByIdProvider(widget.albumId)).maybeWhen(
+              data: (a) => a?.name ?? '相册',
+              orElse: () => '相册',
+            );
     final selectedIds = await Navigator.push<Set<String>>(
       context,
       MaterialPageRoute(
         builder: (_) => PhotoSelectionPage(
           photos: availablePhotos,
-          albumName: _album?.name ?? '相册',
+          albumName: albumName,
         ),
         fullscreenDialog: true,
       ),
@@ -137,8 +123,13 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
 
     if (selectedIds == null || selectedIds.isEmpty) return;
 
+    // 从当前相册照片数开始递增 sortOrder，确保新照片追加到末尾而非顶到最前
+    // （否则新加的照片 sortOrder=0 会越过已有照片跳到顶部，违反用户预期）
+    var nextOrder = await db.albumDao.getPhotoCount(widget.albumId);
     for (final photoId in selectedIds) {
-      await db.albumDao.addPhotoToAlbum(widget.albumId, photoId);
+      await db.albumDao.addPhotoToAlbum(widget.albumId, photoId,
+          sortOrder: nextOrder);
+      nextOrder++;
     }
 
     if (mounted) {
@@ -185,7 +176,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                 Navigator.pop(ctx);
                 final db = ref.read(appDatabaseProvider);
                 await db.albumDao.setCoverPhoto(widget.albumId, photo.id);
-                _loadAlbum();
+                // albumByIdProvider 是 stream，DB 变更会自动刷新 AppBar 标题
               },
             ),
             ListTile(
@@ -205,10 +196,14 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
   @override
   Widget build(BuildContext context) {
     final photosAsync = ref.watch(albumPhotosProvider(widget.albumId));
+    final albumAsync = ref.watch(albumByIdProvider(widget.albumId));
+    final albumName =
+        albumAsync.maybeWhen(data: (a) => a?.name, orElse: () => null) ??
+            '相册';
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(_album?.name ?? '相册'),
+        title: Text(albumName),
         actions: [
           IconButton(
             icon: Icon(_isWaterfallView ? Icons.grid_view : Icons.view_quilt),
@@ -239,116 +234,338 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
           ),
         ],
       ),
-      body: photosAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('加载失败: $e')),
-        data: (photos) {
-          if (photos.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.photo_outlined,
-                    size: 64,
-                    color: Theme.of(context)
-                        .colorScheme
-                        .primary
-                        .withValues(alpha: 0.3),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '相册还没有照片',
-                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .onSurface
-                              .withValues(alpha: 0.5),
-                        ),
-                  ),
-                  const SizedBox(height: 8),
-                  TextButton(
-                    onPressed: _addExistingPhotos,
-                    child: const Text('添加照片'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (_isWaterfallView) {
-            return MasonryGridView.count(
-              crossAxisCount: 2,
-              mainAxisSpacing: 6,
-              crossAxisSpacing: 6,
-              padding: const EdgeInsets.all(6),
-              itemCount: photos.length,
-              itemBuilder: (context, index) {
-                final photo = photos[index];
-                // 回调传给 PhotoCard（与 home_page 一致），不外包 GestureDetector：
-                // PhotoCard 内部 GestureDetector 注册了按压动画 recognizer，
-                // 若外部再包一层 GestureDetector 且 PhotoCard.onTap 为 null，
-                // 内部 recognizer 会赢得手势竞技场并吞掉 tap，外层永远收不到。
-                return PhotoCard(
-                  key: ValueKey(photo.id),
-                  photo: photo,
-                  onTap: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => DetailPage(photoId: photo.id),
-                      ),
-                    );
-                  },
-                  onLongPress: () => _showPhotoOptions(photo),
-                );
-              },
-            );
-          }
-
-          return ReorderableGridView.builder(
-            padding: const EdgeInsets.all(8),
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 4,
-              mainAxisSpacing: 4,
+      body: Column(
+        children: [
+          // 顶部标签编辑面板（标签是相册的子系统）
+          _buildTagPanel(),
+          // 照片区
+          Expanded(
+            child: photosAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('加载失败: $e')),
+              data: (photos) => _buildPhotoGrid(photos),
             ),
-            itemCount: photos.length,
-            onReorder: (oldIndex, newIndex) async {
-              final orderedPhotos = List<Photo>.from(photos);
-              // 标准 Flutter reorder 语义：向下移动时 newIndex 需 -1 修正
-              final adjustedIndex =
-                  newIndex > oldIndex ? newIndex - 1 : newIndex;
-              final element = orderedPhotos.removeAt(oldIndex);
-              orderedPhotos.insert(adjustedIndex, element);
+          ),
+        ],
+      ),
+    );
+  }
 
-              final db = ref.read(appDatabaseProvider);
-              await db.albumDao.updatePhotosSortOrder(
-                albumId: widget.albumId,
-                orderedPhotoIds: orderedPhotos.map((p) => p.id).toList(),
-              );
-              HapticFeedback.mediumImpact();
-            },
-            itemBuilder: (context, index) {
-              final photo = photos[index];
-              // 同上：回调传给 PhotoCard，不外包 GestureDetector
-              return PhotoCard(
-                key: ValueKey(photo.id),
-                photo: photo,
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => DetailPage(photoId: photo.id),
-                    ),
-                  );
-                },
-                onLongPress: () => _showPhotoOptions(photo),
-              );
-            },
+  /// 相册标签编辑面板：横向 chips + 末尾 ＋ 添加
+  Widget _buildTagPanel() {
+    final tagsAsync = ref.watch(albumTagsProvider(widget.albumId));
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
+          ),
+        ),
+      ),
+      child: tagsAsync.when(
+        loading: () => const SizedBox(
+            height: 32, child: Center(child: SizedBox.shrink())),
+        error: (_, __) => const SizedBox(height: 32),
+        data: (tags) {
+          return SizedBox(
+            height: 36,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                ...tags.map((tag) => Padding(
+                      padding: const EdgeInsets.only(right: 6),
+                      child: Chip(
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                        visualDensity: VisualDensity.compact,
+                        padding: EdgeInsets.zero,
+                        labelPadding:
+                            const EdgeInsets.only(left: 4, right: 2),
+                        label: Text(tag.name),
+                        deleteIcon: const Icon(Icons.close, size: 16),
+                        onDeleted: () => ref
+                            .read(tagActionsProvider.notifier)
+                            .removeTagFromAlbum(widget.albumId, tag.id),
+                      ),
+                    )),
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ActionChip(
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    visualDensity: VisualDensity.compact,
+                    avatar: const Icon(Icons.add, size: 16),
+                    label: const Text('标签'),
+                    onPressed: () => _showTagPicker(tags),
+                  ),
+                ),
+              ],
+            ),
           );
         },
       ),
+    );
+  }
+
+  /// 标签选择器（复用已有全局标签 / 新建）
+  Future<void> _showTagPicker(List<Tag> currentTags) async {
+    final db = ref.read(appDatabaseProvider);
+    final allTags = await db.tagDao.getAllTags();
+    final currentIds = currentTags.map((t) => t.id).toSet();
+    if (!mounted) return;
+
+    final newTagController = TextEditingController();
+    final selectedIds = <String>{};
+
+    await showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return SafeArea(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      children: [
+                        const Text('选择标签',
+                            style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600)),
+                        const Spacer(),
+                        TextButton.icon(
+                          icon: const Icon(Icons.add, size: 18),
+                          label: const Text('新建'),
+                          onPressed: () async {
+                            await showDialog(
+                              context: ctx,
+                              builder: (dctx) => AlertDialog(
+                                title: const Text('新建标签'),
+                                content: TextField(
+                                  controller: newTagController,
+                                  autofocus: true,
+                                  decoration: const InputDecoration(
+                                      hintText: '标签名'),
+                                  onSubmitted: (v) {
+                                    Navigator.pop(dctx, v.trim());
+                                  },
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(dctx),
+                                    child: const Text('取消'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(
+                                        dctx, newTagController.text.trim()),
+                                    child: const Text('创建'),
+                                  ),
+                                ],
+                              ),
+                            ).then((name) async {
+                              if (name == null || name.isEmpty) return;
+                              await ref
+                                  .read(tagActionsProvider.notifier)
+                                  .addTagToAlbum(widget.albumId, name);
+                              if (ctx.mounted) Navigator.pop(ctx);
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(ctx).size.height * 0.4,
+                    ),
+                    child: allTags.isEmpty
+                        ? const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(32),
+                              child: Text('还没有标签，点右上角新建'),
+                            ),
+                          )
+                        : ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: allTags.length,
+                            itemBuilder: (_, i) {
+                              final tag = allTags[i];
+                              final alreadyAdded = currentIds.contains(tag.id);
+                              final isSelected =
+                                  selectedIds.contains(tag.id);
+                              return ListTile(
+                                leading: Icon(
+                                  alreadyAdded
+                                      ? Icons.check
+                                      : (isSelected
+                                          ? Icons.check_circle
+                                          : Icons.label_outline),
+                                  color: alreadyAdded
+                                      ? Theme.of(ctx)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.35)
+                                      : (isSelected
+                                          ? Theme.of(ctx).colorScheme.primary
+                                          : null),
+                                ),
+                                title: Text(tag.name,
+                                    style: alreadyAdded
+                                        ? TextStyle(
+                                            color: Theme.of(ctx)
+                                                .colorScheme
+                                                .onSurface
+                                                .withValues(alpha: 0.4))
+                                        : null),
+                                enabled: !alreadyAdded,
+                                onTap: alreadyAdded
+                                    ? null
+                                    : () {
+                                        setSheetState(() {
+                                          if (isSelected) {
+                                            selectedIds.remove(tag.id);
+                                          } else {
+                                            selectedIds.add(tag.id);
+                                          }
+                                        });
+                                      },
+                              );
+                            },
+                          ),
+                  ),
+                  if (selectedIds.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: FilledButton(
+                        onPressed: () async {
+                          await db.tagDao.addTagsToAlbum(
+                              widget.albumId, selectedIds.toList());
+                          if (ctx.mounted) Navigator.pop(ctx);
+                        },
+                        child: Text('添加 ${selectedIds.length} 个标签'),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildPhotoGrid(List<Photo> photos) {
+    if (photos.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.photo_outlined,
+              size: 64,
+              color: Theme.of(context)
+                  .colorScheme
+                  .primary
+                  .withValues(alpha: 0.3),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              '相册还没有照片',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.5),
+                  ),
+            ),
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _addExistingPhotos,
+              child: const Text('添加照片'),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_isWaterfallView) {
+      return MasonryGridView.count(
+        crossAxisCount: 2,
+        mainAxisSpacing: 6,
+        crossAxisSpacing: 6,
+        padding: const EdgeInsets.all(6),
+        itemCount: photos.length,
+        itemBuilder: (context, index) {
+          final photo = photos[index];
+          // 回调传给 PhotoCard（与 home_page 一致），不外包 GestureDetector：
+          // PhotoCard 内部 GestureDetector 注册了按压动画 recognizer，
+          // 若外部再包一层 GestureDetector 且 PhotoCard.onTap 为 null，
+          // 内部 recognizer 会赢得手势竞技场并吞掉 tap，外层永远收不到。
+          return PhotoCard(
+            key: ValueKey(photo.id),
+            photo: photo,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => DetailPage(photoId: photo.id),
+                ),
+              );
+            },
+            onLongPress: () => _showPhotoOptions(photo),
+          );
+        },
+      );
+    }
+
+    return ReorderableGridView.builder(
+      padding: const EdgeInsets.all(8),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 3,
+        crossAxisSpacing: 4,
+        mainAxisSpacing: 4,
+      ),
+      itemCount: photos.length,
+      onReorder: (oldIndex, newIndex) async {
+        final orderedPhotos = List<Photo>.from(photos);
+        // 标准 Flutter reorder 语义：向下移动时 newIndex 需 -1 修正
+        final adjustedIndex =
+            newIndex > oldIndex ? newIndex - 1 : newIndex;
+        final element = orderedPhotos.removeAt(oldIndex);
+        orderedPhotos.insert(adjustedIndex, element);
+
+        final db = ref.read(appDatabaseProvider);
+        await db.albumDao.updatePhotosSortOrder(
+          albumId: widget.albumId,
+          orderedPhotoIds: orderedPhotos.map((p) => p.id).toList(),
+        );
+        HapticFeedback.mediumImpact();
+      },
+      itemBuilder: (context, index) {
+        final photo = photos[index];
+        // 同上：回调传给 PhotoCard，不外包 GestureDetector
+        return PhotoCard(
+          key: ValueKey(photo.id),
+          photo: photo,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => DetailPage(photoId: photo.id),
+              ),
+            );
+          },
+          onLongPress: () => _showPhotoOptions(photo),
+        );
+      },
     );
   }
 }

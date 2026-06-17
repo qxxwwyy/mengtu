@@ -44,6 +44,8 @@
 - ✅ v2.0 策划编辑器吸底保存（拇指热区 Easy 区 + 子组件状态隔离）
 - ✅ v2.0 EXIF 拍摄参数（exif 包 + Isolate 解析 JPEG + schemaVersion v7→v8 + 历史照片补全）
 - ✅ v2.0 详情页统一底部面板重构（融合 Quick Dock + AnalysisPanel 为单一组件 + 黑白入口去重 + 顶栏更多菜单归位低频功能 + 信息 Tab）
+- ✅ v2.0 开源前最终复核（17 项修复：相册点击/取色报错/FK级联崩溃/批量计数清零/分析刷新链/色相标记联动/Tab索引保留/统计刷新/版本号统一/LIKE escape/版本号单一数据源 app_info.dart）
+- ✅ v2.1 相册系统重构 + 标签迁移到相册（PhotoTags→AlbumTags，schemaVersion v8→v9 + 尽力迁移 photo_tags→album_tags + 相册列表顶栏标签chips筛选 + 富信息卡片聚合查询消除N+1 + 相册详情顶部标签编辑面板 + 作品库去标签化改为按文件名搜索 + 详情页信息Tab「所属相册」+ album_provider.dart 集中相册provider修跨页耦合）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -134,12 +136,12 @@ mengtu/
 │   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=8）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=9）
 │   │   │   ├── tables.dart          # 表定义（9张表，见下）
 │   │   │   └── daos/
-│   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + 缓存更新 + 清缩略图 + updateExifCache
-│   │   │       ├── tag_dao.dart     # 标签CRUD + 关联管理
-│   │   │       ├── album_dao.dart   # 相册CRUD + 关联 + getCoverPhoto
+│   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + watchPhotosByName(按文件名搜索) + 缓存更新 + 清缩略图 + updateExifCache
+│   │   │       ├── tag_dao.dart     # 标签CRUD + 相册-标签关联（v2.1 标签迁移到相册）
+│   │   │       ├── album_dao.dart   # 相册CRUD + 关联 + getCoverPhoto + watchAlbumsByTag/getAlbumsWithTagInfo/watchAlbumsForPhoto（v2.1）+ AlbumWithTags 聚合类
 │   │   │       ├── color_pin_dao.dart # 取色点CRUD
 │   │   │       ├── plan_dao.dart    # 拍摄策划CRUD + shot list/gear序列化 + 模板
 │   │   │       └── *.g.dart        # 自动生成（gitignore）
@@ -153,19 +155,19 @@ mengtu/
 │   │   └── pixel_picker_service.dart # 取色器像素拾取
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
-│   │   ├── home_page.dart           # 作品库（瀑布流+标签chips+长按多选+静默导入）
+│   │   ├── home_page.dart           # 作品库（瀑布流+按文件名搜索+长按多选[加入相册/删除]+静默导入）v2.1去标签化
 │   │   ├── detail_page.dart         # 照片详情（顶栏更多菜单 + 统一底部面板 + 永远暗色）
 │   │   ├── compare_page.dart        # 多图对比
-│   │   ├── album_page.dart          # 相册列表（封面卡片+编辑描述）
-│   │   ├── album_detail_page.dart   # 相册详情（3列网格+设封面+拖拽排序+点击进详情）
+│   │   ├── album_page.dart          # 相册列表（v2.1 顶栏标签chips筛选 + 富信息卡片[封面/数量/标签chips/更新时间]）
+│   │   ├── album_detail_page.dart   # 相册详情（v2.1 顶部标签编辑面板 + 3列网格/瀑布流 + 设封面 + 拖拽排序 + reactive AppBar）
 │   │   ├── plan_list_page.dart      # 策划列表（状态筛选chips+卡片）
 │   │   ├── plan_edit_page.dart      # 策划创建/编辑（EditableShotRow子组件隔离+吸底保存）
 │   │   ├── plan_detail_page.dart    # 策划详情（shot完成度+实拍照片）
-│   │   ├── profile_page.dart        # 我的（统计+标签管理+设置入口）
+│   │   ├── profile_page.dart        # 我的（统计+标签管理[全局相册标签]+设置入口）
 │   │   ├── settings_page.dart       # 设置（存储+缓存+主题切换+版本）
-│   │   └── tag_manage_page.dart     # 标签管理（分组显示）
+│   │   └── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
 │   ├── widgets/
-│   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层+快速标签）
+│   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层；v2.1移除快速标签按钮）
 │   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行 + 展开 TabBarView：信息/直方图/色卡/影调/和谐/取色）
 │   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
@@ -177,14 +179,16 @@ mengtu/
 │   │   └── composition_overlay.dart # 构图辅助线
 │   ├── providers/
 │   │   ├── database_provider.dart   # AppDatabase + ImportService 单例
-│   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序
-│   │   ├── tag_provider.dart        # 标签流 + TagActions
+│   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序 + photosByNameSearchProvider
+│   │   ├── tag_provider.dart        # 标签流 + TagActions（v2.1 相册作用域：addTagToAlbum/removeTagFromAlbum）
+│   │   ├── album_provider.dart      # 相册流（v2.1 集中：albumsProvider/albumsWithTagsProvider/albumPhotosProvider/albumTagsProvider/albumsByTagProvider/photoAlbumsProvider + albumTagFilterProvider）
 │   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存
 │   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
 │   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
+│       ├── app_info.dart           # 应用版本常量（单一数据源，与 pubspec version 对齐）
 │       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度
 │       └── file_hash.dart           # 纯Dart SHA256
 ├── algorithms/                      # 取色算法（独立模块）
@@ -215,10 +219,10 @@ mengtu/
 └── pubspec.yaml                     # version: 1.2.0+1
 ```
 
-**数据库表（9 张，schemaVersion=8）：**
+**数据库表（9 张，schemaVersion=9）：**
 - `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引
-- `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）
-- `PhotoTags` — 照片-标签多对多
+- `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）。v2.1 起标签是相册的子系统，全局定义、可复用
+- `AlbumTags` — 相册-标签多对多（v2.1 替代原 PhotoTags，标签从照片迁移到相册）
 - `ColorPins` — 取色点（v4）
 - `Albums` — 相册（name + description + coverPhotoId）
 - `AlbumPhotos` — 相册-照片多对多（含 sortOrder）
@@ -281,12 +285,13 @@ mengtu/
 - **子组件状态隔离**：表单编辑（shot list/gear list）用独立 StatefulWidget 管理 controller，避免光标漂移
 - **静默导入**：选图后不弹分类弹窗，直接导入 + SnackBar 延后分类
 
-### 信息架构（v2.0 底部导航 4 Tab）
-- **作品库 Tab**：瀑布流（全部照片）+ 标签 chips 筛选 + 长按多选（加入相册/加标签/删除）+ FAB 静默导入 + 快速加标签
-- **相册 Tab**：相册列表（封面卡片）→ 相册详情（3 列网格 + 拖拽排序 + 设封面）
+### 信息架构（v2.1 底部导航 4 Tab）
+- **作品库 Tab**：瀑布流（全部照片）+ 按文件名搜索 + 长按多选（加入相册/删除）+ FAB 静默导入。**v2.1 去标签化**（照片不再有标签）
+- **相册 Tab**：相册列表（顶栏标签 chips 筛选相册 + 富信息卡片：封面/名称/数量/标签chips/更新时间）→ 相册详情（**顶部标签编辑面板** + 3 列网格/瀑布流 + 拖拽排序 + 设封面 + 导入/添加/移除）
 - **策划 Tab**：策划列表 → 创建/编辑（EditableShotRow 子组件 + 吸底保存）→ 详情（shot list + 实拍照片）
-- **我的 Tab**：统计 + 标签管理 + 设置（含主题切换）
-- **详情页**：常驻顶栏（返回+文件名+删除+⋮更多菜单[加入相册/照片对比]）→ 统一底部面板 DetailBottomPanel（常驻工具行：黑白/溢出/构图/取色 + 展开 TabBarView：信息[EXIF/文件/标签]/直方图/色卡/影调/和谐/取色）。永远暗色背景
+- **我的 Tab**：统计 + 标签管理（全局标签 CRUD，服务于相册）+ 设置（含主题切换）
+- **详情页**：常驻顶栏（返回+文件名+删除+⋮更多菜单[加入相册/照片对比]）→ 统一底部面板 DetailBottomPanel（常驻工具行：黑白/溢出/构图/取色 + 展开 TabBarView：信息[EXIF/文件/**所属相册**]/直方图/色卡/影调/和谐/取色）。永远暗色背景
+- **标签体系（v2.1）**：标签是相册的子系统，全局定义、多对多关联到相册（AlbumTags）。照片不再有标签。相册列表顶栏 chips 按标签筛选相册；相册详情顶部编辑标签；我的 Tab 统一管理全局标签
 - **主题**：暗色（默认）/浅色/跟随系统，`theme_provider.dart` + SharedPreferences 持久化
 - **导入**：静默导入（选图后直接导入，SnackBar 带延后"加入相册"action，不弹分类弹窗）
 
@@ -352,7 +357,7 @@ CI 流程（`.github/workflows/build.yml`）：
 12. **`pubspec.lock` 的 url 字段** — 本地用国内镜像会改 `pub.dev`→`pub.flutter-io.cn`，提交会让 CI 产生无关 diff，还原即可
 13. **影调分段升级的基调判定** — 3 段→5 段后，`_classifyToneKey` 的全长调判定要改用合并段（dark=blacks+shadows / light=highlights+whites），否则高对比图会漏判
 14. **onCreate 不创建索引** — drift 的 `MigrationStrategy.onCreate` 只跑 `createAll()`，migration 的 `customStatement`（如唯一索引）只在 `onUpgrade` 跑。全新安装的用户不会执行 onUpgrade，导致索引缺失。必须在 onCreate 里也手动创建索引
-15. **drift `.like()` 无 escape 参数** — drift 2.34 的 `Expression.like(pattern)` 不支持 `escape` 命名参数。只能手动转义 `%`/`_` 字符但不配 ESCAPE 子句（或用 `customStatement` 写原生 SQL）
+15. **drift `.like()` 的 escape 参数** — **（已过时更新）** drift 2.34+ 的 `Expression.like(pattern, {String? escapeChar})` **已支持** escape 命名参数。早期文档记的"不支持 escape、只能 customStatement"是旧版本的限制。现用法：`.like('%$escaped%', escapeChar: r'\')` + 手动转义 `\`/`%`/`_`。否则 SQLite 默认 LIKE 无转义符，`\%` 仍按反斜杠+通配符处理，含 `_` 的标签名会误匹配（如 `a_b` 命中 `axb`）
 16. **Riverpod 3.x Notifier 无 dispose** — `Notifier` 子类没有 `dispose()` 方法可 override，用 `ref.onDispose(() => ...)` 注册清理（如 Timer.cancel）
 17. **相册入口断链** — 从 ⋮ 菜单移除功能后，必须在底部 Tab 或其他入口补上，否则页面成死代码。v2.0 改造时漏补相册入口导致 album_page 不可达
 18. **Uint16List 溢出** — 直方图 bin 计数超过 65535 时序列化截断，纯色大图（如 75 万像素集中在一个 bin）会丢失数据。`toBytes` 前必须 clamp 到 65535
@@ -365,6 +370,17 @@ CI 流程（`.github/workflows/build.yml`）：
 25. **exif 包 ISO printable 格式** — `EXIF ISOSpeedRatings` 是 SHORT/LONG 数组，`.printable` 可能输出 `"[200]"` 形式，`int.tryParse` 直接失败。需 `replaceAll(RegExp(r'[\[\]]'))` 剥离方括号
 26. **详情页永远暗色** — 作为图片查看/调色场景，详情页无论全局主题都用暗色（`DetailColors` token），不随 `themeModeProvider` 切换，避免浅色下调色分析的色彩偏差
 27. **`PermissionState.isAuth` 漏判 limited** — photo_manager 3.9.0 的 `isAuth` 仅匹配 `PermissionState.authorized`，不含 `limited`。用户选了 Android 14+ / iOS「仅允许访问选中的照片」（`limited`）时，应用其实已授权，但 `!permission.isAuth` 判为未授权，导致每次点导入都误弹"需要相册权限"。改用 `permission.hasAccess`（含 `authorized` + `limited`）
+28. **内部带 recognizer 的 widget 外层包 GestureDetector 会吞事件** — `PhotoCard` 内部 `GestureDetector` 注册了 `onTapDown/onTapUp/onTapCancel`（按压动画），若外部再包一层 `GestureDetector(onTap)` 且 PhotoCard 的 onTap 为 null，内部 recognizer 赢得手势竞技场并吞掉 tap，外层永远收不到。**回调应直接传给 PhotoCard**（home_page/album_detail_page 统一模式：onTap/onLongPress 传 PhotoCard，不外包 GestureDetector）
+29. **GlobalKey 不应挂在会随条件分支迁移的 widget 上** — 详情页 `_imageKey` 曾同时挂在两条代码路径的 Image 上（非取色分支 vs 取色模式 `_buildImageWithOverlays`），切换取色模式时 widget 树结构变化，同一帧可能让两个 Image 同时引用同一 GlobalKey → "Multiple widgets used the same GlobalKey" 断言。**GlobalKey 只挂在一处**，且条件分支复用同一个已构建的 widget 子树（取色模式复用 `viewer` 而非重建第二个 Image）
+30. **清空集合前先取 length** — `_selectedIds.clear()` 后再读 `_selectedIds.length` 永远是 0。批量操作的 SnackBar 计数必须 `final count = list.length` 在 clear 之前存住
+31. **drift FK 无 cascade 时 delete 父表必须事务内先清子表** — `PRAGMA foreign_keys=ON` 已开启，但关联表 FK 默认 `NO ACTION`（未配 `onDelete: KeyAction.cascade()`）。直接删带子引用的父行（如删带照片的 plan、删被相册/策划引用的 photo）会抛 `FOREIGN KEY constraint failed`。`deleteAlbum` 必须事务内先删 albumPhotos**和 albumTags**（v2.1 相册也有关联标签）；`deletePlan` 必须先删 planPhotos；`deletePhoto` 必须先清 colorPins/albumPhotos/planPhotos（v2.1 起照片不再有标签，无需清 photoTags）。零迁移方案（不升 schemaVersion）
+32. **build() 期间不可用 `AsyncValue.whenData` 改局部变量** — `ref.read(provider).whenData((data)=>photo=data)` 是反模式：FutureProvider 处于 loading 时闭包不执行，`photo` 留 null 且无报错。应 `await ref.read(...future)`（在事件回调里）或直接用 `build()` 顶部已 watch 的 data 分支值传入子方法
+33. **FutureProvider 要级联失效必须 watch 而非 read DAO** — 分析 provider（histogram/palette/tone/clipping）曾直连 `db.photoDao.getPhotoById`，导致 invalidate `photoByIdProvider` 时分析数据不刷新（gotcha #24 的另一半）。必须 `ref.watch(photoByIdProvider(id).future)` 建立依赖，invalidate 才能级联
+34. **IndexedStack 常驻页面的本地状态不刷新** — `ProfilePage` 在 IndexedStack 中常驻，initState 里一次性 `_loadStats` 后永不刷新（增删照片后统计数字不变）。常驻页面要用 reactive（watch StreamProvider）而非一次性 Future
+35. **动态列表 row 的 ValueKey 必须用稳定 id 而非 index** — `EditableShotRow`/`EditableGearRow` 曾用 `ValueKey('shot_$i')`（index），删中间项后下方行 index 变化，Flutter 按 index 复用导致 `TextEditingController` 文本错位（与光标漂移 gotcha #20 同源）。`ShotItem`/`GearItem` 加稳定 `id` 字段，ValueKey 用 `item.id`
+36. **版本号单一数据源** — profile 曾写 `v2.0.0`、settings 写 `v1.2.0`、pubspec 是 `1.2.0+1`，三处不一致。统一引用 `lib/utils/app_info.dart`（`appVersion`/`appVersionLabel`），改版本时只改 app_info.dart + pubspec.yaml 两处
+37. **Async 错误兜底要 PlatformDispatcher.onError** — `FlutterError.onError` 只覆盖框架错误（build/layout/paint），纯 Dart 异步错误（Isolate 抛出、未 await 的 Future）不被捕获。需额外设 `PlatformDispatcher.instance.onError`（返回 true 表示已处理）。ErrorWidget 兜底页要包 `Directionality`，否则 MaterialApp 之上报错时 Text 渲染失败
+38. **标签体系从照片迁移到相册的尽力迁移（v2.1）** — 标签改为相册的子系统后，旧 `photo_tags` 数据需在 v9 migration 内尽力迁移：`INSERT INTO album_tags SELECT DISTINCT ap.album_id, pt.tag_id FROM photo_tags JOIN album_photos ON photo_id`，再 `deleteTable('photo_tags')`。**注意**：不属于任何相册的照片标签会被丢弃（照片已无标签归属）；`searchQueryProvider` 原同时驱动「搜索框」和「作品库标签chips筛选」，标签下线后 chips 删除，搜索框改喂 `watchPhotosByName`（按文件名）。`albumsWithTagsProvider` 聚合查询消除原 `_AlbumCard` 每张卡 2 个 FutureBuilder 的 N+1 问题
 
 ## 许可证合规
 

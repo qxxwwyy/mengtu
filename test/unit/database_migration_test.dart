@@ -6,7 +6,7 @@ import 'package:mengtu/services/database/app_database.dart';
 import '../helpers/test_helpers.dart';
 
 void main() {
-  group('数据库 schema v6 完整性', () {
+  group('数据库 schema v9 完整性', () {
     test('onCreate 创建所有 6 张表', () async {
       final db = createTestDatabase();
       addTearDown(db.close);
@@ -22,11 +22,17 @@ void main() {
         'tone_json', 'palette_json', 'hue_histogram',
       ]));
 
-      // tags / photo_tags / colorPins / albums / albumPhotos 表存在
-      for (final table in ['tags', 'photo_tags', 'color_pins', 'albums', 'album_photos']) {
+      // tags / album_tags / colorPins / albums / albumPhotos 表存在
+      // v2.1：photo_tags 已删除，改为 album_tags（标签迁移到相册）
+      for (final table in ['tags', 'album_tags', 'color_pins', 'albums', 'album_photos']) {
         final result = await db.customSelect('PRAGMA table_info($table)').get();
         expect(result, isNotEmpty, reason: '$table 表应存在');
       }
+
+      // photo_tags 表不应存在（v2.1 已移除）
+      final photoTagsResult =
+          await db.customSelect('PRAGMA table_info(photo_tags)').get();
+      expect(photoTagsResult, isEmpty, reason: 'photo_tags 表应已移除');
     });
 
     test('v6 迁移创建 fileHash 唯一索引', () async {

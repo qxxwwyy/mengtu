@@ -1,4 +1,7 @@
 // tag_provider.dart — 标签状态管理
+//
+// v2.1：标签体系从「照片」迁移到「相册」。标签全局定义、可复用，
+// 通过 AlbumTags 关联到相册。原 photoTagsProvider / addTagToPhoto 已移除。
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
@@ -7,17 +10,10 @@ import 'database_provider.dart';
 
 const _uuid = Uuid();
 
-/// 全部标签流
+/// 全部标签流（标签全局定义，可复用于多个相册）
 final allTagsProvider = StreamProvider<List<Tag>>((ref) {
   final db = ref.watch(appDatabaseProvider);
   return db.tagDao.watchAllTags();
-});
-
-/// 某照片的标签流
-final photoTagsProvider =
-    StreamProvider.family<List<Tag>, String>((ref, photoId) {
-  final db = ref.watch(appDatabaseProvider);
-  return db.tagDao.watchTagsForPhoto(photoId);
 });
 
 /// 搜索匹配的标签
@@ -43,10 +39,10 @@ class TagActions extends Notifier {
     return id;
   }
 
-  /// 为照片打标签（不存在则创建）
-  Future<void> addTagToPhoto(String photoId, String tagName,
+  /// 为相册打标签（不存在则创建）。用于相册详情/列表的"加标签"流程。
+  Future<void> addTagToAlbum(String albumId, String tagName,
       {String group = 'custom'}) async {
-    // 查找已有标签
+    // 查找已有标签（精确匹配名称，保证全局可复用）
     final existing = await _db.tagDao.searchTagsByName(tagName);
     String tagId;
 
@@ -56,14 +52,14 @@ class TagActions extends Notifier {
     } else {
       tagId = await createTag(tagName, group: group);
     }
-    await _db.tagDao.addTagToPhoto(photoId, tagId);
+    await _db.tagDao.addTagToAlbum(albumId, tagId);
   }
 
-  /// 移除照片标签
-  Future<void> removeTagFromPhoto(String photoId, String tagId) =>
-      _db.tagDao.removeTagFromPhoto(photoId, tagId);
+  /// 移除相册标签
+  Future<void> removeTagFromAlbum(String albumId, String tagId) =>
+      _db.tagDao.removeTagFromAlbum(albumId, tagId);
 
-  /// 删除标签
+  /// 删除标签（全局删除，同时清除所有相册-标签关联）
   Future<void> deleteTag(String tagId) => _db.tagDao.deleteTag(tagId);
 
   @override

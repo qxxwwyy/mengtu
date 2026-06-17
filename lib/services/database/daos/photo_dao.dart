@@ -1,11 +1,14 @@
 // photo_dao.dart — 照片数据访问对象
+//
+// v2.1：标签体系迁移到相册后，照片不再有标签。原按标签搜索照片的方法已移除，
+// 搜索改为按文件名（[watchPhotosByName]）。
 import 'package:drift/drift.dart';
 import '../app_database.dart';
 import '../tables.dart';
 
 part 'photo_dao.g.dart';
 
-@DriftAccessor(tables: [Photos, Tags, PhotoTags])
+@DriftAccessor(tables: [Photos])
 class PhotoDao extends DatabaseAccessor<AppDatabase> with _$PhotoDaoMixin {
   PhotoDao(super.db);
 
@@ -17,45 +20,16 @@ class PhotoDao extends DatabaseAccessor<AppDatabase> with _$PhotoDaoMixin {
   Stream<List<Photo>> watchAllPhotos() =>
       (select(photos)..orderBy([(t) => OrderingTerm.desc(t.importedAt)])).watch();
 
-  /// 监听按标签名搜索的照片（自动刷新）
+  /// 监听按文件名模糊搜索的照片（自动刷新）
   ///
-  /// 转义 LIKE 通配符（% 和 _）并带 escapeChar（坑 #15 在 drift 2.34+ 已支持
-  /// escape 参数；早期版本需 customStatement 发原生 SQL）。
-  /// 不带 escapeChar 时 SQLite 默认 LIKE 无转义符，\% 仍按反斜杠+通配符处理，
-  /// 含 _ 的标签名会误匹配（如 "a_b" 命中 "axb"）。
-  Stream<List<Photo>> watchPhotosByTagName(String tagName) {
-    final escaped = _escapeLike(tagName);
-    final query = select(photos).join([
-      innerJoin(photoTags, photoTags.photoId.equalsExp(photos.id)),
-      innerJoin(tags, tags.id.equalsExp(photoTags.tagId)),
-    ])
-      ..where(tags.name.like('%$escaped%', escapeChar: r'\'))
-      ..orderBy([OrderingTerm.desc(photos.importedAt)]);
-    return query.watch().map((rows) => rows.map((row) => row.readTable(photos)).toList());
-  }
-
-  /// 按 tagId 查询照片
-  Future<List<Photo>> getPhotosByTag(String tagId) async {
-    final query = select(photos).join([
-      innerJoin(photoTags, photoTags.photoId.equalsExp(photos.id)),
-    ])
-      ..where(photoTags.tagId.equals(tagId))
-      ..orderBy([OrderingTerm.desc(photos.importedAt)]);
-    final rows = await query.get();
-    return rows.map((row) => row.readTable(photos)).toList();
-  }
-
-  /// 按标签名模糊搜索照片（与 watchPhotosByTagName 同语义，但是一次性查询）
-  Future<List<Photo>> searchPhotosByTagName(String tagName) async {
-    final escaped = _escapeLike(tagName);
-    final query = select(photos).join([
-      innerJoin(photoTags, photoTags.photoId.equalsExp(photos.id)),
-      innerJoin(tags, tags.id.equalsExp(photoTags.tagId)),
-    ])
-      ..where(tags.name.like('%$escaped%', escapeChar: r'\'))
-      ..orderBy([OrderingTerm.desc(photos.importedAt)]);
-    final rows = await query.get();
-    return rows.map((row) => row.readTable(photos)).toList();
+  /// 转义 LIKE 通配符（\、% 和 _）并带 escapeChar（坑 #15）。
+  /// 替代 v2.1 之前按标签名搜索照片的逻辑（照片不再有标签）。
+  Stream<List<Photo>> watchPhotosByName(String fileName) {
+    final escaped = _escapeLike(fileName);
+    return (select(photos)
+          ..where((t) => t.fileName.like('%$escaped%', escapeChar: r'\'))
+          ..orderBy([(t) => OrderingTerm.desc(t.importedAt)]))
+        .watch();
   }
 
   /// 按 hash 查询照片（去重）

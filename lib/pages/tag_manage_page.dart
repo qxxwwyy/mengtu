@@ -1,7 +1,11 @@
 // tag_manage_page.dart — 标签管理页
+//
+// v2.1：标签是相册的子系统（全局定义、关联到相册）。本页管理全局标签，
+// 每个 chip 旁显示被多少个相册使用。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tag_provider.dart';
+import '../providers/database_provider.dart';
 
 class TagManagePage extends ConsumerStatefulWidget {
   const TagManagePage({super.key});
@@ -157,10 +161,10 @@ class _TagManagePageState extends ConsumerState<TagManagePage> {
                           padding: const EdgeInsets.symmetric(horizontal: 12),
                           child: Wrap(
                             children: grouped[groupKey]!.map((tag) {
-                            return Chip(
-                              label: Text(tag.name),
-                              deleteIcon: const Icon(Icons.close, size: 16),
-                              onDeleted: () => _deleteTag(tag.id, tag.name),
+                            return _TagChipWithCount(
+                              id: tag.id,
+                              name: tag.name,
+                              onDelete: () => _deleteTag(tag.id, tag.name),
                             );
                           }).toList(),
                           ),
@@ -173,6 +177,35 @@ class _TagManagePageState extends ConsumerState<TagManagePage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// 标签 chip + 相册使用计数（异步查 getAlbumCountByTag）
+class _TagChipWithCount extends ConsumerWidget {
+  final String id;
+  final String name;
+  final VoidCallback onDelete;
+
+  const _TagChipWithCount({
+    required this.id,
+    required this.name,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.watch(appDatabaseProvider);
+    return FutureBuilder<int>(
+      future: db.albumDao.getAlbumCountByTag(id),
+      builder: (context, snap) {
+        final count = snap.data ?? 0;
+        return Chip(
+          label: Text(count > 0 ? '$name · $count' : name),
+          deleteIcon: const Icon(Icons.close, size: 16),
+          onDeleted: onDelete,
+        );
+      },
     );
   }
 }

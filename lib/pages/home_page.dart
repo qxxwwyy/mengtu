@@ -1,4 +1,7 @@
 // home_page.dart — 首页瀑布流 + 导入 + 搜索 + 排序
+//
+// v2.1：照片不再有标签，搜索改为按文件名；多选仅保留"加入相册/删除"。
+// 标签体系已迁移到相册（相册 Tab + 相册详情）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
@@ -6,7 +9,6 @@ import 'package:wechat_assets_picker/wechat_assets_picker.dart';
 import 'package:uuid/uuid.dart';
 
 import '../providers/photo_provider.dart';
-import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
@@ -30,134 +32,6 @@ class _HomePageState extends ConsumerState<HomePage> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
-  }
-
-  /// 快速给照片加标签（从卡片右下角图标触发，不进详情页）
-  Future<void> _quickAddTag(String photoId) async {
-    final db = ref.read(appDatabaseProvider);
-    final allTags = await db.tagDao.getAllTags();
-    final photoTags = await db.tagDao.getTagsForPhoto(photoId);
-    final taggedIds = photoTags.map((t) => t.id).toSet();
-
-    if (!mounted) return;
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        const Text('选择标签',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        TextButton.icon(
-                          icon: const Icon(Icons.add, size: 18),
-                          label: const Text('新建'),
-                          onPressed: () async {
-                            final name = await _showCreateTagDialog();
-                            if (name == null || name.isEmpty) return;
-                            final tag = await db.tagDao
-                                .insertTag(TagsCompanion.insert(
-                              id: 'tag-${DateTime.now().microsecondsSinceEpoch}',
-                              name: name,
-                            ));
-                            await db.tagDao.addTagToPhoto(tag, photoId);
-                            if (ctx.mounted) Navigator.pop(ctx);
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(content: Text('已创建并添加标签「$name」')),
-                              );
-                            }
-                          },
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(ctx).size.height * 0.5,
-                    ),
-                    child: allTags.isEmpty
-                        ? const Center(
-                            child: Padding(
-                              padding: EdgeInsets.all(32),
-                              child: Text('还没有标签，点右上角新建',
-                                  style: TextStyle(color: Colors.white54)),
-                            ),
-                          )
-                        : ListView.builder(
-                            shrinkWrap: true,
-                            itemCount: allTags.length,
-                            itemBuilder: (_, i) {
-                              final tag = allTags[i];
-                              final isSelected = taggedIds.contains(tag.id);
-                              return ListTile(
-                                leading: Icon(
-                                  isSelected ? Icons.check_circle : Icons.label_outline,
-                                  color: isSelected
-                                      ? Theme.of(ctx).colorScheme.primary
-                                      : null,
-                                ),
-                                title: Text(tag.name),
-                                onTap: () async {
-                                  if (isSelected) {
-                                    await db.tagDao
-                                        .removeTagFromPhoto(tag.id, photoId);
-                                    taggedIds.remove(tag.id);
-                                  } else {
-                                    await db.tagDao
-                                        .addTagToPhoto(tag.id, photoId);
-                                    taggedIds.add(tag.id);
-                                  }
-                                  setSheetState(() {});
-                                },
-                              );
-                            },
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  /// 新建标签对话框（返回标签名，取消返回 null）
-  Future<String?> _showCreateTagDialog() {
-    final controller = TextEditingController();
-    return showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('新建标签'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '标签名'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('创建'),
-          ),
-        ],
-      ),
-    );
   }
 
   /// 批量删除选中照片
@@ -240,107 +114,6 @@ class _HomePageState extends ConsumerState<HomePage> {
         );
       }
     }
-  }
-
-  /// 批量给选中照片加标签
-  Future<void> _batchAddTag() async {
-    final db = ref.read(appDatabaseProvider);
-    final allTags = await db.tagDao.getAllTags();
-    if (!mounted) return;
-    if (allTags.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有标签，请先创建')),
-      );
-      return;
-    }
-    final selectedTagIds = <String>{};
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (ctx, setSheetState) {
-            return SafeArea(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Row(
-                      children: [
-                        Text('选择标签（${_selectedIds.length} 张照片）',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
-                        const Spacer(),
-                        TextButton(
-                          onPressed: selectedTagIds.isEmpty
-                              ? null
-                              : () async {
-                                  Navigator.pop(ctx);
-                                  // 先记录数量再 clear，否则 SnackBar 显示"0 张"
-                                  final photoCount = _selectedIds.length;
-                                  final tagCount = selectedTagIds.length;
-                                  for (final photoId in _selectedIds) {
-                                    for (final tagId in selectedTagIds) {
-                                      await db.tagDao
-                                          .addTagToPhoto(tagId, photoId);
-                                    }
-                                  }
-                                  if (mounted) {
-                                    setState(() {
-                                      _selectMode = false;
-                                      _selectedIds.clear();
-                                    });
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text(
-                                          '已给 $photoCount 张照片添加 $tagCount 个标签')),
-                                    );
-                                  }
-                                },
-                          child: const Text('完成'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      maxHeight: MediaQuery.of(ctx).size.height * 0.4,
-                    ),
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: allTags.length,
-                      itemBuilder: (_, i) {
-                        final tag = allTags[i];
-                        final isSelected = selectedTagIds.contains(tag.id);
-                        return ListTile(
-                          leading: Icon(
-                            isSelected ? Icons.check_circle : Icons.label_outline,
-                            color: isSelected
-                                ? Theme.of(ctx).colorScheme.primary
-                                : null,
-                          ),
-                          title: Text(tag.name),
-                          onTap: () {
-                            setSheetState(() {
-                              if (isSelected) {
-                                selectedTagIds.remove(tag.id);
-                              } else {
-                                selectedTagIds.add(tag.id);
-                              }
-                            });
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
   }
 
   Future<void> _pickAndImport() async {
@@ -554,8 +327,9 @@ class _HomePageState extends ConsumerState<HomePage> {
   Widget build(BuildContext context) {
     final searchQuery = ref.watch(searchQueryProvider);
     final sortOrder = ref.watch(sortOrderProvider);
+    // v2.1：搜索从"按标签名"改为"按文件名"（标签已迁移到相册）
     final photosAsync = searchQuery != null && searchQuery.isNotEmpty
-        ? ref.watch(photosByTagSearchProvider(searchQuery))
+        ? ref.watch(photosByNameSearchProvider(searchQuery))
         : ref.watch(allPhotosProvider);
 
     return Scaffold(
@@ -578,7 +352,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 autofocus: true,
                 style: TextStyle(color: Theme.of(context).colorScheme.onSurface),
                 decoration: InputDecoration(
-                  hintText: '搜索标签...',
+                  hintText: '搜索照片名称...',
                   hintStyle: TextStyle(
                       color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
                   border: InputBorder.none,
@@ -642,49 +416,8 @@ class _HomePageState extends ConsumerState<HomePage> {
                 final sorted = sortOrder == SortOrder.oldest
                     ? photos.reversed.toList()
                     : photos;
-                // 标签筛选 chips（点击切换筛选，复用 searchQueryProvider）
-                final tagsAsync = ref.watch(allTagsProvider);
-                final currentQuery = ref.watch(searchQueryProvider);
                 return Column(
                   children: [
-                    // 标签 chips 筛选条
-                    tagsAsync.when(
-                      loading: () => const SizedBox.shrink(),
-                      error: (_, __) => const SizedBox.shrink(),
-                      data: (tags) {
-                        if (tags.isEmpty) return const SizedBox.shrink();
-                        return SizedBox(
-                          height: 40,
-                          child: ListView(
-                            scrollDirection: Axis.horizontal,
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            children: [
-                              FilterChip(
-                                label: const Text('全部'),
-                                selected: currentQuery == null,
-                                onSelected: (_) => ref
-                                    .read(searchQueryProvider.notifier)
-                                    .set(null),
-                              ),
-                              const SizedBox(width: 6),
-                              ...tags.map((tag) {
-                                final selected = currentQuery == tag.name;
-                                return Padding(
-                                  padding: const EdgeInsets.only(right: 6),
-                                  child: FilterChip(
-                                    label: Text(tag.name),
-                                    selected: selected,
-                                    onSelected: (_) => ref
-                                        .read(searchQueryProvider.notifier)
-                                        .set(selected ? null : tag.name),
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
                     // 瀑布流
                     Expanded(
                       child: MasonryGridView.count(
@@ -720,7 +453,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                                 _selectedIds.add(photo.id);
                               });
                             },
-                            onTagTap: _selectMode ? null : () => _quickAddTag(photo.id),
                           );
                         },
                       ),
@@ -750,13 +482,6 @@ class _HomePageState extends ConsumerState<HomePage> {
                               onPressed: _selectedIds.isEmpty
                                   ? null
                                   : () => _batchAddToAlbum(),
-                            ),
-                            TextButton.icon(
-                              icon: const Icon(Icons.local_offer_outlined, size: 20),
-                              label: const Text('加标签'),
-                              onPressed: _selectedIds.isEmpty
-                                  ? null
-                                  : () => _batchAddTag(),
                             ),
                             TextButton.icon(
                               icon: const Icon(Icons.delete_outline,

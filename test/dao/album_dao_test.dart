@@ -169,4 +169,104 @@ void main() {
       expect(second.length, 1);
     });
   });
+
+  // ============ v2.1 相册-标签体系 ============
+
+  group('AlbumDao 相册-标签关联', () {
+    Future<void> insertTag(String id, String name) async {
+      await db.tagDao.insertTag(TagsCompanion.insert(id: id, name: name));
+    }
+
+    test('deleteAlbum 级联清除 album_tags 关联', () async {
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册'));
+      await insertTag('t1', '日系');
+      await db.tagDao.addTagToAlbum('a1', 't1');
+
+      // 删相册
+      await db.albumDao.deleteAlbum('a1');
+
+      // 标签仍存在（全局定义），但关联被清除
+      final tags = await db.tagDao.getAllTags();
+      expect(tags.length, 1);
+      expect((await db.tagDao.getTagsForAlbum('a1')), isEmpty);
+    });
+
+    test('watchAlbumsByTag 按标签筛选相册', () async {
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册1'));
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a2', name: '相册2'));
+      await insertTag('t1', '人像');
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a2', 't1');
+
+      final albums = await db.albumDao.watchAlbumsByTag('t1').first;
+      expect(albums.length, 2);
+      expect(albums.map((a) => a.id).toSet(), {'a1', 'a2'});
+    });
+
+    test('getAlbumCountByTag 计数', () async {
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册1'));
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a2', name: '相册2'));
+      await insertTag('t1', '人像');
+      await db.tagDao.addTagToAlbum('a1', 't1');
+
+      expect(await db.albumDao.getAlbumCountByTag('t1'), 1);
+      await db.tagDao.addTagToAlbum('a2', 't1');
+      expect(await db.albumDao.getAlbumCountByTag('t1'), 2);
+      expect(await db.albumDao.getAlbumCountByTag('不存在'), 0);
+    });
+
+    test('watchAlbumsWithTagInfo 聚合返回标签+数量', () async {
+      await insertTestPhoto(db, id: 'p1');
+      await insertTestPhoto(db, id: 'p2');
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册1'));
+      await db.albumDao.addPhotoToAlbum('a1', 'p1');
+      await db.albumDao.addPhotoToAlbum('a1', 'p2');
+      await insertTag('t1', '人像');
+      await insertTag('t2', '夏日');
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      await db.tagDao.addTagToAlbum('a1', 't2');
+
+      final items = await db.albumDao.watchAlbumsWithTagInfo().first;
+      expect(items.length, 1);
+      final item = items.first;
+      expect(item.album.id, 'a1');
+      expect(item.photoCount, 2);
+      expect(item.tags.length, 2);
+      expect(item.tags.map((t) => t.name).toSet(), {'人像', '夏日'});
+    });
+
+    test('watchAlbumsForPhoto 返回包含某照片的相册', () async {
+      await insertTestPhoto(db, id: 'p1');
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册1'));
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a2', name: '相册2'));
+      await db.albumDao.addPhotoToAlbum('a1', 'p1');
+      await db.albumDao.addPhotoToAlbum('a2', 'p1');
+
+      final albums = await db.albumDao.watchAlbumsForPhoto('p1').first;
+      expect(albums.length, 2);
+      expect(albums.map((a) => a.id).toSet(), {'a1', 'a2'});
+    });
+
+    test('watchAlbumsWithTagInfo 在标签变化时重算（C1 回归守护）', () async {
+      await insertTestPhoto(db, id: 'p1');
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(id: 'a1', name: '相册1'));
+      await insertTag('t1', '人像');
+
+      final stream = db.albumDao.watchAlbumsWithTagInfo();
+      // 首次发射：0 标签，0 照片
+      var first = await stream.first;
+      expect(first.first.tags, isEmpty);
+      expect(first.first.photoCount, 0);
+
+      // 给相册打标签 → 流应重算，tags 变 1
+      await db.tagDao.addTagToAlbum('a1', 't1');
+      first = await stream.first;
+      expect(first.first.tags.length, 1);
+
+      // 加照片 → 流应重算，photoCount 变 1
+      await db.albumDao.addPhotoToAlbum('a1', 'p1');
+      first = await stream.first;
+      expect(first.first.photoCount, 1);
+    });
+  });
 }

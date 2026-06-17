@@ -15,7 +15,7 @@ part 'app_database.g.dart';
 
 @DriftDatabase(
   tables: [
-    Photos, Tags, PhotoTags, ColorPins, Albums, AlbumPhotos,
+    Photos, Tags, ColorPins, Albums, AlbumPhotos, AlbumTags,
     ShootingPlans, PlanPhotos, PlanTemplates
   ],
   daos: [PhotoDao, TagDao, ColorPinDao, AlbumDao, PlanDao],
@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 9;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -80,6 +80,24 @@ class AppDatabase extends _$AppDatabase {
           if (from < 8) {
             // v2.0: 照片 EXIF 拍摄参数（单列 JSON，导入时解析回填）
             await m.addColumn(photos, photos.exifJson);
+          }
+          if (from < 9) {
+            // v2.1: 标签体系从「照片」迁移到「相册」
+            // 1) 建相册-标签关联表
+            await m.createTable(albumTags);
+            // 2) 尽力迁移：把「打了标签的照片」所在相册也打上该标签
+            //    （photo_tags ⋈ album_photos，DISTINCT 去重；不在任何相册的照片标签丢弃）
+            //    WHERE EXISTS 标签行：防 photo_tags 中残留孤儿 tag_id（旧数据/手改 DB）
+            //    导致 album_tags.tagId FK 违约中断整个迁移
+            await m.database.customStatement(
+              "INSERT OR IGNORE INTO album_tags (album_id, tag_id) "
+              "SELECT DISTINCT ap.album_id, pt.tag_id "
+              "FROM photo_tags pt "
+              "INNER JOIN album_photos ap ON ap.photo_id = pt.photo_id "
+              "WHERE EXISTS (SELECT 1 FROM tags t WHERE t.id = pt.tag_id)",
+            );
+            // 3) 删除已废弃的照片-标签关联表
+            await m.deleteTable('photo_tags');
           }
         },
       );
