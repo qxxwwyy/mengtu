@@ -3,6 +3,25 @@ allprojects {
         google()
         mavenCentral()
     }
+
+    // tflite_flutter 0.11 间接依赖 org.tensorflow:tensorflow-lite{,-gpu,-api}:2.11.0，
+    // 三者共用 namespace org.tensorflow.lite，触发 AGP 9.x 严格 uniqueManifestNamespace 校验
+    // （该降级 flag android.uniqueManifestNamespaceRequired 在 AGP 9 已被忽略，无法关闭）。
+    // 强制升级到 2.16.1（已正确声明独立 namespace）规避冲突。
+    // 必须放在 allprojects 内，让 :tflite_flutter 插件模块的依赖解析也生效。
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "org.tensorflow") {
+                when (requested.name) {
+                    "tensorflow-lite", "tensorflow-lite-gpu", "tensorflow-lite-api",
+                    "tensorflow-lite-support", "tensorflow-lite-gpu-delegate-plugin" -> {
+                        useVersion("2.16.1")
+                        because("AGP 9 uniqueManifestNamespace: 2.11 三库共用 namespace，2.16 已修复")
+                    }
+                }
+            }
+        }
+    }
 }
 
 val newBuildDir: Directory =
