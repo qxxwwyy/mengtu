@@ -5,11 +5,14 @@
 // 基调判定：基于峰值位置 + 区域占比
 // 跨度判定：基于最值分布范围
 //
+// v3.0：新增数理审美指标（一维信息熵 + RMS 对比度），仍为纯内存计算。
+// 肤色 ROI 指标由 face_service + tone_service.analyzeToneFull 协同计算（Phase 2）。
+//
 // 参考取色卡 tone_analysis.py 的影调分类规则（仅功能设计参考，独立实现）
 import 'dart:math' as math;
 import '../models/tone_result.dart';
 
-/// 从亮度直方图（256 bins）计算影调分析结果
+/// 从亮度直方图（256 bins）计算影调分析结果（纯内存版，不含肤色 ROI）
 ///
 /// [lumHist] 是 Rec.709 亮度直方图，来自 HistogramData.lum
 /// 这是纯内存计算（遍历 256 个 bin），极快，不需要 Isolate
@@ -31,6 +34,8 @@ ToneResult analyzeTone(List<int> lumHist) {
       toneKey: 'mid',
       toneRange: 'short',
       confidence: 0,
+      entropy: 0,
+      rmsContrast: 0,
     );
   }
 
@@ -113,6 +118,11 @@ ToneResult analyzeTone(List<int> lumHist) {
   final toneRange = _classifyToneRange(minVal, maxVal);
   final confidence = _calcConfidence(toneKey, peakCount, total);
 
+  // ============ v3.0 新增：信息熵 + RMS 对比度 ============
+  final entropy = _calculateEntropy(lumHist, total);
+  // RMS 对比度 = 亮度标准差，与 std 同源（保留语义独立字段）
+  final rmsContrast = std;
+
   return ToneResult(
     mean: mean,
     median: median.toDouble(),
@@ -128,6 +138,8 @@ ToneResult analyzeTone(List<int> lumHist) {
     toneKey: toneKey,
     toneRange: toneRange,
     confidence: confidence,
+    entropy: entropy,
+    rmsContrast: rmsContrast,
   );
 }
 
@@ -165,4 +177,77 @@ double _calcConfidence(String toneKey, int peakCount, int total) {
   final peakRatio = peakCount / total;
   // 峰值越集中，置信度越高（0-1）
   return peakRatio.clamp(0.0, 1.0);
+}
+
+/// 一维信息熵（基于亮度直方图概率分布）
+///
+/// E = -Σ p_i · log2(p_i)
+/// 低熵 (<5.2) → 背景纯净；高熵 (>7.3) → 背景杂乱
+double _calculateEntropy(List<int> lumHist, int total) {
+  if (total == 0) return 0.0;
+  double entropy = 0.0;
+  for (var i = 0; i < 256; i++) {
+    final count = lumHist[i];
+    if (count > 0) {
+      final p = count / total;
+      entropy -= p * (math.log(p) / math.ln2);
+    }
+  }
+  return entropy;
+}
+
+// ============ v3.0 色彩空间对齐（Display P3 / Adobe RGB → sRGB 补偿）============
+
+/// Display P3 → sRGB 的 3×3 线性变换矩阵补偿
+///
+/// 用于 RAW 导出的广色域照片：未补偿时肤色 HSL 会被误报为偏黄，
+/// 在 HSL 肤色分析前对像素做此变换，让结果与 sRGB 调色软件一致。
+/// 参考 W3C CSS Color 4 色彩转换数学（chromatic adaptation）。
+List<int> convertP3ToSrgb(int rP3, int gP3, int bP3) {
+  final rNorm = rP3 / 255.0;
+  final gNorm = gP3 / 255.0;
+  final bNorm = bP3 / 255.0;
+
+  // Display P3 → sRGB 变换矩阵（线性化后的精确推导）
+  final rSrgb = 1.2249 * rNorm - 0.2247 * gNorm;
+  final gSrgb = -0.0420 * rNorm + 1.0420 * gNorm;
+  final bSrgb = -0.0197 * rNorm - 0.0786 * gNorm + 1.0983 * bNorm;
+
+  return [
+    (rSrgb * 255.0).round().clamp(0, 255),
+    (gSrgb * 255.0).round().clamp(0, 255),
+    (bSrgb * 255.0).round().clamp(0, 255),
+  ];
+}
+
+/// 计算肤色色相偏差角 ΔH（相对达芬奇肤色线 17°）
+///
+/// 返回 -180~180 的环形最短距离：
+/// - ΔH > +5° → 偏黄绿（蜡黄病态）
+/// - ΔH < -5° → 偏紫红（充血醉酒）
+double skinHueOffset(double avgSkinHue) {
+  const target = 17.0;
+  var diff = avgSkinHue - target;
+  if (diff > 180) diff -= 360;
+  if (diff < -180) diff += 360;
+  return diff;
+}
+
+/// 冷暖比例计算（HSL 色相直方图 360 bins）
+///
+/// 暖色：H∈[0°,60°]∪[300°,360°]；冷色：H∈[150°,250°]
+/// Ratio = warm / cold
+double calculateWarmToColdRatio(List<int> hueHist) {
+  var warmCount = 0;
+  var coldCount = 0;
+  for (var h = 0; h < 360; h++) {
+    final count = hueHist[h];
+    if (h <= 60 || h >= 300) {
+      warmCount += count;
+    } else if (h >= 150 && h <= 250) {
+      coldCount += count;
+    }
+  }
+  if (coldCount == 0) return warmCount.toDouble();
+  return warmCount / coldCount;
 }

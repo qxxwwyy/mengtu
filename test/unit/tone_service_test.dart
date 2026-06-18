@@ -226,6 +226,143 @@ void main() {
       expect(tone.mean, 0);
       expect(tone.confidence, 0);
       expect(tone.toneKey, 'mid');
+      expect(tone.entropy, 0);
+      expect(tone.rmsContrast, 0);
+    });
+  });
+
+  group('analyzeTone 信息熵 (v3.0)', () {
+    test('纯色（单 bin）信息熵为 0（最纯净）', () {
+      final lumHist = List.filled(256, 0);
+      lumHist[128] = 1000;
+      final tone = analyzeTone(lumHist);
+      expect(tone.entropy, 0);
+    });
+
+    test('均匀分布信息熵 = log2(256) = 8', () {
+      final lumHist = List.filled(256, 100);
+      final tone = analyzeTone(lumHist);
+      expect(tone.entropy, closeTo(8, 0.01));
+    });
+
+    test('低熵图片（bin 集中）熵 < 5.2', () {
+      final lumHist = List.filled(256, 0);
+      // 仅几个相邻 bin 有像素
+      for (var i = 100; i <= 110; i++) {
+        lumHist[i] = 100;
+      }
+      final tone = analyzeTone(lumHist);
+      expect(tone.entropy, lessThan(5.2));
+    });
+
+    test('高熵图片（bin 分散）熵 > 7.3', () {
+      final lumHist = List.filled(256, 0);
+      // 大量 bin 各有少量像素
+      for (var i = 0; i < 256; i++) {
+        lumHist[i] = (i * 7) % 50 + 10;
+      }
+      final tone = analyzeTone(lumHist);
+      expect(tone.entropy, greaterThan(7.3));
+    });
+  });
+
+  group('analyzeTone RMS 对比度 (v3.0)', () {
+    test('RMS 对比度 = 标准差', () {
+      final lumHist = List.filled(256, 0);
+      lumHist[0] = 500;
+      lumHist[255] = 500;
+      final tone = analyzeTone(lumHist);
+      expect(tone.rmsContrast, closeTo(tone.std, 0.001));
+      expect(tone.rmsContrast, greaterThan(100));
+    });
+
+    test('纯色图 RMS 对比度为 0', () {
+      final lumHist = List.filled(256, 0);
+      lumHist[100] = 1000;
+      final tone = analyzeTone(lumHist);
+      expect(tone.rmsContrast, closeTo(0, 0.1));
+    });
+  });
+
+  group('肤色色相偏差角 skinHueOffset (v3.0)', () {
+    test('17°（标准肤色）→ 偏差 0', () {
+      expect(skinHueOffset(17.0), closeTo(0, 0.001));
+    });
+
+    test('25°（偏黄绿）→ +8°', () {
+      expect(skinHueOffset(25.0), closeTo(8, 0.001));
+    });
+
+    test('10°（偏紫红）→ -7°', () {
+      expect(skinHueOffset(10.0), closeTo(-7, 0.001));
+    });
+
+    test('环形跨 0 度：350° → -27°（最短路径）', () {
+      // 350 - 17 = 333，超过 180 → 333 - 360 = -27
+      expect(skinHueOffset(350.0), closeTo(-27, 0.001));
+    });
+  });
+
+  group('冷暖比例 calculateWarmToColdRatio (v3.0)', () {
+    test('全暖（H=0~60）→ 返回非零正值（coldCount=0 时返回 warm 数）', () {
+      final hue = List.filled(360, 0);
+      for (var h = 0; h <= 60; h++) {
+        hue[h] = 10;
+      }
+      final ratio = calculateWarmToColdRatio(hue);
+      expect(ratio, greaterThan(0));
+    });
+
+    test('冷暖平衡（每 bin 同计数）→ 比率 = warm_bins / cold_bins ≈ 1.2', () {
+      // 暖色区：h <= 60（61 bins）+ h >= 300（60 bins）= 121 bins
+      // 冷色区：150 <= h <= 250 = 101 bins
+      // 每 bin 计数相同 → 比率 = 121 / 101 ≈ 1.198
+      final hue = List.filled(360, 0);
+      for (var h = 0; h <= 60; h++) {
+        hue[h] = 1;
+      }
+      for (var h = 300; h < 360; h++) {
+        hue[h] = 1;
+      }
+      for (var h = 150; h <= 250; h++) {
+        hue[h] = 1;
+      }
+      final ratio = calculateWarmToColdRatio(hue);
+      expect(ratio, closeTo(121 / 101, 0.01));
+    });
+
+    test('暖色占优（warm 每 bin 是 cold 的 3 倍）→ 比率 ≈ 3 × 1.2', () {
+      // warm 总 = 121 * 3 = 363，cold 总 = 101 * 1 = 101
+      // 比率 = 363/101 ≈ 3.59（比 3 略高，因 warm bins 更多）
+      final hue = List.filled(360, 0);
+      for (var h = 0; h <= 60; h++) {
+        hue[h] = 3;
+      }
+      for (var h = 300; h < 360; h++) {
+        hue[h] = 3;
+      }
+      for (var h = 150; h <= 250; h++) {
+        hue[h] = 1;
+      }
+      final ratio = calculateWarmToColdRatio(hue);
+      // 验证暖色占优（ratio 显著 > 1），具体值取决于 bin 范围
+      expect(ratio, greaterThan(3.0));
+    });
+  });
+
+  group('色彩空间补偿 convertP3ToSrgb (v3.0)', () {
+    test('中灰 (128,128,128) 补偿后接近中灰', () {
+      final srgb = convertP3ToSrgb(128, 128, 128);
+      // 灰阶的 sRGB 补偿后 RGB 接近，差异较小
+      expect((srgb[0] - srgb[1]).abs(), lessThan(10));
+      expect((srgb[1] - srgb[2]).abs(), lessThan(10));
+    });
+
+    test('结果 clamp 在 0~255', () {
+      final srgb1 = convertP3ToSrgb(0, 0, 0);
+      expect(srgb1.every((v) => v >= 0 && v <= 255), isTrue);
+      final srgb2 = convertP3ToSrgb(255, 255, 255);
+      expect(srgb2.every((v) => v >= 0 && v <= 255), isTrue);
     });
   });
 

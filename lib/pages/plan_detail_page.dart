@@ -8,6 +8,7 @@ import '../providers/database_provider.dart';
 import '../services/database/daos/plan_dao.dart';
 import '../services/database/app_database.dart';
 import 'plan_edit_page.dart';
+import 'album_detail_page.dart';
 
 class PlanDetailPage extends ConsumerStatefulWidget {
   final String planId;
@@ -132,6 +133,14 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                 ),
               ],
 
+              // v3.0: 关联样片相册卡片（点击一键跳转浏览）
+              if (plan.associatedAlbumId != null &&
+                  plan.associatedAlbumId!.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _AssociatedAlbumCard(
+                    albumId: plan.associatedAlbumId!),
+              ],
+
               const SizedBox(height: 24),
               // Shot list 完成度
               _SectionTitle(
@@ -254,6 +263,95 @@ class _SectionTitle extends StatelessWidget {
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
           ],
         ],
+      ),
+    );
+  }
+}
+
+/// v3.0: 策划详情页的关联样片相册卡片
+///
+/// 显示关联相册名 + 照片数，点击一键跳转相册详情，
+/// 方便在拍摄现场滑动大图向模特演示 Pose / 光影，
+/// 后期可做实拍 / 参考同屏对比。
+class _AssociatedAlbumCard extends ConsumerWidget {
+  final String albumId;
+
+  const _AssociatedAlbumCard({required this.albumId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final db = ref.read(appDatabaseProvider);
+    final theme = Theme.of(context);
+    return Card(
+      elevation: 0,
+      color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => AlbumDetailPage(albumId: albumId),
+            ),
+          );
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: FutureBuilder<Album?>(
+            future: db.albumDao.getAlbumById(albumId),
+            builder: (ctx, snap) {
+              // 相册可能已被删除（FK setNull 把 associated_album_id 置空，
+              // 但已加载的 plan 缓存仍是旧 id）→ 提示并隐藏
+              final album = snap.data;
+              if (snap.connectionState != ConnectionState.done) {
+                return Row(
+                  children: [
+                    Icon(Icons.photo_album_outlined,
+                        color: theme.colorScheme.primary, size: 20),
+                    const SizedBox(width: 8),
+                    const Text('加载关联相册...'),
+                  ],
+                );
+              }
+              if (album == null) {
+                return Row(
+                  children: [
+                    Icon(Icons.link_off,
+                        color: theme.colorScheme.error, size: 20),
+                    const SizedBox(width: 8),
+                    const Expanded(
+                        child: Text('关联相册已删除',
+                            style: TextStyle(fontSize: 12))),
+                  ],
+                );
+              }
+              return Row(
+                children: [
+                  Icon(Icons.photo_album_outlined,
+                      color: theme.colorScheme.primary, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text('关联样片相册',
+                            style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                                letterSpacing: 0.5)),
+                        Text(album.name,
+                            style: const TextStyle(
+                                fontSize: 14, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                  const Icon(Icons.chevron_right,
+                      color: Colors.grey, size: 20),
+                ],
+              );
+            },
+          ),
+        ),
       ),
     );
   }

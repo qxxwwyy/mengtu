@@ -7,7 +7,7 @@ import '../tables.dart';
 part 'album_dao.g.dart';
 
 /// 相册 DAO
-@DriftAccessor(tables: [Albums, AlbumPhotos, AlbumTags, Photos, Tags])
+@DriftAccessor(tables: [Albums, AlbumPhotos, AlbumTags, Photos, Tags, ShootingPlans])
 class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
   AlbumDao(super.db);
 
@@ -56,6 +56,11 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
       await (delete(albumTags)
             ..where((at) => at.albumId.equals(albumId)))
           .go();
+      // v3.0: 清除策划单的 associated_album_id（FK setNull 由本事务显式执行，
+      // 与 v2.1 现有级联模式一致 —— DAO 自管级联，不依赖 PRAGMA foreign_keys）
+      await (update(shootingPlans)
+            ..where((sp) => sp.associatedAlbumId.equals(albumId)))
+          .write(const ShootingPlansCompanion(associatedAlbumId: Value(null)));
       // 再删除相册
       return (delete(albums)..where((a) => a.id.equals(albumId))).go();
     });

@@ -26,6 +26,7 @@ import 'color_card.dart';
 import 'harmony_card.dart';
 import 'histogram_painter.dart';
 import 'tone_info_card.dart';
+import 'tone_guide_card.dart';
 
 /// 详情页底部统一面板
 ///
@@ -39,12 +40,14 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
   final bool showClipping;
   final bool isColorPickMode;
   final bool hasComposition;
+  final bool showFocusPeaking;
 
   // 工具回调
   final VoidCallback onBlackWhiteToggle;
   final VoidCallback onClippingToggle;
   final VoidCallback onCompositionToggle;
   final VoidCallback onColorPickToggle;
+  final VoidCallback onFocusPeakingToggle;
 
   /// 展开/收起变化回调（父组件可借此在收起时让图片获得更多空间）
   final ValueChanged<bool>? onExpandChanged;
@@ -60,10 +63,12 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
     required this.showClipping,
     required this.isColorPickMode,
     required this.hasComposition,
+    required this.showFocusPeaking,
     required this.onBlackWhiteToggle,
     required this.onClippingToggle,
     required this.onCompositionToggle,
     required this.onColorPickToggle,
+    required this.onFocusPeakingToggle,
     this.onExpandChanged,
     this.forceCollapsed = false,
   });
@@ -159,6 +164,12 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
             label: '构图',
             isActive: widget.hasComposition,
             onTap: widget.onCompositionToggle,
+          ),
+          _ToolButton(
+            icon: Icons.center_focus_strong_outlined,
+            label: '对焦',
+            isActive: widget.showFocusPeaking,
+            onTap: widget.onFocusPeakingToggle,
           ),
           _ToolButton(
             icon: Icons.colorize_outlined,
@@ -344,6 +355,10 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('计算失败: $e'),
       data: (hist) {
+        // 影调分析复用直方图亮度数据，与直方图共享缓存生命周期
+        final toneAsync = ref.watch(toneProvider(widget.photoId));
+        // v3.0：肤色分析（BlazeFace ROI）独立异步，不阻塞直方图渲染
+        final skinAsync = ref.watch(skinProvider(widget.photoId));
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -361,6 +376,20 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
                         : null,
                   ),
                   child: Container(),
+                ),
+              ),
+              // v3.0: 信息熵 + RMS 对比度 + 肤色 → 调色指引
+              // 嵌入直方图下方，复用同一缓存（不重新读图）
+              toneAsync.when(
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+                data: (tone) => ToneGuideCard(
+                  tone: tone,
+                  showSkin: true,
+                  skin: skinAsync.maybeWhen(
+                    data: (s) => s,
+                    orElse: () => null,
+                  ),
                 ),
               ),
             ],
@@ -504,10 +533,35 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
 
   Widget _buildToneTab() {
     final toneAsync = ref.watch(toneProvider(widget.photoId));
+    // v3.0：肤色分析独立异步，ToneGuideCard 按需展示
+    final skinAsync = ref.watch(skinProvider(widget.photoId));
     return toneAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('影调分析失败: $e'),
-      data: (tone) => ToneInfoCard(tone: tone),
+      data: (tone) => SingleChildScrollView(
+        // 嵌套滚动容器：ToneInfoCard（明度分区 + 统计指标）+ 调色指引卡片
+        // ToneInfoCard 自身不再包含 SingleChildScrollView，统一由本层滚动
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ToneInfoCard(tone: tone),
+            // v3.0: 影调调色指引（信息熵 + RMS + 肤色 4 维度）
+            // 单独 horizontal padding（与 ToneInfoCard 的 12px 对齐）
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ToneGuideCard(
+                tone: tone,
+                showSkin: true,
+                skin: skinAsync.maybeWhen(
+                  data: (s) => s,
+                  orElse: () => null,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

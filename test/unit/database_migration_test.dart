@@ -1,12 +1,14 @@
 // database_migration_test.dart — 数据库 schema 与迁移测试
 //
 // 验证 v6 schema 完整性 + fileHash 唯一索引（防 S3 重复导入回归）
+// v3.0 新增：v10 schema 验证 shooting_plans.associated_album_id 列存在
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/services/database/app_database.dart';
 import '../helpers/test_helpers.dart';
 
 void main() {
-  group('数据库 schema v9 完整性', () {
+  group('数据库 schema v10 完整性', () {
     test('onCreate 创建所有 6 张表', () async {
       final db = createTestDatabase();
       addTearDown(db.close);
@@ -35,6 +37,31 @@ void main() {
       expect(photoTagsResult, isEmpty, reason: 'photo_tags 表应已移除');
     });
 
+    test('v10: shooting_plans 表含 associated_album_id 列', () async {
+      final db = createTestDatabase();
+      addTearDown(db.close);
+
+      final cols = await db.customSelect(
+        'PRAGMA table_info(shooting_plans)',
+      ).get();
+      final colNames = cols.map((r) => r.read<String>('name')).toSet();
+      expect(colNames, contains('associated_album_id'));
+    });
+
+    test('v10: shooting_plans.associated_album_id 默认可空（NULL）', () async {
+      final db = createTestDatabase();
+      addTearDown(db.close);
+
+      // 插入一个不指定关联相册的策划，应成功且 associated_album_id 为 NULL
+      await db.planDao.insertPlan(ShootingPlansCompanion.insert(
+        id: 'p1',
+        title: '测试策划',
+      ));
+      final plan = await db.planDao.getPlanById('p1');
+      expect(plan, isNotNull);
+      expect(plan!.associatedAlbumId, isNull);
+    });
+
     test('v6 迁移创建 fileHash 唯一索引', () async {
       final db = createTestDatabase();
       addTearDown(db.close);
@@ -45,6 +72,50 @@ void main() {
       ).get();
       final indexNames = indexes.map((r) => r.read<String>('name')).toSet();
       expect(indexNames, contains('photos_file_hash_unique'));
+    });
+  });
+
+  group('v10 策划关联相册 FK 级联', () {
+    test('删除相册时 associated_album_id 自动置空（setNull）', () async {
+      final db = createTestDatabase();
+      addTearDown(db.close);
+
+      // 建相册
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(
+        id: 'a1', name: '测试相册'));
+      // 建策划关联到该相册
+      await db.planDao.insertPlan(ShootingPlansCompanion.insert(
+        id: 'p1',
+        title: '测试策划',
+        associatedAlbumId: const Value('a1'),
+      ));
+      // 验证关联已建立
+      var plan = await db.planDao.getPlanById('p1');
+      expect(plan!.associatedAlbumId, 'a1');
+
+      // 删除相册（FK setNull 应把 associated_album_id 置空，不阻断）
+      await db.albumDao.deleteAlbum('a1');
+      // 验证策划的 associated_album_id 已自动置空，策划本身保留
+      plan = await db.planDao.getPlanById('p1');
+      expect(plan, isNotNull);
+      expect(plan!.associatedAlbumId, isNull);
+    });
+
+    test('关联的相册可直接查询相册对象', () async {
+      final db = createTestDatabase();
+      addTearDown(db.close);
+
+      await db.albumDao.insertAlbum(AlbumsCompanion.insert(
+        id: 'a1', name: '灵感样片'));
+      await db.planDao.insertPlan(ShootingPlansCompanion.insert(
+        id: 'p1',
+        title: '测试策划',
+        associatedAlbumId: const Value('a1'),
+      ));
+      final plan = await db.planDao.getPlanById('p1');
+      final album = await db.albumDao.getAlbumById(plan!.associatedAlbumId!);
+      expect(album, isNotNull);
+      expect(album!.name, '灵感样片');
     });
   });
 

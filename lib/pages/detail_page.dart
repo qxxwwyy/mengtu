@@ -13,12 +13,14 @@ import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/clipping_provider.dart';
 import '../providers/exif_provider.dart' show colorPinsProvider;
+import '../providers/sharpness_provider.dart';
 import '../services/database/app_database.dart';
 import 'compare_page.dart';
 import '../widgets/detail_bottom_panel.dart';
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
+import '../widgets/sharpness_overlay.dart';
 import '../services/pixel_picker_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/color_utils.dart';
@@ -36,6 +38,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   final _imageKey = GlobalKey();
   bool _isBlackWhite = false;
   bool _showClipping = false;
+  bool _showFocusPeaking = false; // v3.0: 峰值对焦蒙层
   CompositionMode _compositionMode = CompositionMode.none;
   double _contrast = 0; // -100 ~ +100
   double _exposure = 0; // -2.0 ~ +2.0 EV
@@ -201,6 +204,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   showClipping: _showClipping,
                   isColorPickMode: _colorPickMode,
                   hasComposition: _compositionMode != CompositionMode.none,
+                  showFocusPeaking: _showFocusPeaking,
                   // 取色模式强制收起（避免 TabBarView 与取色放大镜/pin 标记重叠争夺空间）
                   forceCollapsed: _colorPickMode,
                   onBlackWhiteToggle: () =>
@@ -213,6 +217,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                         (modes.indexOf(_compositionMode) + 1) % modes.length;
                     _compositionMode = modes[nextIndex];
                   }),
+                  onFocusPeakingToggle: () =>
+                      setState(() => _showFocusPeaking = !_showFocusPeaking),
                   onColorPickToggle: () =>
                       setState(() => _colorPickMode = !_colorPickMode),
                 ),
@@ -229,110 +235,125 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     final clippingAsync = _showClipping
         ? ref.watch(clippingProvider(widget.photoId))
         : null;
+    final sharpAsync = _showFocusPeaking
+        ? ref.watch(sharpnessProvider(widget.photoId))
+        : null;
 
-    Widget viewer = InteractiveViewer(
-      minScale: 0.5,
-      maxScale: 4.0,
-      child: Center(
-        child: Image.file(
-          key: _imageKey,
-          File(filePath),
-          fit: BoxFit.contain,
-          cacheWidth:
-              (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
-          errorBuilder: (_, error, ___) => const Center(
-            child: Icon(Icons.broken_image, color: DetailColors.textSecondary, size: 64),
-          ),
-        ),
+    // 基础 Image（始终挂在 _imageKey 上，用于坐标计算）
+    // 注：_imageKey 只挂这一处（gotcha #29），避免条件分支让两个 Image 同时引用同一 GlobalKey。
+    final imageWidget = Image.file(
+      key: _imageKey,
+      File(filePath),
+      fit: BoxFit.contain,
+      cacheWidth:
+          (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
+      errorBuilder: (_, error, ___) => const Center(
+        child: Icon(Icons.broken_image,
+            color: DetailColors.textSecondary, size: 64),
       ),
     );
 
-    // 黑白滤镜 + 对比度/曝光
+    // 黑白滤镜 + 对比度/曝光（包在 Image 外，仍受 InteractiveViewer 变换）
+    Widget imageWithFilters = imageWidget;
     if (_isBlackWhite) {
-      final matrix = _buildAdjustmentMatrix();
-      viewer = ColorFiltered(
-        colorFilter: ColorFilter.matrix(matrix),
-        child: viewer,
+      imageWithFilters = ColorFiltered(
+        colorFilter: ColorFilter.matrix(_buildAdjustmentMatrix()),
+        child: imageWithFilters,
       );
     }
 
-    // Clipping overlay
-    if (_showClipping && clippingAsync != null) {
-      viewer = Stack(
+    // 像素物理属性蒙层（clipping / 峰值对焦）必须放在 InteractiveViewer 内部，
+    // 与 Image 共享缩放/平移变换，否则放大检查对焦/溢出时斑点会错位（review 漏洞）
+    final imageStackChildren = <Widget>[
+      Center(child: imageWithFilters),
+      if (_showClipping && clippingAsync != null)
+        clippingAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (result) => ClippingOverlay(result: result),
+        ),
+      if (_showFocusPeaking && sharpAsync != null)
+        sharpAsync.when(
+          loading: () => const SizedBox.shrink(),
+          error: (_, __) => const SizedBox.shrink(),
+          data: (map) => SharpnessOverlay(map: map),
+        ),
+    ];
+
+    // 取色点标记也放在 InteractiveViewer 内部（共享变换，位置始终正确）
+    // 注：仅在非取色模式分支由本 InteractiveViewer 渲染；
+    // 取色模式分支单独构建一个带 pins 的 InteractiveViewer（见下方 if 块）。
+    if (!_colorPickMode) {
+      // 常规模式：单一 InteractiveViewer 包 Image + clipping + sharpness
+      return Stack(
         children: [
-          viewer,
-          clippingAsync.when(
-            loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
-            data: (result) => ClippingOverlay(result: result),
+          InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Stack(
+              alignment: Alignment.center,
+              children: imageStackChildren,
+            ),
           ),
+          // 构图参考线：屏幕坐标系（三分线/黄金分割不随缩放），保持外层
+          if (_compositionMode != CompositionMode.none)
+            IgnorePointer(
+              child: CompositionOverlay(mode: _compositionMode),
+            ),
         ],
       );
     }
 
-    // 构图参考线
-    if (_compositionMode != CompositionMode.none) {
-      viewer = Stack(
+    // 取色模式：pins 标记和 Image 都放在 InteractiveViewer 内部的 Stack，
+    // 共享 InteractiveViewer 的缩放/平移变换。手势 GestureDetector 放外层（globalPosition 取色）。
+    final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
+    return GestureDetector(
+      onLongPressStart: _handleColorPickStart,
+      onLongPressMoveUpdate: _handleColorPickUpdate,
+      onLongPressEnd: _handleColorPickEnd,
+      child: Stack(
         children: [
-          viewer,
-          CompositionOverlay(mode: _compositionMode),
-        ],
-      );
-    }
-
-    // 取色模式：添加手势检测和取色点标记
-    if (_colorPickMode) {
-      // 取色标记从 DB 唯一数据源读取
-      final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
-
-      // 关键：pins 标记和 Image 都放在 InteractiveViewer 内部的 Stack，
-      // 这样它们共享 InteractiveViewer 的缩放/平移变换，pin 位置始终正确。
-      // 手势 GestureDetector 放外层（用 globalPosition 取色）。
-      viewer = GestureDetector(
-        onLongPressStart: _handleColorPickStart,
-        onLongPressMoveUpdate: _handleColorPickUpdate,
-        onLongPressEnd: _handleColorPickEnd,
-        child: Stack(
-          children: [
-            // InteractiveViewer 包裹 Image + pins（共享变换坐标系）
-            InteractiveViewer(
-              minScale: 0.5,
-              maxScale: 4.0,
-              child: Stack(
-                children: [
-                  // Image（保留原 viewer 的非取色增强：黑白/clipping/构图）
-                  Center(child: viewer),
-                  // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
-                  pinsAsync.when(
-                    loading: () => const SizedBox.shrink(),
-                    error: (_, __) => const SizedBox.shrink(),
-                    data: (pins) => _buildPinMarkers(pins, photo),
-                  ),
-                ],
+          InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                // 复用 imageStackChildren（含 Image + clipping + sharpness）
+                ...imageStackChildren,
+                // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
+                pinsAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (pins) => _buildPinMarkers(pins, photo),
+                ),
+              ],
+            ),
+          ),
+          // 构图参考线：屏幕坐标系，保持外层
+          if (_compositionMode != CompositionMode.none)
+            IgnorePointer(
+              child: CompositionOverlay(mode: _compositionMode),
+            ),
+          // 放大镜（不随缩放，始终跟随手指）
+          if (_currentPick != null && _loupePosition != null)
+            ColorPickerLoupe(
+              result: _currentPick!,
+              position: _loupePosition!,
+            ),
+          // 像素信息面板
+          if (_currentPick != null)
+            Positioned(
+              bottom: 8,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: PixelInfoPanel(pixel: _currentPick!.pixel),
               ),
             ),
-            // 放大镜（不随缩放，始终跟随手指）
-            if (_currentPick != null && _loupePosition != null)
-              ColorPickerLoupe(
-                result: _currentPick!,
-                position: _loupePosition!,
-              ),
-            // 像素信息面板
-            if (_currentPick != null)
-              Positioned(
-                bottom: 8,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: PixelInfoPanel(pixel: _currentPick!.pixel),
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-
-    return viewer;
+        ],
+      ),
+    );
   }
 
   /// 构建取色点标记列表（局部坐标，基于 Image 的 RenderBox size）

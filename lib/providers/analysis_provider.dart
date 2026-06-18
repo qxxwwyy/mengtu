@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/histogram_service.dart';
 import '../services/palette_service.dart';
 import '../services/tone_service.dart';
+import '../services/face_service.dart';
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
 import 'database_provider.dart';
@@ -86,11 +87,40 @@ final toneProvider =
 
   // 读缓存
   final cached = ToneResult.fromJsonString(photo.toneJson);
-  if (cached != null) return cached;
+  if (cached != null) {
+    // v3.0：旧缓存可能缺 skin 数据（来自 Phase 1 的 toneJson）。
+    // skinProvider 独立异步补算，toneProvider 不阻塞 UI。
+    return cached;
+  }
 
   // 复用直方图亮度数据计算影调
   final hist = await ref.watch(histogramProvider(photoId).future);
   final tone = analyzeTone(hist.lum);
   await db.photoDao.updateToneCache(photoId, tone.toJsonString());
   return tone;
+});
+
+/// v3.0：已解压的 BlazeFace 模型文件路径
+///
+/// 在 app 启动或首次需要人脸检测时调用 [ensureModelExtracted]。
+/// 返回 null 表示 asset 缺失 / 平台不支持 → skinProvider 降级。
+final modelPathProvider = FutureProvider<String?>((ref) async {
+  return ensureModelExtracted();
+});
+
+/// v3.0：人脸肤色分析（BlazeFace ROI 提取）
+///
+/// 独立于 [toneProvider]，避免阻塞直方图/影调 Tab 的快速渲染。
+/// 无脸检测或模型加载失败时返回 [SkinAnalysis.empty]。
+///
+/// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
+/// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
+/// 用户是否打开了详情页（非全量预计算），缓存策略见 import_service。
+final skinProvider =
+    FutureProvider.family<SkinAnalysis, String>((ref, photoId) async {
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
+  if (photo == null) throw Exception('Photo not found');
+  final modelPath = await ref.watch(modelPathProvider.future);
+  if (modelPath == null) return const SkinAnalysis();
+  return analyzeSkinTone(photo.filePath, modelPath: modelPath);
 });

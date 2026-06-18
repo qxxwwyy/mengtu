@@ -26,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 9;
+  int get schemaVersion => 10;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -98,6 +98,11 @@ class AppDatabase extends _$AppDatabase {
             );
             // 3) 删除已废弃的照片-标签关联表
             await m.deleteTable('photo_tags');
+          }
+          if (from < 10) {
+            // v3.0: 拍摄策划关联样片相册（associatedAlbumId，nullable + onDelete setNull）
+            // 新增列为 nullable，对已存在的旧策划行无影响（默认 NULL）
+            await m.addColumn(shootingPlans, shootingPlans.associatedAlbumId);
           }
         },
       );

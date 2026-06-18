@@ -61,6 +61,70 @@ class HistogramData {
   }
 }
 
+/// 人像肤色分析结果（v3.0 新增）
+///
+/// 当 [ToneService.analyzeTone] 完整版计算（含 ROI）时填充；
+/// 当无脸检测、或仅基于直方图的纯内存计算时为 null。
+/// 序列化到 toneJson 后，旧缓存缺这些字段 → null（不触发重算，由 Phase 2 按需补算）。
+class SkinAnalysis {
+  /// 肤色色相偏差角 ΔH（相对 17° 达芬奇肤色线，-180~180）
+  final double? hueOffset;
+
+  /// 肤色平均饱和度（百分比 0~100）
+  final double? saturation;
+
+  /// 肤色-背景明度隔离度 SLS（百分比，皮肤 L − 背景 L）
+  final double? luminanceSeparation;
+
+  /// 肤色-背景色彩隔离度 SCS（色相环形最短距离，0~180）
+  final double? colorSeparation;
+
+  /// 肤色平均明度（百分比 0~100）
+  final double? skinLuminance;
+
+  /// 背景平均明度（百分比 0~100）
+  final double? bgLuminance;
+
+  const SkinAnalysis({
+    this.hueOffset,
+    this.saturation,
+    this.luminanceSeparation,
+    this.colorSeparation,
+    this.skinLuminance,
+    this.bgLuminance,
+  });
+
+  bool get isEmpty =>
+      hueOffset == null &&
+      saturation == null &&
+      luminanceSeparation == null &&
+      colorSeparation == null;
+
+  Map<String, dynamic> toJson() => {
+        if (hueOffset != null) 'hueOffset': hueOffset,
+        if (saturation != null) 'saturation': saturation,
+        if (luminanceSeparation != null)
+          'luminanceSeparation': luminanceSeparation,
+        if (colorSeparation != null) 'colorSeparation': colorSeparation,
+        if (skinLuminance != null) 'skinLuminance': skinLuminance,
+        if (bgLuminance != null) 'bgLuminance': bgLuminance,
+      };
+
+  factory SkinAnalysis.fromJson(Map<String, dynamic>? j) {
+    if (j == null) return const SkinAnalysis();
+    double? numOrNull(Object? v) =>
+        v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
+    return SkinAnalysis(
+      hueOffset: numOrNull(j['hueOffset']),
+      saturation: numOrNull(j['saturation']),
+      luminanceSeparation: numOrNull(j['luminanceSeparation']),
+      colorSeparation: numOrNull(j['colorSeparation']),
+      skinLuminance: numOrNull(j['skinLuminance']),
+      bgLuminance: numOrNull(j['bgLuminance']),
+    );
+  }
+}
+
 /// 影调分析结果
 class ToneResult {
   final double mean;
@@ -78,6 +142,20 @@ class ToneResult {
   final String toneRange; // long/medium/short
   final double confidence;
 
+  // ============ v3.0 新增：数理审美指标 ============
+
+  /// 一维信息熵（基于亮度直方图概率分布）
+  /// 低熵 (<5.2) → 背景纯净；高熵 (>7.3) → 背景杂乱
+  final double entropy;
+
+  /// RMS 对比度（亮度标准差，0~255 区间）
+  /// 与 [std] 同源，独立字段保留语义清晰（避免 UI 层混淆）
+  final double rmsContrast;
+
+  /// 肤色分析（无脸检测或纯直方图计算时为 [SkinAnalysis.empty]）
+  /// 序列化到 toneJson，旧缓存不含 → null skin，由 Phase 2 按需补算
+  final SkinAnalysis skin;
+
   ToneResult({
     required this.mean,
     required this.median,
@@ -93,7 +171,17 @@ class ToneResult {
     required this.toneKey,
     required this.toneRange,
     required this.confidence,
+    this.entropy = 0,
+    this.rmsContrast = 0,
+    this.skin = const SkinAnalysis(),
   });
+
+  // 便捷访问肤色字段（null 安全）
+  double? get skinHueOffset => skin.hueOffset;
+  double? get skinSat => skin.saturation;
+  double? get sls => skin.luminanceSeparation;
+  double? get scs => skin.colorSeparation;
+  bool get hasSkin => !skin.isEmpty;
 
   String get toneKeyLabel {
     switch (toneKey) {
@@ -133,6 +221,10 @@ class ToneResult {
         'toneKey': toneKey,
         'toneRange': toneRange,
         'confidence': confidence,
+        // v3.0 新增字段（旧缓存缺这些 → fromJson 抛错 → 触发重算）
+        'entropy': entropy,
+        'rmsContrast': rmsContrast,
+        'skin': skin.toJson(),
       };
 
   factory ToneResult.fromJson(Map<String, dynamic> j) => ToneResult(
@@ -152,6 +244,11 @@ class ToneResult {
         toneKey: j['toneKey'] as String,
         toneRange: j['toneRange'] as String,
         confidence: (j['confidence'] as num).toDouble(),
+        // v3.0 新字段：旧缓存缺 entropy/rmsContrast → 强转抛错 → 触发重算
+        // skin 字段缺则解析为空（不强制重算，等 Phase 2 按需补算）
+        entropy: (j['entropy'] as num).toDouble(),
+        rmsContrast: (j['rmsContrast'] as num).toDouble(),
+        skin: SkinAnalysis.fromJson(j['skin'] as Map<String, dynamic>?),
       );
 
   String toJsonString() => jsonEncode(toJson());

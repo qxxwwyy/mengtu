@@ -46,6 +46,10 @@
 - ✅ v2.0 详情页统一底部面板重构（融合 Quick Dock + AnalysisPanel 为单一组件 + 黑白入口去重 + 顶栏更多菜单归位低频功能 + 信息 Tab）
 - ✅ v2.0 开源前最终复核（17 项修复：相册点击/取色报错/FK级联崩溃/批量计数清零/分析刷新链/色相标记联动/Tab索引保留/统计刷新/版本号统一/LIKE escape/版本号单一数据源 app_info.dart）
 - ✅ v2.1 相册系统重构 + 标签迁移到相册（PhotoTags→AlbumTags，schemaVersion v8→v9 + 尽力迁移 photo_tags→album_tags + 相册列表顶栏标签chips筛选 + 富信息卡片聚合查询消除N+1 + 相册详情顶部标签编辑面板 + 作品库去标签化改为按文件名搜索 + 详情页信息Tab「所属相册」+ album_provider.dart 集中相册provider修跨页耦合）
+- ✅ v3.0 数理审美调色指引（ToneResult 新增 entropy/rmsContrast + SkinAnalysis 4 维度 + tone_service 信息熵/RMS/冷暖比/P3补偿公式 + ToneGuideCard 纯文字指引卡片嵌入直方图/影调 Tab）
+- ✅ v3.0 策划关联样片相册（ShootingPlans.associatedAlbumId，schemaVersion v9→v10 + FK setNull + deleteAlbum 事务内显式清关联 + PlanEditPage 下拉选择器 + PlanDetailPage 跳转卡片）
+- ✅ v3.0 BlazeFace 离线人脸 ROI（tflite_flutter 0.11 + face_detection_short_range.tflite 229KB + face_service Isolate 推理 + NMS + 主脸面积最大 + ROI 内缩 20% + SLS/SCS 隔离度 + 手动覆盖通路）
+- ✅ v3.0 峰值对焦蒙层（sharpness_service 拉普拉斯边缘响应 240×160 降采样 + Variance of Laplacian 全局锐度评分 + SharpnessOverlay CustomPainter + BlendMode.screen 发光叠加 + 详情页「对焦」工具按钮）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -96,6 +100,7 @@ flutter test
 | crypto | ^3.0.7 | SHA256 哈希 |
 | reorderable_grid_view | ^2.2.8 | 相册照片拖拽排序 |
 | shared_preferences | ^2.5.5 | 主题模式持久化 |
+| tflite_flutter | ^0.11.0 | v3.0 离线人脸检测（BlazeFace TFLite 推理，FFI 插件）|
 
 dev_dependencies: drift_dev, riverpod_generator, build_runner, flutter_lints
 
@@ -136,7 +141,7 @@ mengtu/
 │   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=9）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=10）
 │   │   │   ├── tables.dart          # 表定义（9张表，见下）
 │   │   │   └── daos/
 │   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + watchPhotosByName(按文件名搜索) + 缓存更新 + 清缩略图 + updateExifCache
@@ -148,11 +153,13 @@ mengtu/
 │   │   ├── import_service.dart      # 导入去重+缩略图+EXIF解析+删除+regenerateThumbnail+readExifForExistingPhoto
 │   │   ├── exif_service.dart        # EXIF 解析纯函数（extractExifJson，Isolate 内调用）
 │   │   ├── histogram_service.dart   # 直方图计算（Isolate）
-│   │   ├── tone_service.dart        # 影调分析（5区域 + 合并段基调判定）
+│   │   ├── tone_service.dart        # 影调分析（5区域 + 合并段基调 + 信息熵 + RMS对比度 + 冷暖比 + P3补偿）
 │   │   ├── palette_service.dart     # 色卡提取
 │   │   ├── clipping_service.dart    # 高光/阴影溢出警告（动态step）
 │   │   ├── harmony_service.dart     # 配色和谐度（6种HarmonyType）
-│   │   └── pixel_picker_service.dart # 取色器像素拾取
+│   │   ├── pixel_picker_service.dart # 取色器像素拾取
+│   │   ├── face_service.dart        # v3.0 BlazeFace 人脸 ROI + 肤色 HSL 统计（Isolate 推理）
+│   │   └── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
 │   │   ├── home_page.dart           # 作品库（瀑布流+按文件名搜索+长按多选[加入相册/删除]+静默导入）v2.1去标签化
@@ -168,23 +175,26 @@ mengtu/
 │   │   └── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层；v2.1移除快速标签按钮）
-│   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行 + 展开 TabBarView：信息/直方图/色卡/影调/和谐/取色）
+│   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行[黑白/溢出/构图/对焦/取色] + 展开 TabBarView：信息/直方图/色卡/影调/和谐/取色）
 │   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
+│   │   ├── tone_guide_card.dart     # v3.0 数理审美调色指引（信息熵/RMS/肤色4维度纯文字卡片）
 │   │   ├── color_card.dart          # 色卡展示
 │   │   ├── harmony_card.dart        # 配色和谐度
 │   │   ├── color_wheel.dart         # 色轮
 │   │   ├── color_picker_loupe.dart  # 取色放大镜 + ColorPinMarker
 │   │   ├── clipping_overlay.dart    # 溢出警告蒙层
+│   │   ├── sharpness_overlay.dart   # v3.0 峰值对焦蒙层（拉普拉斯响应 CustomPainter + BlendMode.screen 发光）
 │   │   └── composition_overlay.dart # 构图辅助线
 │   ├── providers/
 │   │   ├── database_provider.dart   # AppDatabase + ImportService 单例
 │   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序 + photosByNameSearchProvider
 │   │   ├── tag_provider.dart        # 标签流 + TagActions（v2.1 相册作用域：addTagToAlbum/removeTagFromAlbum）
 │   │   ├── album_provider.dart      # 相册流（v2.1 集中：albumsProvider/albumsWithTagsProvider/albumPhotosProvider/albumTagsProvider/albumsByTagProvider/photoAlbumsProvider + albumTagFilterProvider）
-│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存
+│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（BlazeFace 肤色 ROI）+ modelPathProvider
 │   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
+│   │   ├── sharpness_provider.dart  # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源，按需计算不缓存）
 │   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
@@ -211,22 +221,19 @@ mengtu/
 │   └── helpers/test_helpers.dart    # 测试工具（图片生成、内存DB、ProviderContainer、fixture builder）
 ├── .github/workflows/build.yml      # CI: build_runner → analyze → test → release APK
 ├── AGENTS.md                        # 本文件
-├── DESIGN.md                        # v2.0 产品迭代规划
-├── REVIEW.md                        # 代码审查报告（gitignore，不入库）
-├── CHANGELOG.md                     # 版本变更记录
 ├── LICENSE                          # MIT + 第三方依赖致谢
 ├── README.md                        # 项目说明
 └── pubspec.yaml                     # version: 1.2.0+1
 ```
 
-**数据库表（9 张，schemaVersion=9）：**
+**数据库表（9 张，schemaVersion=10）：**
 - `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引
 - `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）。v2.1 起标签是相册的子系统，全局定义、可复用
 - `AlbumTags` — 相册-标签多对多（v2.1 替代原 PhotoTags，标签从照片迁移到相册）
 - `ColorPins` — 取色点（v4）
 - `Albums` — 相册（name + description + coverPhotoId）
 - `AlbumPhotos` — 相册-照片多对多（含 sortOrder）
-- `ShootingPlans` — 拍摄策划（v7，标题/风格/器材/shot list/状态）
+- `ShootingPlans` — 拍摄策划（v7，标题/风格/器材/shot list/状态 + v10 associatedAlbumId 关联样片相册，FK setNull）
 - `PlanPhotos` — 策划-照片关联（区分 reference/result 角色）
 - `PlanTemplates` — 策划模板（内置 3 个：人像外拍/街拍/静物）
 
@@ -381,6 +388,11 @@ CI 流程（`.github/workflows/build.yml`）：
 36. **版本号单一数据源** — profile 曾写 `v2.0.0`、settings 写 `v1.2.0`、pubspec 是 `1.2.0+1`，三处不一致。统一引用 `lib/utils/app_info.dart`（`appVersion`/`appVersionLabel`），改版本时只改 app_info.dart + pubspec.yaml 两处
 37. **Async 错误兜底要 PlatformDispatcher.onError** — `FlutterError.onError` 只覆盖框架错误（build/layout/paint），纯 Dart 异步错误（Isolate 抛出、未 await 的 Future）不被捕获。需额外设 `PlatformDispatcher.instance.onError`（返回 true 表示已处理）。ErrorWidget 兜底页要包 `Directionality`，否则 MaterialApp 之上报错时 Text 渲染失败
 38. **标签体系从照片迁移到相册的尽力迁移（v2.1）** — 标签改为相册的子系统后，旧 `photo_tags` 数据需在 v9 migration 内尽力迁移：`INSERT INTO album_tags SELECT DISTINCT ap.album_id, pt.tag_id FROM photo_tags JOIN album_photos ON photo_id`，再 `deleteTable('photo_tags')`。**注意**：不属于任何相册的照片标签会被丢弃（照片已无标签归属）；`searchQueryProvider` 原同时驱动「搜索框」和「作品库标签chips筛选」，标签下线后 chips 删除，搜索框改喂 `watchPhotosByName`（按文件名）。`albumsWithTagsProvider` 聚合查询消除原 `_AlbumCard` 每张卡 2 个 FutureBuilder 的 N+1 问题
+39. **ToneResult v3.0 字段强制重算策略** — 新增 `entropy`/`rmsContrast`/`skin` 后，`ToneResult.fromJson` 对 entropy/rmsContrast 用 `(j[key] as num).toDouble()` 强转（**不加默认值**）。旧 toneJson 缺这些键 → 抛 TypeError → 被 `fromJsonString` 的 try/catch 捕获返回 null → `toneProvider` 自动重算并回写。**唯独 `skin` 用 `SkinAnalysis.fromJson(j['skin'] as Map?)` 容错**：因为肤色数据依赖 BlazeFace 人脸检测（非全量预计算），旧缓存只缺 skin 不应触发重算（会陷入"无脸→空 skin→重算→还是空"死循环）。skin 由 `skinProvider` 独立异步补算
+40. **drift FK setNull 在测试内存库不生效** — drift 的 `references(..., onDelete: KeyAction.setNull)` 依赖 `PRAGMA foreign_keys=ON`，但 `createTestDatabase()` 用的 `NativeDatabase.memory()` 未启用该 pragma（生产 `_open()` 才开）。因此 v10 的 `ShootingPlans.associatedAlbumId` FK setNull **在测试中不会自动触发**。遵循现有 v2.1 模式：`deleteAlbum` 事务内显式 `update(shootingPlans)..where(associatedAlbumId.equals(albumId)).write(Value(null))`，DAO 自管级联不依赖 pragma。同时 `AlbumDao` 注解的 tables 列表必须包含 `ShootingPlans`，否则 `shootingPlans` 标识符在 DAO 内不可见
+41. **TFLite 模型在 Isolate 内只能从文件加载** — `tflite_flutter` 的 `Interpreter.fromAsset` 内部用 `rootBundle`，但 `rootBundle` 是 platform channel，**在 Isolate 内不可用**。正确流程：主线程 `ensureModelExtracted()` 把 asset 拷贝到 `getTemporaryDirectory()/tflite_models/`，把**文件路径**传给 Isolate，Isolate 内 `Interpreter.fromFile()`。`face_service.dart` 的 `_FaceAnalysisArgs.modelPath` 因此是文件路径而非 asset key
+42. **冷暖色相区间的 bin 计数不对称** — `calculateWarmToColdRatio` 暖色区 `h<=60 || h>=300`（121 bins），冷色区 `150<=h<=250`（101 bins）。即使每 bin 计数相同，比率也是 121/101 ≈ 1.2 而非 1.0。测试断言要用 `closeTo(121/101, 0.01)` 而非 `closeTo(1.0, ...)`
+43. **ToneInfoCard 不自带滚动容器** — v3.0 重构后 `ToneInfoCard` 去掉了内部 `SingleChildScrollView`（避免与 `_buildToneTab` 外层 `SingleChildScrollView` 嵌套产生 ScrollController 异常）。Widget 测试需手动包 `SingleChildScrollView` 模拟真实使用场景，否则内容溢出 576px 测试视口
 
 ## 许可证合规
 

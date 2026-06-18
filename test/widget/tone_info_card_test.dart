@@ -2,10 +2,18 @@
 //
 // 注：ToneInfoCard 是纯 UI 组件，可直接测试。
 // ColorCard / DetailBottomPanel 依赖 DB provider，需要完整数据库 mock，在 flutter_test 中有 timer/async 问题。
+// v3.0：ToneInfoCard 自身不含滚动容器（由 detail_bottom_panel 外层滚动），
+// 测试中需包 SingleChildScrollView 模拟真实使用场景，避免布局溢出。
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/widgets/tone_info_card.dart';
 import 'package:mengtu/models/tone_result.dart';
+
+Widget _wrap(Widget child) => MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(child: child),
+      ),
+    );
 
 void main() {
   group('ToneInfoCard 渲染', () {
@@ -38,11 +46,7 @@ void main() {
 
     testWidgets('渲染基调标签', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(tone: buildTone(toneKey: 'high')),
-          ),
-        ),
+        _wrap(ToneInfoCard(tone: buildTone(toneKey: 'high'))),
       );
 
       expect(find.text('高调'), findsOneWidget);
@@ -50,11 +54,7 @@ void main() {
 
     testWidgets('渲染五区域占比条', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(tone: buildTone()),
-          ),
-        ),
+        _wrap(ToneInfoCard(tone: buildTone())),
       );
 
       expect(find.text('黑色'), findsOneWidget);
@@ -64,11 +64,7 @@ void main() {
 
     testWidgets('渲染统计指标', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(tone: buildTone()),
-          ),
-        ),
+        _wrap(ToneInfoCard(tone: buildTone())),
       );
 
       expect(find.text('均值'), findsOneWidget);
@@ -81,11 +77,7 @@ void main() {
 
     testWidgets('低调标签渲染', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(tone: buildTone(toneKey: 'low')),
-          ),
-        ),
+        _wrap(ToneInfoCard(tone: buildTone(toneKey: 'low'))),
       );
 
       expect(find.text('低调'), findsOneWidget);
@@ -93,11 +85,7 @@ void main() {
 
     testWidgets('全长调标签渲染', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(tone: buildTone(toneKey: 'full')),
-          ),
-        ),
+        _wrap(ToneInfoCard(tone: buildTone(toneKey: 'full'))),
       );
 
       expect(find.text('全长调'), findsOneWidget);
@@ -105,12 +93,8 @@ void main() {
 
     testWidgets('跨度标签渲染', (tester) async {
       await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: ToneInfoCard(
-                tone: buildTone(toneKey: 'mid', toneRange: 'short')),
-          ),
-        ),
+        _wrap(ToneInfoCard(
+            tone: buildTone(toneKey: 'mid', toneRange: 'short'))),
       );
 
       expect(find.textContaining('短跨度'), findsOneWidget);

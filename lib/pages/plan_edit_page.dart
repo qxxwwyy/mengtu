@@ -28,6 +28,11 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
   bool _loading = true;
   bool _isEdit = false;
 
+  // v3.0: 关联样片相册
+  // null = 未关联；用 List<Album> 缓存供下拉选择，避免每次展开都查 DB
+  String? _associatedAlbumId;
+  List<Album> _albums = [];
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +41,17 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
       _loadPlan();
     } else {
       _loading = false;
+      _loadAlbums();
+    }
+  }
+
+  Future<void> _loadAlbums() async {
+    final db = ref.read(appDatabaseProvider);
+    final albums = await db.albumDao.getAllAlbums();
+    if (mounted) {
+      setState(() {
+        _albums = albums;
+      });
     }
   }
 
@@ -57,9 +73,12 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
     _locationCtrl.text = plan.location;
     _plannedDate = plan.plannedDate;
     _status = plan.status;
+    _associatedAlbumId = plan.associatedAlbumId;
     _shotList = db.planDao.parseShotList(plan.shotList);
     _gearList = db.planDao.parseGearList(plan.gearList);
     setState(() => _loading = false);
+    // 异步加载相册列表（不阻塞页面显示）
+    _loadAlbums();
   }
 
   @override
@@ -90,6 +109,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
         location: Value(_locationCtrl.text.trim()),
         plannedDate: Value(_plannedDate),
         status: Value(_status),
+        associatedAlbumId: Value(_associatedAlbumId),
         gearList: Value(db.planDao.encodeGearList(_gearList)),
         shotList: Value(db.planDao.encodeShotList(_shotList)),
         updatedAt: Value(now),
@@ -103,6 +123,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
         location: Value(_locationCtrl.text.trim()),
         plannedDate: Value(_plannedDate),
         status: Value(_status),
+        associatedAlbumId: Value(_associatedAlbumId),
         gearList: Value(db.planDao.encodeGearList(_gearList)),
         shotList: Value(db.planDao.encodeShotList(_shotList)),
       ));
@@ -113,6 +134,54 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
         SnackBar(content: Text(_isEdit ? '策划已更新' : '策划已创建')),
       );
     }
+  }
+
+  /// v3.0: 关联样片相册选择器
+  /// 在拍摄现场可一键跳转浏览灵感样片；后期可做实拍/参考对比。
+  Widget _buildAlbumSelector() {
+    final theme = Theme.of(context);
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: '关联样片相册',
+        hintText: '可选：拍摄现场参考灵感样片',
+        border: const OutlineInputBorder(),
+        prefixIcon: const Icon(Icons.photo_album_outlined),
+        suffixIcon: _associatedAlbumId != null
+            ? IconButton(
+                icon: const Icon(Icons.clear, size: 20),
+                tooltip: '取消关联',
+                onPressed: () =>
+                    setState(() {
+                  _associatedAlbumId = null;
+                }),
+              )
+            : null,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String?>(
+          value: _associatedAlbumId,
+          isExpanded: true,
+          isDense: true,
+          hint: const Text('选择相册...'),
+          items: [
+            const DropdownMenuItem<String?>(
+              value: null,
+              child: Text('不关联相册',
+                  style: TextStyle(color: Colors.grey)),
+            ),
+            ..._albums.map((album) => DropdownMenuItem<String?>(
+                  value: album.id,
+                  child: Text(album.name,
+                      overflow: TextOverflow.ellipsis),
+                )),
+          ],
+          onChanged: (value) => setState(() {
+            _associatedAlbumId = value;
+          }),
+          dropdownColor: theme.colorScheme.surface,
+        ),
+      ),
+    );
   }
 
   @override
@@ -165,6 +234,9 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
               border: OutlineInputBorder(),
             ),
           ),
+          const SizedBox(height: 12),
+          // v3.0: 关联样片相册（拍摄现场可一键跳转灵感样片）
+          _buildAlbumSelector(),
           const SizedBox(height: 12),
           // 日期选择
           ListTile(

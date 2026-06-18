@@ -120,6 +120,11 @@ class ShootingPlans extends Table {
       text().nullable()(); // 来源模板 ID（可复用）
   TextColumn get coverPhotoId =>
       text().nullable()(); // 封面照片（逻辑关联，无外键约束）
+  // v3.0 新增：关联样片相册（拍摄现场可一键跳转浏览灵感样片）
+  // nullable + onDelete: setNull —— 用户删除相册时关联字段自动置空，不阻断删除
+  TextColumn get associatedAlbumId => text()
+      .nullable()
+      .references(Albums, #id, onDelete: KeyAction.setNull)();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
 

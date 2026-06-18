@@ -43,6 +43,9 @@ dependencies:
   reorderable_grid_view: ^2.2.8
   shared_preferences: ^2.5.5
 
+  # v3.0: 离线人脸检测（BlazeFace TFLite 模型）—— 人像肤色 ROI 提取
+  tflite_flutter: ^0.11.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -56,3 +59,8 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # v3.0: BlazeFace 离线人脸检测模型（short_range 主用，full_range 远距离备份）
+  assets:
+    - assets/models/face_detection_short_range.tflite
+    - assets/models/face_detection_full_range_sparse.tflite
