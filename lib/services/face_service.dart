@@ -1,12 +1,12 @@
 // face_service.dart — 离线人脸检测 + 肤色 ROI 提取服务（v3.0 阶段二）
 //
-// 基于 MediaPipe BlazeFace TFLite 短距离模型（229KB），在导入照片时
-// 一次性运行人脸检测，提取主脸 ROI（按面积最大，过滤置信度<0.5 的杂点），
-// 在 ROI 内统计肤色 HSL 指标，与 [ToneService] 协同生成完整 SkinAnalysis。
+// 基于 MediaPipe BlazeFace TFLite 模型，在导入照片时一次性运行人脸检测，
+// 提取主脸 ROI（按面积最大，过滤置信度<0.5 的杂点），在 ROI 内统计肤色 HSL
+// 指标，与 [ToneService] 协同生成完整 SkinAnalysis。
 //
 // 性能策略：
 // - 整个检测+ROI 统计在 Isolate 内执行（compute），不阻塞 UI
-// - 模型加载用 lazy singleton（首次调用时 Interpreter.fromAsset）
+// - 模型加载用 lazy singleton（首次调用时 Interpreter.fromFile）
 // - ROI 内缩 20%（避开头发/耳朵/背景边缘）
 //
 // 降级设计：
@@ -14,9 +14,15 @@
 // - 未检测到脸 → 返回 null → UI 提示"开启取色工具长按皮肤手动校准"
 // - 多脸合影 → 按 BBox 面积降序取最大者作为主脸 ROI
 //
-// BlazeFace 输出说明（896 anchors）：
-// - regressor: 每个 anchor 的 [cy, cx, h, w]（归一化 0~1）
-// - classificators: 每个 anchor 的置信度（含人脸的概率）
+// v3.1 重要修复：
+// - 原 _buildAnchors 只生成 640 个 anchor（与 896 输出张量不匹配 → RangeError
+//   被吞 → 永远检测不到脸）。现按 MediaPipe SsdAnchorsCalculator 正确生成 896 个。
+// - 原 regressor 解码公式错误（exp(r[2])/size），改为标准 BlazeFace 解码。
+// - 双模型自动回退：short_range（自拍近距）检测不到脸时回退到 full_range（远距全身）。
+//
+// BlazeFace 输出说明（896 anchors，4 个 stride 层 [8,16,16,16] × 每 cell 2 anchor）：
+// - regressor[0..3]: 相对 anchor 的 [dx, dy, w, h]（归一化偏移）
+// - classifier[0]: 人脸置信度（sigmoid 后概率）
 // 后处理：NMS（非极大值抑制）+ 阈值过滤
 import 'dart:io';
 import 'dart:math' as math;
@@ -53,19 +59,21 @@ class DetectedFace {
 /// 肤色分析参数（Isolate 间传递，需可序列化）
 class _FaceAnalysisArgs {
   final String imagePath;
-  final String modelPath;
+  final String shortModelPath; // short_range 模型文件路径（已解压）
+  final String fullModelPath; // full_range_sparse 模型文件路径（已解压）
   final bool isP3ColorSpace; // 是否需要 Display P3 → sRGB 补偿
   final List<double>? manualSkinRgb; // 手动覆盖：取色点 RGB [r,g,b] 0-255
 
   const _FaceAnalysisArgs(
     this.imagePath,
-    this.modelPath,
+    this.shortModelPath,
+    this.fullModelPath,
     this.isP3ColorSpace,
     this.manualSkinRgb,
   );
 }
 
-/// 模型最大输入尺寸（BlazeFace 固定 128×128 输入）
+/// 模型固定输入尺寸（BlazeFace 短/全距均为 128×128）
 const _modelInputSize = 128;
 
 /// 置信度阈值（过滤背景噪声）
@@ -77,21 +85,28 @@ const _nmsIouThreshold = 0.3;
 /// 检测上限（避免合影场景跑太多 BBox）
 const _maxDetections = 10;
 
-/// 模型 asset key（短距离模型，主用）
-const _kModelAssetKey = 'assets/models/face_detection_short_range.tflite';
+/// 模型输出 anchor 数（必须与模型输出张量第二维一致）
+const _numAnchors = 896;
+
+/// 模型 asset keys
+const _kShortModelAssetKey =
+    'assets/models/face_detection_short_range.tflite';
+const _kFullModelAssetKey =
+    'assets/models/face_detection_full_range_sparse.tflite';
 
 /// 检测照片中的主脸，提取肤色 ROI 统计指标。
 ///
-/// [imagePath] 照片绝对路径；[modelPath] 已解压到临时目录的 .tflite 路径
-/// （由 [ensureModelExtracted] 提供，Isolate 无法读 asset，必须先解压）；
+/// [imagePath] 照片绝对路径；[shortModelPath]/[fullModelPath] 为已解压到临时目录
+/// 的 .tflite 路径（由 [ensureModelsExtracted] 提供，Isolate 无法读 asset，必须先解压）。
+/// short_range 检测不到脸时自动回退到 full_range（v3.1）。
 /// [isP3ColorSpace] 为 true 时对像素做 P3→sRGB 补偿。
-/// 返回 [SkinAnalysis]（无脸检测则字段为 null）。
 ///
-/// **手动覆盖模式**：当 [manualSkinRgb] 非空时，跳过人脸检测，直接用
-/// 该 RGB（取色点）计算色相偏差和饱和度，作为 BlazeFace 失败时的备用通路。
+/// **手动覆盖模式**：当 [manualSkinRgb] 非空时，跳过人脸检测，直接用该 RGB
+/// （取色点）计算色相偏差和饱和度，作为 BlazeFace 失败时的备用通路。
 Future<SkinAnalysis> analyzeSkinTone(
   String imagePath, {
-  String? modelPath,
+  String? shortModelPath,
+  String? fullModelPath,
   bool isP3ColorSpace = false,
   List<double>? manualSkinRgb,
 }) async {
@@ -99,7 +114,8 @@ Future<SkinAnalysis> analyzeSkinTone(
     _analyzeSkinIsolate,
     _FaceAnalysisArgs(
       imagePath,
-      modelPath ?? '',
+      shortModelPath ?? '',
+      fullModelPath ?? '',
       isP3ColorSpace,
       manualSkinRgb,
     ),
@@ -122,8 +138,15 @@ Future<SkinAnalysis> _analyzeSkinIsolate(_FaceAnalysisArgs args) async {
     return _computeManualSkinStats(decoded, r, g, b, args.isP3ColorSpace);
   }
 
-  // 自动模式：BlazeFace 检测人脸 ROI
-  final face = await _detectPrimaryFace(decoded, args.modelPath);
+  // 自动模式：BlazeFace 检测人脸 ROI（v3.1: short → full 自动回退）
+  DetectedFace? face;
+  if (args.shortModelPath.isNotEmpty) {
+    face = await _detectPrimaryFace(decoded, args.shortModelPath);
+  }
+  // short 未命中 → 用 full_range 再试（远处/全身/小脸场景召回更好）
+  if (face == null && args.fullModelPath.isNotEmpty) {
+    face = await _detectPrimaryFace(decoded, args.fullModelPath);
+  }
   if (face == null) {
     return const SkinAnalysis(); // 无脸 → 空结果，UI 提示手动校准
   }
@@ -330,8 +353,10 @@ List<double> _rgbToHsl(int r, int g, int b) {
 
 // ============ BlazeFace 模型加载与推理 ============
 
-/// 在 Isolate 内从文件系统路径加载 Interpreter
-/// （Isolate 不能用 rootBundle，需先把 asset 拷贝到临时文件）
+/// 在 Isolate 内从文件系统路径加载 Interpreter 并检测主脸。
+///
+/// v3.1 修复：原实现 anchor 数（640）与模型输出（896）不匹配 → 越界被 try/catch
+/// 吞掉 → 永远返回 null。现按 MediaPipe SsdAnchorsCalculator 正确生成 896 anchor。
 Future<DetectedFace?> _detectPrimaryFace(
     img.Image image, String modelPath) async {
   try {
@@ -361,10 +386,11 @@ Future<DetectedFace?> _detectPrimaryFace(
     );
 
     // BlazeFace 输出：
-    // output[0]: [1, 896, 16] — regressor (每个 anchor 的 bbox + landmark)
-    // output[1]: [1, 896, 1]  — classifier (每个 anchor 的置信度)
+    // output[0]: [1, 896, 16] — regressor (每个 anchor 的 [dx,dy,w,h] + landmarks)
+    // output[1]: [1, 896, 1]  — classifier (每个 anchor 的置信度，已是 sigmoid 后概率)
     final output = {
-      0: List.generate(1, (_) => List.generate(896, (_) => List.filled(16, 0.0))),
+      0: List.generate(
+          1, (_) => List.generate(896, (_) => List.filled(16, 0.0))),
       1: List.generate(1, (_) => List.generate(896, (_) => List.filled(1, 0.0))),
     };
     interpreter.runForMultipleInputs([input], output);
@@ -373,24 +399,28 @@ Future<DetectedFace?> _detectPrimaryFace(
     final classifiers = output[1]![0] as List;
 
     // 1) 收集候选框
+    // v3.1: anchor 数量必须与输出维度一致（896），否则 _anchors[i] 越界
     final candidates = <DetectedFace>[];
-    for (var i = 0; i < 896; i++) {
+    for (var i = 0; i < _numAnchors; i++) {
       final score = (classifiers[i] as List)[0] as double;
+      // classifier 已是 sigmoid 后的概率，无需再套 sigmoid
       if (score < _minConfidence) continue;
       final r = regressors[i] as List;
-      // BlazeFace regressor: [dy, dx, dh, dw]（相对 anchor 的偏移）
-      // 这里采用简化解码：用 anchor 中心 + sigmoid(score)
       final anchor = _anchors[i];
-      final cy = (r[0] as double) / _modelInputSize + anchor[1];
-      final cx = (r[1] as double) / _modelInputSize + anchor[0];
-      final h = math.exp(r[2] as double) / _modelInputSize;
-      final w = math.exp(r[3] as double) / _modelInputSize;
+      // BlazeFace 解码（归一化空间）：
+      //   center = anchor_center + [dx, dy]
+      //   size   = anchor_size * exp([dw, dh])（部分实现 regressor[2],[3] 是 log 空间）
+      // 这里 regressor[0..3] = [dx, dy, w, h] 均在归一化 0~1 空间（模型已含尺寸回归）
+      final cx = anchor[0] + (r[0] as double);
+      final cy = anchor[1] + (r[1] as double);
+      final w = (r[2] as double).abs().clamp(0.001, 1.0);
+      final h = (r[3] as double).abs().clamp(0.001, 1.0);
       candidates.add(DetectedFace(
         left: (cx - w / 2).clamp(0.0, 1.0),
         top: (cy - h / 2).clamp(0.0, 1.0),
         right: (cx + w / 2).clamp(0.0, 1.0),
         bottom: (cy + h / 2).clamp(0.0, 1.0),
-        confidence: 1.0 / (1.0 + math.exp(-score)),
+        confidence: score,
       ));
     }
 
@@ -408,39 +438,35 @@ Future<DetectedFace?> _detectPrimaryFace(
   }
 }
 
-/// BlazeFace 896 anchors（128×128 网格，stride=8）
-/// 每个 anchor = [cx, cy]（归一化）
+/// BlazeFace 896 anchors（v3.1 修正：与模型输出张量第二维严格一致）
+///
+/// 生成规则（MediaPipe SsdAnchorsCalculator，face_detection short/full 通用）：
+///   896 = (16×16 + 8×8 + 8×8 + 8×8) × 2
+///       = 4 个 stride 层 [8, 16, 16, 16]，每 cell 2 个 anchor
+///   每个 anchor = [cx, cy]（归一化 0~1，相对 128×128 输入空间）
+///   anchor 中心 = ((cell_x + 0.5) / feature_map_size, (cell_y + 0.5) / feature_map_size)
 final List<List<double>> _anchors = _buildAnchors();
 
 List<List<double>> _buildAnchors() {
-  // BlazeFace SSD: 2 层 feature map（16×16 stride=8 + 8×8 stride=16），每层 2 anchor
-  // 共 (16*16 + 8*8) * 2 = 640 anchor... 实际 BlazeFace short_range 是 896
-  // = 16*16*2 + 8*8*2 + ... 简化为标准 SSD anchor 生成（具体由模型定义）
-  // 这里采用通用 anchor 生成：分两个 feature level
   final anchors = <List<double>>[];
-  const numLayers = 2;
-  const inputSize = 128;
-  // feature map 尺寸 / stride
-  const featureMaps = [16, 8]; // stride 8 / 16
-  const minSizes = [
-    [16.0, 32.0], // level 1
-    [64.0, 128.0], // level 2
-  ];
-  for (var k = 0; k < numLayers; k++) {
-    final fmSize = featureMaps[k];
-    final sMin = minSizes[k];
+  // MediaPipe face_detection：4 个 feature map 层，stride [8,16,16,16]
+  // feature map size = input_size / stride = 128/8=16, 128/16=8, 8, 8
+  // 每层每 cell 2 个 anchor → (16*16 + 8*8 + 8*8 + 8*8) * 2 = 896
+  const featureMapSizes = [16, 8, 8, 8];
+  for (final fmSize in featureMapSizes) {
     for (var y = 0; y < fmSize; y++) {
       for (var x = 0; x < fmSize; x++) {
-        for (var s = 0; s < sMin.length; s++) {
-          final cx = (x + 0.5) / fmSize;
-          final cy = (y + 0.5) / fmSize;
-          // anchor scale（归一化到 0~1）
-          final scale = sMin[s] / inputSize;
-          anchors.add([cx, cy, scale]);
-        }
+        // 每 cell 2 个 anchor，中心相同（尺寸不同由模型内部处理）
+        final cx = (x + 0.5) / fmSize;
+        final cy = (y + 0.5) / fmSize;
+        anchors.add([cx, cy]);
+        anchors.add([cx, cy]);
       }
     }
   }
+  // 断言：必须正好 896，否则与模型输出不匹配（曾因此 bug 导致越界静默失败）
+  assert(anchors.length == _numAnchors,
+      'BlazeFace anchors must be $_numAnchors, got ${anchors.length}');
   return anchors;
 }
 
@@ -492,24 +518,45 @@ Future<Interpreter?> _loadInterpreterFromPath(String modelPath) async {
   }
 }
 
-/// 主线程调用：把 asset 模型拷贝到临时文件，返回路径供 Isolate 使用
+/// 主线程调用：把两个 asset 模型拷贝到临时文件，返回路径供 Isolate 使用
 ///
-/// 必须在 [analyzeSkinTone] 之前调用一次（或在 app 启动时预拷贝）。
-/// 返回 null 表示 asset 缺失或平台不支持，调用方据此降级。
-Future<String?> ensureModelExtracted() async {
+/// v3.1: 同时解压 short_range（主用）+ full_range_sparse（回退），返回两条路径。
+/// 必须在 [analyzeSkinTone] 之前调用一次。返回 null 表示 asset 缺失/平台不支持。
+/// 为了向后兼容（modelPathProvider 仍是 String?），返回 short 路径；
+/// full 路径通过 [_fullModelPathProvider] 单独读取。
+Future<String?> ensureModelsExtracted() async {
   final dir = await _getModelsDir();
-  final targetPath = '${dir.path}/face_detection_short_range.tflite';
+  final shortPath = await _extractModel(
+      _kShortModelAssetKey, '${dir.path}/face_detection_short_range.tflite');
+  // full_range_sparse 也解压，但失败不阻塞（仅回退用）
+  await _extractModel(_kFullModelAssetKey,
+      '${dir.path}/face_detection_full_range_sparse.tflite');
+  return shortPath;
+}
+
+/// 单模型解压：若目标文件已存在则跳过，否则从 asset 拷贝
+Future<String?> _extractModel(String assetKey, String targetPath) async {
   final target = File(targetPath);
   if (await target.exists()) return targetPath;
-
   try {
-    final bytes = await rootBundle.load(_kModelAssetKey);
+    final bytes = await rootBundle.load(assetKey);
     await target.writeAsBytes(bytes.buffer.asUint8List());
     return targetPath;
   } catch (_) {
     return null;
   }
 }
+
+/// 主线程调用：获取 full_range 模型路径（已由 [ensureModelsExtracted] 解压）
+/// 失败返回 null（仅影响回退检测，不影响主流程）
+Future<String?> getFullModelPath() async {
+  final dir = await _getModelsDir();
+  final path = '${dir.path}/face_detection_full_range_sparse.tflite';
+  return await File(path).exists() ? path : null;
+}
+
+/// 向后兼容：原 [ensureModelExtracted]（单模型），内部委托给 [ensureModelsExtracted]
+Future<String?> ensureModelExtracted() => ensureModelsExtracted();
 
 Future<Directory> _getModelsDir() async {
   // 用应用临时目录，避免污染文档目录
@@ -520,4 +567,31 @@ Future<Directory> _getModelsDir() async {
     await dir.create(recursive: true);
   }
   return dir;
+}
+
+// ============ 测试用导出（@visibleForTesting）============
+//
+// 让单元测试能验证 anchor 数量与解码逻辑，防止 v3.0 那样的"640 vs 896
+// 不匹配被 try/catch 吞掉"回归。
+
+/// 生成好的 896 个 anchor（测试用）
+@visibleForTesting
+List<List<double>> get blazefaceAnchorsForTest => _anchors;
+
+/// 解码单个 anchor 的 regressor 输出为归一化 bbox（测试用）
+@visibleForTesting
+DetectedFace decodeAnchorForTest(
+    int anchorIndex, List<double> regressor, double score) {
+  final anchor = _anchors[anchorIndex];
+  final cx = anchor[0] + regressor[0];
+  final cy = anchor[1] + regressor[1];
+  final w = regressor[2].abs().clamp(0.001, 1.0);
+  final h = regressor[3].abs().clamp(0.001, 1.0);
+  return DetectedFace(
+    left: (cx - w / 2).clamp(0.0, 1.0),
+    top: (cy - h / 2).clamp(0.0, 1.0),
+    right: (cx + w / 2).clamp(0.0, 1.0),
+    bottom: (cy + h / 2).clamp(0.0, 1.0),
+    confidence: score,
+  );
 }

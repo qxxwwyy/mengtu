@@ -23,6 +23,8 @@ import 'package:image/image.dart' as img;
 class SharpnessMap {
   /// 边缘强度矩阵（0~1，已归一化），行优先
   /// 长度 = rows * cols
+  ///
+  /// v3.1：保留字段供向后兼容，但 UI 已改为数据读数（不再画蒙层）。
   final List<double> response;
 
   /// 矩阵列数（宽）
@@ -38,12 +40,23 @@ class SharpnessMap {
   /// 低于阈值可提示"可能跑焦"
   final double overallScore;
 
+  /// v3.1：主体（图像中心区域）锐度评分。
+  /// 数值越大表示主体（人像脸/身）越清晰合焦。
+  final double foregroundScore;
+
+  /// v3.1：背景（图像边缘区域）锐度评分。
+  /// 数值越大表示背景越清晰（虚化不足）；
+  /// 与 foregroundScore 的差距越大 → 主体越突出（典型糖水人像）。
+  final double backgroundScore;
+
   const SharpnessMap({
     required this.response,
     required this.cols,
     required this.rows,
     required this.aspectRatio,
     required this.overallScore,
+    this.foregroundScore = 0,
+    this.backgroundScore = 0,
   });
 
   /// 获取指定位置的强度（带边界检查）
@@ -63,10 +76,11 @@ class _SharpnessArgs {
 /// 计算照片的锐度地图（Isolate 中执行）
 ///
 /// [imagePath] 照片绝对路径
-/// [targetWidth] 降采样目标宽度（默认 240，对应高度按比例 ~160）
+/// [targetWidth] 降采样目标宽度（v3.1 默认 480，提高数据读数精度；
+///   原 240 蒙层已被移除，无需为蒙层绘制妥协分辨率）
 Future<SharpnessMap> computeSharpness(
   String imagePath, {
-  int targetWidth = 240,
+  int targetWidth = 480,
 }) {
   return compute(
     _computeSharpnessIsolate,
@@ -74,7 +88,7 @@ Future<SharpnessMap> computeSharpness(
   );
 }
 
-/// Isolate 入口：解码 → 降采样 → Laplacian 卷积 → 归一化
+/// Isolate 入口：解码 → 降采样 → Laplacian 卷积 → 归一化 → 主体/背景评分
 SharpnessMap _computeSharpnessIsolate(_SharpnessArgs args) {
   final bytes = File(args.imagePath).readAsBytesSync();
   final decoded = img.decodeImage(bytes);
@@ -117,25 +131,10 @@ SharpnessMap _computeSharpnessIsolate(_SharpnessArgs args) {
     }
   }
 
-  // 3) 全局锐度评分：拉普拉斯响应的方差（Variance of Laplacian）
-  // 数值越大 = 越多边缘细节 = 越清晰
-  var sum = 0.0;
-  var count = 0;
-  for (var i = 0; i < response.length; i++) {
-    if (response[i] > 0) {
-      sum += response[i];
-      count++;
-    }
-  }
-  final mean = count > 0 ? sum / count : 0.0;
-  var varSum = 0.0;
-  for (var i = 0; i < response.length; i++) {
-    if (response[i] > 0) {
-      final d = response[i] - mean;
-      varSum += d * d;
-    }
-  }
-  final variance = count > 0 ? varSum / count : 0.0;
+  // 3) 锐度评分：拉普拉斯响应的方差（Variance of Laplacian）
+  //    v3.1：分全图 / 主体（中心 50%）/ 背景（边缘）三组统计
+  final (overallScore, foregroundScore, backgroundScore) =
+      _scoreRegions(response, dstW, dstH);
 
   // 4) 归一化响应到 0~1（用 99 分位数防极端值拉伸）
   final sorted = List<double>.from(response.where((v) => v > 0))..sort();
@@ -150,6 +149,57 @@ SharpnessMap _computeSharpnessIsolate(_SharpnessArgs args) {
     cols: dstW,
     rows: dstH,
     aspectRatio: srcW / srcH,
-    overallScore: variance,
+    overallScore: overallScore,
+    foregroundScore: foregroundScore,
+    backgroundScore: backgroundScore,
   );
+}
+
+/// 分区域计算拉普拉斯方差（Variance of Laplacian）
+///
+/// - 主体区域 = 图像中心 50% 宽 × 50% 高（典型人像脸/身所在区域）
+/// - 背景区域 = 主体区域外的四周边缘
+/// - 返回 (整体, 主体, 背景) 三组方差值
+(double, double, double) _scoreRegions(
+    List<double> response, int w, int h) {
+  // 主体区域边界（中心 50%）
+  final fgXMin = (w * 0.25).round();
+  final fgXMax = (w * 0.75).round();
+  final fgYMin = (h * 0.25).round();
+  final fgYMax = (h * 0.75).round();
+
+  double varOf(List<double> vals) {
+    if (vals.isEmpty) return 0;
+    var sum = 0.0;
+    for (final v in vals) {
+      sum += v;
+    }
+    final mean = sum / vals.length;
+    var varSum = 0.0;
+    for (final v in vals) {
+      final d = v - mean;
+      varSum += d * d;
+    }
+    return varSum / vals.length;
+  }
+
+  final fgVals = <double>[];
+  final bgVals = <double>[];
+  for (var y = 1; y < h - 1; y++) {
+    for (var x = 1; x < w - 1; x++) {
+      final v = response[y * w + x];
+      if (v <= 0) continue; // 边缘跳过
+      if (x >= fgXMin && x < fgXMax && y >= fgYMin && y < fgYMax) {
+        fgVals.add(v);
+      } else {
+        bgVals.add(v);
+      }
+    }
+  }
+
+  final overall = varOf(
+      [for (var i = 0; i < response.length; i++) if (response[i] > 0) response[i]]);
+  final fg = varOf(fgVals);
+  final bg = varOf(bgVals);
+  return (overall, fg, bg);
 }

@@ -11,16 +11,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
+import '../providers/analysis_provider.dart' show manualSkinSelectionProvider;
 import '../providers/clipping_provider.dart';
 import '../providers/exif_provider.dart' show colorPinsProvider;
-import '../providers/sharpness_provider.dart';
 import '../services/database/app_database.dart';
 import 'compare_page.dart';
 import '../widgets/detail_bottom_panel.dart';
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
-import '../widgets/sharpness_overlay.dart';
 import '../services/pixel_picker_service.dart';
 import '../theme/app_theme.dart';
 import '../utils/color_utils.dart';
@@ -42,37 +41,55 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   CompositionMode _compositionMode = CompositionMode.none;
   double _contrast = 0; // -100 ~ +100
   double _exposure = 0; // -2.0 ~ +2.0 EV
-  
+
   // 取色模式状态（取色标记直接从 DB 读取，不维护内存列表）
   bool _colorPickMode = false;
   ColorPickResult? _currentPick;
   Offset? _loupePosition;
-  // 正在进行中的取色 future：onEnd 时 await 它，避免手指抬起早于
-  // _pickColorAt 的 async 完成（compute 解码）而静默丢弃取色点。
-  Future<ColorPickResult?>? _pendingPick;
+  // v3.1: 会话级解码缓存，拖动期间纯内存取色（修原"每次 Isolate 解码全图"卡顿）
+  ColorPickerSession? _pickerSession;
+  bool _pickerLoading = false;
+  // v3.1: 取色节流（限制到 ~30fps），避免高频 move 事件堆叠 setState
+  DateTime? _lastPickAt;
+  // 缓存当前照片尺寸，session.pick 时无需再 await provider
+  int _sessionImgW = 0;
+  int _sessionImgH = 0;
+
+  @override
+  void dispose() {
+    // v3.1: 释放取色会话 + 清空全局手动肤色校准（避免泄漏到下一张照片）
+    _pickerSession?.dispose();
+    // manualSkinSelectionProvider 是全局 Notifier，离开详情页必须清空
+    // （ref 在 dispose 后不可用，需在 super.dispose 之前访问）
+    ref.read(manualSkinSelectionProvider.notifier).clear();
+    super.dispose();
+  }
 
   /// 处理取色手势 — 使用 globalPosition 与 _calculateImageDisplayRect 统一坐标系
   void _handleColorPickStart(LongPressStartDetails details) {
-    if (!_colorPickMode) return;
-    setState(() {
-      _loupePosition = details.localPosition;
-    });
-    _pendingPick = _pickColorAt(details.globalPosition);
+    if (!_colorPickMode || _pickerSession == null) return;
+    _lastPickAt = null;
+    _pickColorAtSync(details.globalPosition, details.localPosition);
   }
 
   void _handleColorPickUpdate(LongPressMoveUpdateDetails details) {
-    if (!_colorPickMode) return;
-    setState(() {
-      _loupePosition = details.localPosition;
-    });
-    _pendingPick = _pickColorAt(details.globalPosition);
+    if (!_colorPickMode || _pickerSession == null) return;
+    // 节流：距上次取色 <33ms 则只更新放大镜位置，跳过像素查找
+    final now = DateTime.now();
+    final last = _lastPickAt;
+    if (last != null && now.difference(last).inMilliseconds < 33) {
+      // 仍跟随手指移动放大镜位置（轻量 setState）
+      setState(() {
+        _loupePosition = details.localPosition;
+      });
+      return;
+    }
+    _lastPickAt = now;
+    _pickColorAtSync(details.globalPosition, details.localPosition);
   }
 
   Future<void> _handleColorPickEnd(LongPressEndDetails details) async {
     if (!_colorPickMode) return;
-    // 等待最后一次取色完成，确保手指抬起时拿到结果再落点
-    await _pendingPick;
-    _pendingPick = null;
     final pick = _currentPick;
     if (pick == null) return;
     // 持久化取色点到数据库
@@ -97,47 +114,68 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
   }
 
-  /// 从全局坐标计算图片像素坐标
-  /// globalPosition 和 _calculateImageDisplayRect 都使用全局坐标系，保持一致
-  Future<ColorPickResult?> _pickColorAt(Offset globalPosition) async {
-    // 用 .future await 确保拿到最新且非 loading 的 Photo，避免
-    // photoByIdProvider 处于 loading（如 EXIF 重读 invalidate）时静默失败。
-    final Photo? photo;
-    try {
-      photo = await ref.read(photoByIdProvider(widget.photoId).future);
-    } catch (_) {
-      return null;
-    }
-    if (!mounted || photo == null) return null;
+  /// 同步取色（基于会话级缓存，<1ms，无 Isolate）
+  void _pickColorAtSync(Offset globalPosition, Offset localLoupe) {
+    final session = _pickerSession;
+    if (session == null) return;
+    if (_sessionImgW == 0 || _sessionImgH == 0) return;
 
     final rect = _calculateImageDisplayRect();
-    if (rect == null) return null;
-
-    final imageWidth = photo.width;
-    final imageHeight = photo.height;
+    if (rect == null) return;
 
     // 全局坐标 → 图片像素坐标
-    final imageX = ((globalPosition.dx - rect.left) / rect.width * imageWidth).round();
-    final imageY = ((globalPosition.dy - rect.top) / rect.height * imageHeight).round();
+    final imageX =
+        ((globalPosition.dx - rect.left) / rect.width * _sessionImgW).round();
+    final imageY =
+        ((globalPosition.dy - rect.top) / rect.height * _sessionImgH).round();
 
-    if (imageX < 0 || imageX >= imageWidth || imageY < 0 || imageY >= imageHeight) {
-      return null;
+    if (imageX < 0 ||
+        imageX >= _sessionImgW ||
+        imageY < 0 ||
+        imageY >= _sessionImgH) {
+      return;
     }
 
+    final result = session.pick(imageX, imageY);
+    if (!mounted) return;
+    setState(() {
+      _currentPick = result;
+      _loupePosition = localLoupe;
+    });
+  }
+
+  /// 进入取色模式时一次性解码全图（Isolate 内），完成后启用 session.pick
+  Future<void> _enterColorPickMode(Photo photo) async {
+    setState(() {
+      _pickerLoading = true;
+      _sessionImgW = photo.width;
+      _sessionImgH = photo.height;
+    });
     try {
-      final result = await pickColor(
-        photo.filePath, imageX, imageY, imageWidth, imageHeight,
-      );
-      if (mounted) {
-        setState(() {
-          _currentPick = result;
-        });
+      final session = await ColorPickerSession.begin(photo.filePath);
+      if (!mounted) {
+        session.dispose();
+        return;
       }
-      return result;
-    } catch (e) {
-      // 忽略取色错误
-      return null;
+      _pickerSession = session;
+      setState(() => _pickerLoading = false);
+    } catch (_) {
+      if (mounted) {
+        setState(() => _pickerLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('取色模式初始化失败，请重试')),
+        );
+      }
     }
+  }
+
+  void _exitColorPickMode() {
+    _pickerSession?.dispose();
+    _pickerSession = null;
+    _pickerLoading = false;
+    _lastPickAt = null;
+    _currentPick = null;
+    _loupePosition = null;
   }
 
   void _confirmDelete() {
@@ -219,8 +257,16 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   }),
                   onFocusPeakingToggle: () =>
                       setState(() => _showFocusPeaking = !_showFocusPeaking),
-                  onColorPickToggle: () =>
-                      setState(() => _colorPickMode = !_colorPickMode),
+                  onColorPickToggle: () {
+                    // 关闭取色：释放会话；开启取色：异步解码全图（v3.1 修复卡顿）
+                    if (_colorPickMode) {
+                      _exitColorPickMode();
+                      setState(() => _colorPickMode = false);
+                    } else {
+                      setState(() => _colorPickMode = true);
+                      _enterColorPickMode(photo);
+                    }
+                  },
                 ),
               ],
             ),
@@ -234,9 +280,6 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     final filePath = photo.filePath;
     final clippingAsync = _showClipping
         ? ref.watch(clippingProvider(widget.photoId))
-        : null;
-    final sharpAsync = _showFocusPeaking
-        ? ref.watch(sharpnessProvider(widget.photoId))
         : null;
 
     // 基础 Image（始终挂在 _imageKey 上，用于坐标计算）
@@ -262,8 +305,10 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       );
     }
 
-    // 像素物理属性蒙层（clipping / 峰值对焦）必须放在 InteractiveViewer 内部，
-    // 与 Image 共享缩放/平移变换，否则放大检查对焦/溢出时斑点会错位（review 漏洞）
+    // 像素物理属性蒙层（仅 clipping）必须放在 InteractiveViewer 内部，
+    // 与 Image 共享缩放/平移变换，否则放大检查溢出时斑点会错位（review 漏洞）
+    // 注：v3.1 起"对焦"工具改为影调面板数据读数，不再叠加发光蒙层
+    // （SharpnessOverlay 已移除，锐度数据在影调 Tab 的 SharpnessGuideCard 展示）
     final imageStackChildren = <Widget>[
       Center(child: imageWithFilters),
       if (_showClipping && clippingAsync != null)
@@ -272,19 +317,13 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           error: (_, __) => const SizedBox.shrink(),
           data: (result) => ClippingOverlay(result: result),
         ),
-      if (_showFocusPeaking && sharpAsync != null)
-        sharpAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (map) => SharpnessOverlay(map: map),
-        ),
     ];
 
     // 取色点标记也放在 InteractiveViewer 内部（共享变换，位置始终正确）
     // 注：仅在非取色模式分支由本 InteractiveViewer 渲染；
     // 取色模式分支单独构建一个带 pins 的 InteractiveViewer（见下方 if 块）。
     if (!_colorPickMode) {
-      // 常规模式：单一 InteractiveViewer 包 Image + clipping + sharpness
+      // 常规模式：单一 InteractiveViewer 包 Image + clipping
       return Stack(
         children: [
           InteractiveViewer(
@@ -319,7 +358,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 复用 imageStackChildren（含 Image + clipping + sharpness）
+                // 复用 imageStackChildren（含 Image + clipping）
                 ...imageStackChildren,
                 // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
                 pinsAsync.when(
@@ -334,6 +373,20 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           if (_compositionMode != CompositionMode.none)
             IgnorePointer(
               child: CompositionOverlay(mode: _compositionMode),
+            ),
+          // v3.1: 取色会话解码中（首次进入取色模式的一次性解码）
+          if (_pickerLoading)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x88000000),
+                child: Center(
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                ),
+              ),
             ),
           // 放大镜（不随缩放，始终跟随手指）
           if (_currentPick != null && _loupePosition != null)

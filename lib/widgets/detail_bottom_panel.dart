@@ -27,6 +27,8 @@ import 'harmony_card.dart';
 import 'histogram_painter.dart';
 import 'tone_info_card.dart';
 import 'tone_guide_card.dart';
+import 'sharpness_guide_card.dart';
+import '../providers/sharpness_provider.dart';
 
 /// 详情页底部统一面板
 ///
@@ -167,7 +169,7 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
           ),
           _ToolButton(
             icon: Icons.center_focus_strong_outlined,
-            label: '对焦',
+            label: '锐度',
             isActive: widget.showFocusPeaking,
             onTap: widget.onFocusPeakingToggle,
           ),
@@ -535,6 +537,10 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
     final toneAsync = ref.watch(toneProvider(widget.photoId));
     // v3.0：肤色分析独立异步，ToneGuideCard 按需展示
     final skinAsync = ref.watch(skinProvider(widget.photoId));
+    // v3.1：「对焦」工具开启时计算锐度读数（替代原发光蒙层）
+    final sharpAsync = widget.showFocusPeaking
+        ? ref.watch(sharpnessProvider(widget.photoId))
+        : null;
     return toneAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('影调分析失败: $e'),
@@ -559,6 +565,24 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
                 ),
               ),
             ),
+            // v3.1: 「对焦」工具开启时显示合焦读数卡片（数据读数，无蒙层）
+            if (sharpAsync != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: sharpAsync.when(
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                        child: SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))),
+                  ),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (map) =>
+                      SharpnessGuideCard(map: map, photoAspectRatio: 1.5),
+                ),
+              ),
           ],
         ),
       ),
@@ -582,6 +606,14 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
 
   Widget _buildColorPinTab() {
     final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
+    // v3.1：当前手动校准选中的 pin（高亮 + 提供切换）
+    final manualSel = ref.watch(manualSkinSelectionProvider);
+    final manualSelectedId = <String>{};
+    if (manualSel != null && manualSel.photoId == widget.photoId) {
+      // 找到与选中 RGB 匹配的 pin（手动选择基于 RGB，pin 表无独立选中态）
+      manualSelectedId.add(
+          '${manualSel.rgb[0].round()},${manualSel.rgb[1].round()},${manualSel.rgb[2].round()}');
+    }
     return pinsAsync.when(
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('取色数据加载失败: $e'),
@@ -611,9 +643,28 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
           itemBuilder: (context, index) {
             final pin = pins[index];
             final color = Color.fromARGB(255, pin.r, pin.g, pin.b);
+            final isManualSelected =
+                manualSelectedId.contains('$pin.r,$pin.g,$pin.b');
             return _ColorPinTile(
               pin: pin,
               color: color,
+              isManualSelected: isManualSelected,
+              onCalibrate: () {
+                // v3.1：把该 pin 作为肤色校准基准
+                ref
+                    .read(manualSkinSelectionProvider.notifier)
+                    .select(widget.photoId, pin.r, pin.g, pin.b);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('已用作肤色校准，查看影调 Tab 的肤色指引'),
+                    behavior: SnackBarBehavior.floating,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              onClearCalibration: () => ref
+                  .read(manualSkinSelectionProvider.notifier)
+                  .clear(),
               onDelete: () {
                 showDialog(
                   context: context,
@@ -1090,11 +1141,17 @@ class _InfoChip extends StatelessWidget {
 class _ColorPinTile extends StatelessWidget {
   final ColorPin pin;
   final Color color;
+  final bool isManualSelected;
+  final VoidCallback onCalibrate;
+  final VoidCallback onClearCalibration;
   final VoidCallback onDelete;
 
   const _ColorPinTile({
     required this.pin,
     required this.color,
+    required this.isManualSelected,
+    required this.onCalibrate,
+    required this.onClearCalibration,
     required this.onDelete,
   });
 
@@ -1109,8 +1166,18 @@ class _ColorPinTile extends StatelessWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 6),
-      color: DetailColors.cardSurface,
+      color: isManualSelected
+          ? AppColors.darkAccent.withValues(alpha: 0.12)
+          : DetailColors.cardSurface,
       elevation: 0,
+      shape: isManualSelected
+          ? RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+              side: BorderSide(
+                  color: AppColors.darkAccent.withValues(alpha: 0.5),
+                  width: 1),
+            )
+          : null,
       child: Padding(
         padding: const EdgeInsets.all(10),
         child: Row(
@@ -1151,6 +1218,22 @@ class _ColorPinTile extends StatelessWidget {
                               fontSize: 9, color: DetailColors.textMuted),
                         ),
                       ),
+                      if (isManualSelected) ...[
+                        const SizedBox(width: 4),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 4, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: AppColors.darkAccent.withValues(alpha: 0.2),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text('肤色基准',
+                              style: TextStyle(
+                                  fontSize: 9,
+                                  color: AppColors.darkAccent,
+                                  fontWeight: FontWeight.w600)),
+                        ),
+                      ],
                     ],
                   ),
                   const SizedBox(height: 2),
@@ -1158,6 +1241,22 @@ class _ColorPinTile extends StatelessWidget {
                       style: const TextStyle(
                           fontSize: 10, color: DetailColors.textMuted)),
                 ],
+              ),
+            ),
+            // v3.1：用作肤色校准基准（点击切换）
+            GestureDetector(
+              onTap: isManualSelected ? onClearCalibration : onCalibrate,
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: Icon(
+                  isManualSelected
+                      ? Icons.face_retouching_natural
+                      : Icons.face_retouching_natural_outlined,
+                  size: 18,
+                  color: isManualSelected
+                      ? AppColors.darkAccent
+                      : DetailColors.textMuted,
+                ),
               ),
             ),
             GestureDetector(

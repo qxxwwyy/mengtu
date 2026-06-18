@@ -100,18 +100,48 @@ final toneProvider =
   return tone;
 });
 
-/// v3.0：已解压的 BlazeFace 模型文件路径
+/// v3.0：已解压的 BlazeFace short_range 模型文件路径
 ///
-/// 在 app 启动或首次需要人脸检测时调用 [ensureModelExtracted]。
+/// 在 app 启动或首次需要人脸检测时调用 [ensureModelsExtracted]。
 /// 返回 null 表示 asset 缺失 / 平台不支持 → skinProvider 降级。
 final modelPathProvider = FutureProvider<String?>((ref) async {
-  return ensureModelExtracted();
+  return ensureModelsExtracted();
 });
+
+/// v3.1：full_range_sparse 模型文件路径（short 检测不到脸时的回退模型）
+final fullModelPathProvider = FutureProvider<String?>((ref) async {
+  return getFullModelPath();
+});
+
+/// v3.1：手动肤色校准选中状态（会话级，不持久化）
+///
+/// 用户在取色点列表点击「校准肤色」时，把该 pin 的 RGB 写入此 provider。
+/// skinProvider 优先用手动结果，未选中时回退到 BlazeFace 自动检测。
+/// 切换照片/退出详情页时由 UI 清空（传 null）。
+final manualSkinSelectionProvider =
+    NotifierProvider<ManualSkinSelectionNotifier, ({String photoId, List<double> rgb})?>(
+  ManualSkinSelectionNotifier.new,
+);
+
+class ManualSkinSelectionNotifier
+    extends Notifier<({String photoId, List<double> rgb})?> {
+  @override
+  ({String photoId, List<double> rgb})? build() => null;
+
+  void select(String photoId, int r, int g, int b) =>
+      state = (photoId: photoId, rgb: [r.toDouble(), g.toDouble(), b.toDouble()]);
+
+  void clear() => state = null;
+}
 
 /// v3.0：人脸肤色分析（BlazeFace ROI 提取）
 ///
 /// 独立于 [toneProvider]，避免阻塞直方图/影调 Tab 的快速渲染。
 /// 无脸检测或模型加载失败时返回 [SkinAnalysis.empty]。
+///
+/// v3.1：手动校准优先 —— 若用户在取色点列表选中了某个 pin 作为肤色基准，
+/// 直接用该点 RGB 算色相/饱和度（跳过人脸检测，即使 TFLite 不可用也工作）。
+/// 未选中时回退到 short→full 双模型自动检测。
 ///
 /// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
 /// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
@@ -120,7 +150,23 @@ final skinProvider =
     FutureProvider.family<SkinAnalysis, String>((ref, photoId) async {
   final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) throw Exception('Photo not found');
+
+  // v3.1：手动校准优先（watch 确保用户切换校准点时刷新）
+  final manual = ref.watch(manualSkinSelectionProvider);
+  if (manual != null && manual.photoId == photoId) {
+    return analyzeSkinTone(
+      photo.filePath,
+      manualSkinRgb: manual.rgb,
+    );
+  }
+
+  // 自动检测：short（主）→ full（回退）
   final modelPath = await ref.watch(modelPathProvider.future);
+  final fullModelPath = await ref.watch(fullModelPathProvider.future);
   if (modelPath == null) return const SkinAnalysis();
-  return analyzeSkinTone(photo.filePath, modelPath: modelPath);
+  return analyzeSkinTone(
+    photo.filePath,
+    shortModelPath: modelPath,
+    fullModelPath: fullModelPath,
+  );
 });
