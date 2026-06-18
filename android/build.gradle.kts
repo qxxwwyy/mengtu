@@ -48,10 +48,11 @@ subprojects {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17
             }
-            // 强制插件 compileSdk ≥ 34：tflite_flutter 默认 31，但其传递依赖
-            // androidx.fragment:fragment:1.7.1 要求 compileSdk ≥ 34，否则 checkReleaseAarMetadata 失败
+            // 强制插件 compileSdk ≥ 35：多个插件（tflite_flutter 默认 31、video_player_android）
+            // 的传递依赖 androidx.media3:1.9.2 / fragment:1.7.1 要求 compileSdk ≥ 35/34，
+            // 否则 checkReleaseAarMetadata 失败。统一提到 35（最新稳定 API level）。
             if (ext is com.android.build.gradle.LibraryExtension) {
-                ext.compileSdk = 34
+                ext.compileSdk = 35
             }
         }
         // 统一 Kotlin JVM 目标
