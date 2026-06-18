@@ -56,6 +56,16 @@ class HistogramPainter extends CustomPainter {
     ..color = Colors.red.withValues(alpha: 0.8)
     ..style = PaintingStyle.fill;
 
+  // v3.2 性能优化：色相直方图 360 个 bin 的颜色 Paint 预生成。
+  // 原实现每帧每 bin 创建一个新 Paint（360 次/frame），CustomPainter 每次
+  // repaint 都重复分配。改为启动时一次性生成 360 个 static Paint。
+  static final List<Paint> _huePaints = List.generate(
+    360,
+    (i) => Paint()
+      ..color = HSLColor.fromAHSL(1.0, i.toDouble(), 0.7, 0.5).toColor()
+      ..style = PaintingStyle.fill,
+  );
+
   // 标签文字样式
   static const _labelStyle = TextStyle(
     color: Colors.white54,
@@ -132,16 +142,14 @@ class HistogramPainter extends CustomPainter {
     final h = size.height;
     final barWidth = w / 360;
 
-    // 逐 bin 绘制，每个 bin 用对应色相的颜色
+    // 逐 bin 绘制，每个 bin 用预生成的对应色相 Paint（v3.2：避免每帧分配）
     for (var i = 0; i < 360; i++) {
       if (hue[i] == 0) continue;
       final x = i * barWidth;
       final barHeight = (hue[i] / maxVal) * h;
-      // HSL(hue, 0.7, 0.5) → 可读又不刺眼
-      final color = HSLColor.fromAHSL(1.0, i.toDouble(), 0.7, 0.5).toColor();
       canvas.drawRect(
         Rect.fromLTWH(x, h - barHeight, barWidth + 0.5, barHeight),
-        Paint()..color = color,
+        _huePaints[i],
       );
     }
   }

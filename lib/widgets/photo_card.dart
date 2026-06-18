@@ -4,6 +4,14 @@ import 'package:flutter/material.dart';
 import '../services/database/app_database.dart';
 
 /// 照片卡片（瀑布流用）
+///
+/// 性能要点（v3.2 复核优化）：
+/// - 不用 `AutomaticKeepAliveClientMixin`：依赖 `cacheExtent` + 全局 `ImageCache`
+///   已足够（保活 1000 个 card state 反而占内存，且 Image 解码结果由 ImageCache
+///   统一缓存，card 重建不会重新解码）。
+/// - 不在 build() 里调 `File.existsSync()`（同步阻塞 I/O，瀑布流每帧每卡一次，
+///   1000 张图滚动累计几十 ms 抖动）。改为：`thumbnailPath` 非空即认为缩略图存在，
+///   极小概率的"文件丢失"由 `Image.file` 的 `errorBuilder` 兜底。
 class PhotoCard extends StatefulWidget {
   final Photo photo;
   final VoidCallback? onTap;
@@ -26,28 +34,23 @@ class PhotoCard extends StatefulWidget {
   State<PhotoCard> createState() => _PhotoCardState();
 }
 
-class _PhotoCardState extends State<PhotoCard>
-    with AutomaticKeepAliveClientMixin {
+class _PhotoCardState extends State<PhotoCard> {
   bool _isLoaded = false;
   bool _isPressed = false;
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   Widget build(BuildContext context) {
-    super.build(context);
     final photo = widget.photo;
 
     final ratio = (photo.width > 0 && photo.height > 0)
         ? (photo.width / photo.height).clamp(0.5, 2.0)
         : widget.aspectRatio;
 
-    // 缩略图可能被清缓存清空（thumbnailPath=''）或文件丢失，用原图兜底
-    // 原图兜底时用 cacheWidth 限制解码尺寸，避免大图 OOM
+    // 缩略图缺失（清缓存后 thumbnailPath=''）→ 用原图兜底，cacheWidth 限制解码尺寸防 OOM。
+    // 不调 existsSync（同步 I/O 拖慢滚动）；文件意外丢失由下方 errorBuilder 兜底。
     final thumbPath = photo.thumbnailPath;
-    final thumbExists = thumbPath.isNotEmpty && File(thumbPath).existsSync();
-    final imageFile = File(thumbExists ? thumbPath : photo.filePath);
+    final useThumb = thumbPath.isNotEmpty;
+    final imageFile = File(useThumb ? thumbPath : photo.filePath);
 
     return GestureDetector(
       onTap: widget.onTap,
@@ -77,7 +80,7 @@ class _PhotoCardState extends State<PhotoCard>
                   imageFile,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
-                  cacheWidth: thumbExists ? null : 360,
+                  cacheWidth: useThumb ? null : 360,
                   frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
                     if (frame != null && !_isLoaded) {
                       WidgetsBinding.instance.addPostFrameCallback((_) {

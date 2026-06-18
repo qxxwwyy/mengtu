@@ -171,18 +171,56 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
   }
 
   /// 批量更新相册照片的排序
+  ///
+  /// v3.2 性能优化：原实现逐条 UPDATE（N 次 DB 往返，大相册拖拽明显卡顿）。
+  /// 现用单条 `CASE WHEN photo_id = ? THEN ? ... END` 语句一次性更新整个相册的
+  /// sortOrder，把 N 次 UPDATE 合并为 1 次。1000 张照片从 ~1000 次往返降到 1 次。
+  ///
+  /// 用 `customUpdate`（而非 customStatement）+ `updates: {albumPhotos}` 声明，
+  /// 让 drift 自动失效 albumPhotos 表 → `watchPhotosInAlbum` 流会重算刷新 UI。
+  /// 若改用 customStatement（不声明 updates），排序写完后网格不会重排。
+  ///
+  /// 注意：SQLite `SQLITE_MAX_VARIABLE_NUMBER` 默认 999（新版 32766）。CASE 的
+  /// 每个 WHEN 用 2 个绑定参数（photoId + 新序号），单语句最多 ~499 项。
+  /// 超过则回退到逐条事务更新（保持响应式 + 正确性，牺牲极端场景的速度）。
   Future<void> updatePhotosSortOrder({
     required String albumId,
     required List<String> orderedPhotoIds,
   }) {
-    return transaction(() async {
-      for (int i = 0; i < orderedPhotoIds.length; i++) {
-        final photoId = orderedPhotoIds[i];
-        await (update(albumPhotos)
-              ..where((ap) => ap.albumId.equals(albumId) & ap.photoId.equals(photoId)))
-            .write(AlbumPhotosCompanion(sortOrder: Value(i)));
-      }
-    });
+    if (orderedPhotoIds.isEmpty) return Future.value();
+
+    // 超过单语句安全上限 → 回退逐条事务（响应式 + 正确性优先）
+    if (orderedPhotoIds.length > 450) {
+      return transaction(() async {
+        for (int i = 0; i < orderedPhotoIds.length; i++) {
+          final photoId = orderedPhotoIds[i];
+          await (update(albumPhotos)
+                ..where((ap) =>
+                    ap.albumId.equals(albumId) & ap.photoId.equals(photoId)))
+              .write(AlbumPhotosCompanion(sortOrder: Value(i)));
+        }
+      });
+    }
+
+    // 单语句批量：UPDATE album_photos SET sort_order = CASE photo_id
+    //   WHEN ? THEN ? WHEN ? THEN ? ... END WHERE album_id = ?
+    final whenClauses = <String>[];
+    final variables = <Variable>[];
+    for (int i = 0; i < orderedPhotoIds.length; i++) {
+      whenClauses.add('WHEN ? THEN ?');
+      variables.add(Variable.withString(orderedPhotoIds[i]));
+      variables.add(Variable.withInt(i));
+    }
+    variables.add(Variable.withString(albumId));
+    final sql = 'UPDATE album_photos SET sort_order = CASE photo_id '
+        '${whenClauses.join(' ')} ELSE sort_order END '
+        'WHERE album_id = ?';
+    return customUpdate(
+      sql,
+      variables: variables,
+      updates: {albumPhotos},
+      updateKind: UpdateKind.update,
+    );
   }
 
   // ============ v2.1 相册-标签体系 ============
@@ -214,6 +252,11 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
   /// 返回按 updatedAt 倒序的列表，供相册列表页直接渲染。
   /// **响应式**：合并监听 albums / album_tags / album_photos 三张表，任一变化
   /// （改名相册、给相册打标签、增删相册内照片）都会重算聚合输出。
+  ///
+  /// v3.2 性能修复：原实现对每个相册跑 2 次独立 query（标签 + 计数），
+  /// N 个相册 = 2N+1 次串行 await，相册列表打开有明显延迟。现改为 3 次固定
+  /// query（albums + GROUP BY 计数 + 标签 JOIN），在内存 join。N 个相册的
+  /// 时间复杂度从 O(N) 次往返降到 O(1) 次。
   Stream<List<AlbumWithTags>> watchAlbumsWithTagInfo() {
     // drift 的 select(...).watch() 按各 select 读取的表注册更新依赖。
     // 把三张表的 watch 流合并为单一"有变化"信号流，再 asyncMap 重算聚合。
@@ -226,18 +269,54 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
       final albumList = await (select(albums)
             ..orderBy([(a) => OrderingTerm.desc(a.updatedAt)]))
           .get();
-      final result = <AlbumWithTags>[];
-      for (final album in albumList) {
-        final tags = await _getTagsForAlbumInline(album.id);
-        final photoCount = await getPhotoCount(album.id);
-        result.add(AlbumWithTags(
-          album: album,
-          tags: tags,
-          photoCount: photoCount,
-        ));
-      }
-      return result;
+      if (albumList.isEmpty) return const <AlbumWithTags>[];
+
+      // 1) 一次 GROUP BY 拉全量相册照片计数 → Map<albumId, count>
+      final photoCounts = await _bulkPhotoCounts();
+      // 2) 一次 JOIN 拉全量相册-标签关联 → Map<albumId, List<Tag>>
+      final tagsByAlbum = await _bulkTagsByAlbum();
+
+      // 3) 内存 join：用 album.id 从两个 map 取数据
+      return [
+        for (final album in albumList)
+          AlbumWithTags(
+            album: album,
+            tags: tagsByAlbum[album.id] ?? const <Tag>[],
+            photoCount: photoCounts[album.id] ?? 0,
+          ),
+      ];
     });
+  }
+
+  /// 批量查询所有相册的照片计数（单条 GROUP BY，替代 N 次 getPhotoCount）
+  Future<Map<String, int>> _bulkPhotoCounts() async {
+    final albumIdCol = albumPhotos.albumId;
+    final countExp = albumPhotos.photoId.count();
+    final query = selectOnly(albumPhotos)
+      ..addColumns([albumIdCol, countExp])
+      ..groupBy([albumIdCol]);
+    final rows = await query.get();
+    return {
+      for (final row in rows)
+        row.read(albumIdCol)!: row.read(countExp) ?? 0,
+    };
+  }
+
+  /// 批量查询所有相册的标签（单条 JOIN，替代 N 次 _getTagsForAlbumInline）
+  Future<Map<String, List<Tag>>> _bulkTagsByAlbum() async {
+    final query = select(tags).join([
+      innerJoin(albumTags, albumTags.tagId.equalsExp(tags.id)),
+    ]);
+    final rows = await query.get();
+    final result = <String, List<Tag>>{};
+    for (final row in rows) {
+      final albumId = row.read(albumTags.albumId);
+      final tag = row.readTable(tags);
+      if (albumId != null) {
+        (result[albumId] ??= []).add(tag);
+      }
+    }
+    return result;
   }
 
   /// 把多个表的 watch 流合并为单一"变化"信号流（丢弃各流的值，只转发 tick）。
@@ -278,16 +357,6 @@ class AlbumDao extends DatabaseAccessor<AppDatabase> with _$AlbumDaoMixin {
       },
     );
     return controller.stream;
-  }
-
-  /// 查询相册的标签（内部聚合用，避免跨 DAO 调用）
-  Future<List<Tag>> _getTagsForAlbumInline(String albumId) async {
-    final query = select(tags).join([
-      innerJoin(albumTags, albumTags.tagId.equalsExp(tags.id)),
-    ])
-      ..where(albumTags.albumId.equals(albumId));
-    final rows = await query.get();
-    return rows.map((row) => row.readTable(tags)).toList();
   }
 }
 

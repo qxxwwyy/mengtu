@@ -44,12 +44,17 @@ class _DetailPageState extends ConsumerState<DetailPage> {
 
   // 取色模式状态（取色标记直接从 DB 读取，不维护内存列表）
   bool _colorPickMode = false;
-  ColorPickResult? _currentPick;
-  Offset? _loupePosition;
+  // v3.2 卡顿修复：放大镜位置 + 当前取色结果改用 ValueNotifier，
+  // 拖动时只重建放大镜/信息面板这两个小 widget，避免整棵 DetailPage（Image/
+  // InteractiveViewer/pins）跟着 setState 重建导致的掉帧。
+  final ValueNotifier<ColorPickResult?> _currentPickNotifier =
+      ValueNotifier(null);
+  final ValueNotifier<Offset?> _loupePositionNotifier = ValueNotifier(null);
   // v3.1: 会话级解码缓存，拖动期间纯内存取色（修原"每次 Isolate 解码全图"卡顿）
+  // v3.2: 进一步降采样到长边 1600px，进入取色从几秒降到 ~0.5 秒
   ColorPickerSession? _pickerSession;
   bool _pickerLoading = false;
-  // v3.1: 取色节流（限制到 ~30fps），避免高频 move 事件堆叠 setState
+  // v3.2: 取色节流提到 ~60fps（16ms），配合局部重建后成本可控，跟手感更好
   DateTime? _lastPickAt;
   // 缓存当前照片尺寸，session.pick 时无需再 await provider
   int _sessionImgW = 0;
@@ -59,6 +64,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   void dispose() {
     // v3.1: 释放取色会话 + 清空全局手动肤色校准（避免泄漏到下一张照片）
     _pickerSession?.dispose();
+    _currentPickNotifier.dispose();
+    _loupePositionNotifier.dispose();
     // manualSkinSelectionProvider 是全局 Notifier，离开详情页必须清空
     // （ref 在 dispose 后不可用，需在 super.dispose 之前访问）
     ref.read(manualSkinSelectionProvider.notifier).clear();
@@ -74,14 +81,12 @@ class _DetailPageState extends ConsumerState<DetailPage> {
 
   void _handleColorPickUpdate(LongPressMoveUpdateDetails details) {
     if (!_colorPickMode || _pickerSession == null) return;
-    // 节流：距上次取色 <33ms 则只更新放大镜位置，跳过像素查找
+    // 节流：距上次取色 <16ms（~60fps）则只更新放大镜位置，跳过像素查找
+    // 位置更新走 ValueNotifier，只重建放大镜（不触发整页 setState）
     final now = DateTime.now();
     final last = _lastPickAt;
-    if (last != null && now.difference(last).inMilliseconds < 33) {
-      // 仍跟随手指移动放大镜位置（轻量 setState）
-      setState(() {
-        _loupePosition = details.localPosition;
-      });
+    if (last != null && now.difference(last).inMilliseconds < 16) {
+      _loupePositionNotifier.value = details.localPosition;
       return;
     }
     _lastPickAt = now;
@@ -90,7 +95,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
 
   Future<void> _handleColorPickEnd(LongPressEndDetails details) async {
     if (!_colorPickMode) return;
-    final pick = _currentPick;
+    final pick = _currentPickNotifier.value;
     if (pick == null) return;
     // 持久化取色点到数据库
     final pinId = const Uuid().v4();
@@ -106,12 +111,9 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     // 写入 DB（colorPinsProvider 的 watch 会自动刷新 UI）
     ref.read(appDatabaseProvider).colorPinDao.insertPin(pin);
 
-    if (mounted) {
-      setState(() {
-        _currentPick = null;
-        _loupePosition = null;
-      });
-    }
+    // v3.2: 清状态走 ValueNotifier（避免整页 setState）
+    _currentPickNotifier.value = null;
+    _loupePositionNotifier.value = null;
   }
 
   /// 同步取色（基于会话级缓存，<1ms，无 Isolate）
@@ -137,11 +139,9 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
 
     final result = session.pick(imageX, imageY);
-    if (!mounted) return;
-    setState(() {
-      _currentPick = result;
-      _loupePosition = localLoupe;
-    });
+    // v3.2: 用 ValueNotifier 只重建放大镜/信息面板，不触发整页 setState
+    _currentPickNotifier.value = result;
+    _loupePositionNotifier.value = localLoupe;
   }
 
   /// 进入取色模式时一次性解码全图（Isolate 内），完成后启用 session.pick
@@ -174,8 +174,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     _pickerSession = null;
     _pickerLoading = false;
     _lastPickAt = null;
-    _currentPick = null;
-    _loupePosition = null;
+    _currentPickNotifier.value = null;
+    _loupePositionNotifier.value = null;
   }
 
   void _confirmDelete() {
@@ -389,21 +389,34 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               ),
             ),
           // 放大镜（不随缩放，始终跟随手指）
-          if (_currentPick != null && _loupePosition != null)
-            ColorPickerLoupe(
-              result: _currentPick!,
-              position: _loupePosition!,
+          // v3.2: 嵌套两层 ValueListenableBuilder，任一信号变化都重建放大镜，
+          // 但仍只重建这一小块（Image/InteractiveViewer/pins 不受影响）。
+          ValueListenableBuilder<ColorPickResult?>(
+            valueListenable: _currentPickNotifier,
+            builder: (context, pick, _) =>
+                ValueListenableBuilder<Offset?>(
+              valueListenable: _loupePositionNotifier,
+              builder: (context, pos, _) {
+                if (pos == null || pick == null) return const SizedBox.shrink();
+                return ColorPickerLoupe(result: pick, position: pos);
+              },
             ),
+          ),
           // 像素信息面板
-          if (_currentPick != null)
-            Positioned(
-              bottom: 8,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: PixelInfoPanel(pixel: _currentPick!.pixel),
-              ),
-            ),
+          ValueListenableBuilder<ColorPickResult?>(
+            valueListenable: _currentPickNotifier,
+            builder: (context, pick, _) {
+              if (pick == null) return const SizedBox.shrink();
+              return Positioned(
+                bottom: 8,
+                left: 0,
+                right: 0,
+                child: Center(
+                  child: PixelInfoPanel(pixel: pick.pixel),
+                ),
+              );
+            },
+          ),
         ],
       ),
     );

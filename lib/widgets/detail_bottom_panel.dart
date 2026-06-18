@@ -357,10 +357,9 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (e, _) => _buildErrorText('计算失败: $e'),
       data: (hist) {
-        // 影调分析复用直方图亮度数据，与直方图共享缓存生命周期
-        final toneAsync = ref.watch(toneProvider(widget.photoId));
-        // v3.0：肤色分析（BlazeFace ROI）独立异步，不阻塞直方图渲染
-        final skinAsync = ref.watch(skinProvider(widget.photoId));
+        // 调色指引（信息熵/RMS/肤色）统一在「影调」Tab 展示，本 Tab 不再重复
+        // （原直方图 Tab 内嵌 ToneGuideCard 导致：1) 内容与影调 Tab 重复；
+        //  2) Column 不可滚动，指引卡片溢出 308px Tab 区无法查看）。
         return Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -378,20 +377,6 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel>
                         : null,
                   ),
                   child: Container(),
-                ),
-              ),
-              // v3.0: 信息熵 + RMS 对比度 + 肤色 → 调色指引
-              // 嵌入直方图下方，复用同一缓存（不重新读图）
-              toneAsync.when(
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-                data: (tone) => ToneGuideCard(
-                  tone: tone,
-                  showSkin: true,
-                  skin: skinAsync.maybeWhen(
-                    data: (s) => s,
-                    orElse: () => null,
-                  ),
                 ),
               ),
             ],

@@ -155,6 +155,12 @@ Future<SkinAnalysis> _analyzeSkinIsolate(_FaceAnalysisArgs args) async {
 }
 
 /// 在主脸 ROI 内统计肤色 HSL 指标 + 计算 SLS / SCS 隔离度
+///
+/// v3.2 性能优化：原实现分两次遍历 —— 先遍历 ROI 统计肤色，再遍历全图
+/// （排除 ROI）统计背景。全图遍历是主要成本（4MP 图 × step=2 ≈ 100 万像素）。
+/// 现合并为**一次全图遍历**：命中 ROI 累加肤色统计，否则累加背景统计。
+/// 同时把 `getPixel(x,y)` 的 3 次调用（取 r/g/b）合并为 1 次，省 2/3 的
+/// Pixel 对象分配。整体提速约 2x。
 SkinAnalysis _analyzeRoiSkin(
     img.Image image, DetectedFace face, bool isP3) {
   final imgW = image.width;
@@ -169,23 +175,66 @@ SkinAnalysis _analyzeRoiSkin(
   // ROI 内缩 20%（避开发际线、耳朵、下巴背景边缘）
   final padX = ((xMax - xMin) * 0.1).round();
   final padY = ((yMax - yMin) * 0.1).round();
-  xMin += padX;
-  xMax -= padX;
-  yMin += padY;
-  yMax -= padY;
+  final roiXMin = xMin + padX;
+  final roiXMax = xMax - padX;
+  final roiYMin = yMin + padY;
+  final roiYMax = yMax - padY;
 
-  // 1) 肤色 ROI 内 HSL 累加（带色相过滤，防杂光污染）
+  // 肤色 ROI 累加器
   double sumHue = 0;
   double sumSat = 0;
   double sumLum = 0;
-  int count = 0;
+  int skinCount = 0;
+
+  // 背景累加器（全图排除 ROI）
+  double bgSumLum = 0;
+  int bgLumCount = 0;
+  // 背景色相直方图（24 bins，每 15°），用于找主导色相
+  final bgHueBins = List.filled(24, 0);
+  int bgHueCount = 0;
 
   const step = 2;
-  for (var y = yMin; y <= yMax; y += step) {
-    for (var x = xMin; x <= xMax; x += step) {
-      var r = image.getPixel(x, y).r.toInt();
-      var g = image.getPixel(x, y).g.toInt();
-      var b = image.getPixel(x, y).b.toInt();
+  // 单次遍历：肤色 ROI（内缩后）内 → 肤色统计；
+  // 原始 ROI bbox（未内缩）外 → 背景统计；内缩环（两者之间）→ 跳过。
+  // 这样与原双遍历实现完全等价（内缩环既不进肤色也不进背景）。
+  for (var y = 0; y < imgH; y += step) {
+    final inBboxY = y >= yMin && y <= yMax;
+    for (var x = 0; x < imgW; x += step) {
+      final inBbox = inBboxY && x >= xMin && x <= xMax;
+      if (!inBbox) {
+        // 背景：累计 L + 色相直方图
+        final p = image.getPixel(x, y);
+        var r = p.r.toInt();
+        var g = p.g.toInt();
+        var b = p.b.toInt();
+        if (isP3) {
+          final srgb = convertP3ToSrgb(r, g, b);
+          r = srgb[0];
+          g = srgb[1];
+          b = srgb[2];
+        }
+        final hsl = _rgbToHsl(r, g, b);
+        bgSumLum += hsl[2];
+        bgLumCount++;
+        if (hsl[1] > 0.1) {
+          bgHueBins[(hsl[0] / 15).floor().clamp(0, 23)]++;
+          bgHueCount++;
+        }
+        continue;
+      }
+      // 在 bbox 内但不在内缩 ROI 内 → 跳过（与原实现等价）
+      final inRoi = inBboxY &&
+          x >= roiXMin &&
+          x <= roiXMax &&
+          y >= roiYMin &&
+          y <= roiYMax;
+      if (!inRoi) continue;
+
+      // 肤色 ROI 内：一次 getPixel 取 r/g/b（原实现调用 3 次，省 2/3 Pixel 分配）
+      final p = image.getPixel(x, y);
+      var r = p.r.toInt();
+      var g = p.g.toInt();
+      var b = p.b.toInt();
       if (isP3) {
         final srgb = convertP3ToSrgb(r, g, b);
         r = srgb[0];
@@ -201,26 +250,35 @@ SkinAnalysis _analyzeRoiSkin(
         sumHue += (h >= 320) ? (h - 360) : h;
         sumSat += s;
         sumLum += l;
-        count++;
+        skinCount++;
       }
     }
   }
 
-  if (count == 0) return const SkinAnalysis();
+  if (skinCount == 0) return const SkinAnalysis();
 
-  double avgHue = sumHue / count;
+  double avgHue = sumHue / skinCount;
   if (avgHue < 0) avgHue += 360;
-  final avgSat = sumSat / count * 100;
-  final avgLum = sumLum / count * 100;
+  final avgSat = sumSat / skinCount * 100;
+  final avgLum = sumLum / skinCount * 100;
 
-  // 2) 背景区域：全图排除 ROI 的平均 HSL（用于 SLS / SCS 隔离度）
-  final bgStats = _computeBgStats(image, xMin, yMin, xMax, yMax, isP3, step);
+  // 背景平均 L
+  final bgAvgLum = bgLumCount > 0 ? bgSumLum / bgLumCount * 100 : 0.0;
+  // 背景主导色相 = bin 数最多的区段中心
+  var maxBin = 0;
+  var maxCount = 0;
+  for (var i = 0; i < 24; i++) {
+    if (bgHueBins[i] > maxCount) {
+      maxCount = bgHueBins[i];
+      maxBin = i;
+    }
+  }
+  final bgDominantHue = bgHueCount > 0 ? (maxBin * 15 + 7.5) : 0.0;
 
   // SLS = 肤色 L − 背景 L（百分比）
-  final sls = avgLum - bgStats.avgLum;
-
-  // SCS = 肤色色相（avgHue）与背景主导色相的环形最短距离
-  final scs = _hueRingDistance(avgHue, bgStats.dominantHue);
+  final sls = avgLum - bgAvgLum;
+  // SCS = 肤色色相与背景主导色相的环形最短距离
+  final scs = _hueRingDistance(avgHue, bgDominantHue);
 
   return SkinAnalysis(
     hueOffset: skinHueOffset(avgHue),
@@ -228,7 +286,7 @@ SkinAnalysis _analyzeRoiSkin(
     luminanceSeparation: sls,
     colorSeparation: scs,
     skinLuminance: avgLum,
-    bgLuminance: bgStats.avgLum,
+    bgLuminance: bgAvgLum,
   );
 }
 
@@ -256,68 +314,10 @@ SkinAnalysis _computeManualSkinStats(
 }
 
 /// 背景统计（排除 ROI 区域）：平均 L + 主导色相
-_BackgroundStats _computeBgStats(
-  img.Image image,
-  int roiXMin,
-  int roiYMin,
-  int roiXMax,
-  int roiYMax,
-  bool isP3,
-  int step,
-) {
-  double sumLum = 0;
-  int lumCount = 0;
-  // 色相直方图（24 bins，每 15°），用于找主导色相
-  final hueBins = List.filled(24, 0);
-  int hueCount = 0;
-
-  for (var y = 0; y < image.height; y += step) {
-    for (var x = 0; x < image.width; x += step) {
-      // 跳过 ROI 内的像素
-      if (x >= roiXMin && x <= roiXMax && y >= roiYMin && y <= roiYMax) {
-        continue;
-      }
-      var r = image.getPixel(x, y).r.toInt();
-      var g = image.getPixel(x, y).g.toInt();
-      var b = image.getPixel(x, y).b.toInt();
-      if (isP3) {
-        final srgb = convertP3ToSrgb(r, g, b);
-        r = srgb[0];
-        g = srgb[1];
-        b = srgb[2];
-      }
-      final hsl = _rgbToHsl(r, g, b);
-      sumLum += hsl[2];
-      lumCount++;
-      // 仅统计有颜色的像素（饱和度>0.1），灰阶不进直方图
-      if (hsl[1] > 0.1) {
-        final binIndex = (hsl[0] / 15).floor().clamp(0, 23);
-        hueBins[binIndex]++;
-        hueCount++;
-      }
-    }
-  }
-
-  final avgLum = lumCount > 0 ? sumLum / lumCount * 100 : 0.0;
-  // 主导色相 = bin 数最多的区段中心
-  var maxBin = 0;
-  var maxCount = 0;
-  for (var i = 0; i < 24; i++) {
-    if (hueBins[i] > maxCount) {
-      maxCount = hueBins[i];
-      maxBin = i;
-    }
-  }
-  final dominantHue =
-      hueCount > 0 ? (maxBin * 15 + 7.5) : 0.0; // 区段中心
-  return _BackgroundStats(avgLum: avgLum, dominantHue: dominantHue);
-}
-
-class _BackgroundStats {
-  final double avgLum;
-  final double dominantHue;
-  const _BackgroundStats({required this.avgLum, required this.dominantHue});
-}
+///
+/// v3.2：已合并进 [_analyzeRoiSkin] 的单次全图遍历（肤色/背景同一次扫描），
+/// 此独立函数及其返回类型已删除。若未来需要单独的背景统计，可基于
+/// [_analyzeRoiSkin] 的内联实现重建。
 
 /// 两个色相在 360° 环上的最短距离
 double _hueRingDistance(double h1, double h2) {

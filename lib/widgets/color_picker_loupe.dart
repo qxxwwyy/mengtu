@@ -77,6 +77,11 @@ class _LoupePainter extends CustomPainter {
 
   _LoupePainter({required this.regionRgb, required this.cellSize});
 
+  // v3.2 卡顿修复：复用单个 Paint，循环里只改 .color（原实现每帧每格
+  // 新建 Paint，11×11=121 次 Paint 分配/frame）。Color 是 Paint 上的值字段，
+  // 改它不影响正在绘制的其他画笔（绘制是同步的，paint 调用瞬间完成）。
+  final Paint _cellPaint = Paint();
+
   @override
   void paint(Canvas canvas, Size size) {
     if (regionRgb.isEmpty) return;
@@ -85,17 +90,17 @@ class _LoupePainter extends CustomPainter {
     final centerX = size.width / 2;
     final centerY = size.height / 2;
 
-    // 绘制像素网格
+    // 绘制像素网格（复用 _cellPaint，只改 color）
     for (var y = 0; y < regionRgb.length; y++) {
       for (var x = 0; x < regionRgb[y].length; x++) {
-        final color = Color(regionRgb[y][x]);
+        _cellPaint.color = Color(regionRgb[y][x]);
         final rect = Rect.fromLTWH(
           centerX + (x - half) * cellSize - cellSize / 2,
           centerY + (y - half) * cellSize - cellSize / 2,
           cellSize,
           cellSize,
         );
-        canvas.drawRect(rect, Paint()..color = color);
+        canvas.drawRect(rect, _cellPaint);
       }
     }
 
@@ -121,7 +126,11 @@ class _LoupePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LoupePainter oldDelegate) {
-    return oldDelegate.regionRgb != regionRgb;
+    // v3.2: ColorPickerSession 复用同一个 regionRgb 缓冲（原地填充避免每帧
+    // 121 次 List 分配），引用相等会误判为"未变化"。改为始终重绘：
+    // painter 仅在 ColorPickerLoupe 被重建时创建（由 _currentPickNotifier
+    // ValueListenableBuilder 驱动，频率 ≤ 取色节流 60fps），重绘成本可控。
+    return true;
   }
 }
 
