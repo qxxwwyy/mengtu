@@ -42,8 +42,8 @@ android {
 
     defaultConfig {
         applicationId = "com.mengtu.app"
-        // Android 8.0 (API 26) 最低版本要求
-        minSdk = 26
+        // Android 12.0 (API 31) 最低版本要求
+        minSdk = 31
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -58,6 +58,12 @@ android {
         release {
             // release 用 release 签名配置（CI 注入或本地 debug keystore）
             signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
         }
     }
 }
