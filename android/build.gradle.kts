@@ -48,6 +48,11 @@ subprojects {
                 sourceCompatibility = JavaVersion.VERSION_17
                 targetCompatibility = JavaVersion.VERSION_17
             }
+            // 强制插件 compileSdk ≥ 34：tflite_flutter 默认 31，但其传递依赖
+            // androidx.fragment:fragment:1.7.1 要求 compileSdk ≥ 34，否则 checkReleaseAarMetadata 失败
+            if (ext is com.android.build.gradle.LibraryExtension) {
+                ext.compileSdk = 34
+            }
         }
         // 统一 Kotlin JVM 目标
         tasks.withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>().configureEach {

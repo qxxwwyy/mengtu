@@ -38,3 +38,19 @@
 # 5. photo_manager 插件混淆保留
 # ==============================================================================
 -keep class com.fluttercandies.photo_manager.** { *; }
+
+# ==============================================================================
+# 6. Play Core 缺失类（Flutter PlayStoreDeferredComponentManager 引用，
+#    本应用未集成 Play Core 分包，R8 严格模式需要忽略这些引用）
+# ==============================================================================
+-dontwarn com.google.android.play.core.splitcompat.SplitCompatApplication
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallException
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallManager
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallManagerFactory
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallRequest
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallRequest$Builder
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallSessionState
+-dontwarn com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
+-dontwarn com.google.android.play.core.tasks.OnFailureListener
+-dontwarn com.google.android.play.core.tasks.OnSuccessListener
+-dontwarn com.google.android.play.core.tasks.Task
