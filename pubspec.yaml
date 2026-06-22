@@ -61,11 +61,12 @@ flutter:
   uses-material-design: true
 
   # v3.0: BlazeFace 离线人脸检测模型（short_range 主用，full_range 远距离备份）
-  # v3.5: face_mesh.tflite（468 landmarks，STI/FLC 依赖）暂未注册 —— 模型文件
-  # 需从 https://github.com/google-ai-edge/mediapipe 下载放入 assets/models/
-  # 后，再取消下行注释。缺失时 advancedMetricsProvider 降级（STI/FLC null，
-  # black_point/white_point/ten_tonal 正常算）。
+  # v3.5: face_mesh.tflite（MediaPipe Face Mesh，468 landmarks，STI/FLC 依赖）
+  #   来源：https://storage.googleapis.com/mediapipe-assets/face_landmark.tflite
+  #   输入 192×192 RGB，输出 [1, 468, 3] landmarks（旧 .tflite 格式，无原生
+  #   visibility，face_service 用 z 深度归一化近似）。缺失时 meshModelPath 为
+  #   null → STI/FLC 降级 null，black_point/white_point/ten_tonal 正常算。
   assets:
     - assets/models/face_detection_short_range.tflite
     - assets/models/face_detection_full_range_sparse.tflite
-    # - assets/models/face_mesh.tflite # v3.5：模型文件待补，缺失自动降级
+    - assets/models/face_mesh.tflite # v3.5 新增
