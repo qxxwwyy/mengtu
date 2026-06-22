@@ -7,6 +7,7 @@ import '../services/tone_service.dart';
 import '../services/face_service.dart';
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
+import '../models/advanced_portrait_metrics.dart';
 import 'database_provider.dart';
 import 'photo_provider.dart';
 
@@ -113,6 +114,15 @@ final fullModelPathProvider = FutureProvider<String?>((ref) async {
   return getFullModelPath();
 });
 
+/// v3.5：face_mesh 模型文件路径（STI/FLC 依赖）
+///
+/// 独立于 [modelPathProvider]（mesh 失败不应阻塞 BlazeFace 检测）。
+/// 返回 null 表示 asset 缺失（face_mesh.tflite 未打包）→ STI/FLC 为 null，
+/// 但 ΔH/饱和/SLS/SCS 仍由 BlazeFace ROI 产出。
+final meshModelPathProvider = FutureProvider<String?>((ref) async {
+  return ensureMeshModelExtracted();
+});
+
 /// v3.1：手动肤色校准选中状态（会话级，不持久化）
 ///
 /// 用户在取色点列表点击「校准肤色」时，把该 pin 的 RGB 写入此 provider。
@@ -143,6 +153,10 @@ class ManualSkinSelectionNotifier
 /// 直接用该点 RGB 算色相/饱和度（跳过人脸检测，即使 TFLite 不可用也工作）。
 /// 未选中时回退到 short→full 双模型自动检测。
 ///
+/// v3.5：三段式检测链 short→full→mesh。Face Mesh 命中时额外产出 STI/FLC
+/// （叠加到 bbox ROI 的 ΔH/饱和/SLS/SCS 上）。mesh 失败/未配置 → STI/FLC null，
+/// 其余指标照常返回。
+///
 /// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
 /// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
 /// 用户是否打开了详情页（非全量预计算），缓存策略见 import_service。
@@ -160,13 +174,71 @@ final skinProvider =
     );
   }
 
-  // 自动检测：short（主）→ full（回退）
+  // 自动检测：short（主）→ full（回退）→ mesh（STI/FLC）
   final modelPath = await ref.watch(modelPathProvider.future);
   final fullModelPath = await ref.watch(fullModelPathProvider.future);
+  final meshModelPath = await ref.watch(meshModelPathProvider.future);
   if (modelPath == null) return const SkinAnalysis();
   return analyzeSkinTone(
     photo.filePath,
     shortModelPath: modelPath,
     fullModelPath: fullModelPath,
+    meshModelPath: meshModelPath, // v3.5：null 时降级（STI/FLC null）
   );
+});
+
+/// v3.5：聚合 advanced 指标（black_point/white_point/ten_tonal + STI/FLC）
+///
+/// 合并两个数据源：
+/// 1. 直方图可算部分（black_point_offset/white_point_compression/ten_tonal_type）
+///    — 由 [toneProvider] 已写入的 toneJson 缓存或现算
+/// 2. Face Mesh 依赖部分（skin_sti/face_lighting_contrast）
+///    — 由 [skinProvider] 产出，可能为 null（无脸/侧脸/mesh 失败）
+///
+/// 重算策略（gotcha #39）：
+/// - 直方图部分缺字段 → 强制重算（纯函数，必有结果）
+/// - STI/FLC 缺 → 容错（不触发重算，避免无脸照片陷入"无脸→空→重算→还是空"死循环）
+///
+/// 缓存：合并写入 toneJson 的 'advanced' 键（保留 ToneResult 扁平字段不变）。
+final advancedMetricsProvider =
+    FutureProvider.family<AdvancedPortraitMetrics?, String>(
+        (ref, photoId) async {
+  final db = ref.watch(appDatabaseProvider);
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
+  if (photo == null) return null;
+
+  // 1. 先尝试读缓存（完整 advanced 键）
+  final cached = AdvancedPortraitMetrics.fromJsonString(photo.toneJson);
+  if (cached != null) {
+    // 缓存的直方图部分有效。但 STI/FLC 可能仍缺（旧缓存/无脸时写入）→ 尝试补算。
+    if (cached.skinSti != null && cached.faceLightingContrast != null) {
+      return cached; // 完整缓存，直接返回
+    }
+  }
+
+  // 2. 现算直方图可算部分（强制必有结果）
+  final hist = await ref.watch(histogramProvider(photoId).future);
+  final tone = await ref.watch(toneProvider(photoId).future);
+  final total = hist.lum.fold<int>(0, (a, b) => a + b);
+  final blackPoint = calculateBlackPointOffset(hist.lum, total);
+  final whitePoint = calculateWhitePointCompression(hist.lum, total);
+  final tenTonal = classifyTenTonalType(tone.toneKey, tone.toneRange);
+
+  // 3. 从 skinProvider 补 STI/FLC（可能为 null：无脸/侧脸/mesh 失败）
+  final skin = await ref.watch(skinProvider(photoId).future);
+
+  final metrics = AdvancedPortraitMetrics(
+    skinSti: skin.sti,
+    faceLightingContrast: skin.flc,
+    blackPointOffset: blackPoint,
+    whitePointCompression: whitePoint,
+    tenTonalType: tenTonal,
+  );
+
+  // 4. 回写缓存（合并到现有 toneJson 的 advanced 键，保留 ToneResult 扁平字段）
+  final merged =
+      AdvancedPortraitMetrics.mergeIntoToneJson(photo.toneJson, metrics);
+  await db.photoDao.updateToneCache(photoId, merged);
+
+  return metrics;
 });

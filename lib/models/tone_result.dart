@@ -61,7 +61,7 @@ class HistogramData {
   }
 }
 
-/// 人像肤色分析结果（v3.0 新增）
+/// 人像肤色分析结果（v3.0 新增，v3.5 扩展 STI/FLC）
 ///
 /// 当 [ToneService.analyzeTone] 完整版计算（含 ROI）时填充；
 /// 当无脸检测、或仅基于直方图的纯内存计算时为 null。
@@ -85,6 +85,17 @@ class SkinAnalysis {
   /// 背景平均明度（百分比 0~100）
   final double? bgLuminance;
 
+  /// v3.5 皮肤通透度指数 STI [0, 1]（Face Mesh 依赖，可空）
+  ///
+  /// 接近度公式：`⅓·gaussian(Y,0.65,0.15) + ⅓·gaussian(S,0.25,0.1) + ⅓·(1−|ΔH|/30)`
+  /// 无脸/侧脸/mesh 失败 → null（容错，不触发重算，避免无脸照片死循环）。
+  final double? sti;
+
+  /// v3.5 面部反差系数 FLC [0, 1]（Face Mesh 依赖，可空）
+  ///
+  /// `|Y_left − Y_right| / (Y_left + Y_right + 1e-5)`，侧脸/遮挡 → null。
+  final double? flc;
+
   const SkinAnalysis({
     this.hueOffset,
     this.saturation,
@@ -92,6 +103,8 @@ class SkinAnalysis {
     this.colorSeparation,
     this.skinLuminance,
     this.bgLuminance,
+    this.sti,
+    this.flc,
   });
 
   bool get isEmpty =>
@@ -108,6 +121,9 @@ class SkinAnalysis {
         if (colorSeparation != null) 'colorSeparation': colorSeparation,
         if (skinLuminance != null) 'skinLuminance': skinLuminance,
         if (bgLuminance != null) 'bgLuminance': bgLuminance,
+        // v3.5：STI/FLC 可空，序列化时不写 null（与其它可空字段一致）
+        if (sti != null) 'sti': sti,
+        if (flc != null) 'flc': flc,
       };
 
   factory SkinAnalysis.fromJson(Map<String, dynamic>? j) {
@@ -121,6 +137,9 @@ class SkinAnalysis {
       colorSeparation: numOrNull(j['colorSeparation']),
       skinLuminance: numOrNull(j['skinLuminance']),
       bgLuminance: numOrNull(j['bgLuminance']),
+      // v3.5：STI/FLC 用 numOrNull 容错（缺则 null，旧缓存兼容，不触发重算）
+      sti: numOrNull(j['sti']),
+      flc: numOrNull(j['flc']),
     );
   }
 }
