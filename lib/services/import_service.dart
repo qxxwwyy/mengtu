@@ -144,10 +144,12 @@ class ImportService {
 
     // DB 操作包在事务中（删关联 + 删记录）
     // v2.1：标签迁移到相册后，照片不再有标签，removeTagsByPhoto 已移除
+    // v3.5：新增风格档案关联清理（gotcha #31：删照片前清所有档案关联）
     await _db.transaction(() async {
       await _db.colorPinDao.deletePinsByPhotoId(photoId);
       await _db.albumDao.removePhotoFromAllAlbums(photoId);
       await _db.planDao.removePhotoFromAllPlans(photoId);
+      await _db.styleProfileDao.removePhotoFromAllProfiles(photoId);
       await _db.photoDao.deletePhoto(photoId);
     });
 

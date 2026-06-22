@@ -251,3 +251,95 @@ double calculateWarmToColdRatio(List<int> hueHist) {
   if (coldCount == 0) return warmCount.toDouble();
   return warmCount / coldCount;
 }
+
+// ============ v3.5 高级人像指标（纯直方图可算部分）============
+//
+// 以下三个函数仅依赖亮度直方图，不依赖 Face Mesh，可在任何照片上稳定计算。
+// 由 advancedMetricsProvider 调用，结果序列化到 toneJson 的 'advanced' 键
+// （black_point_offset / white_point_compression / ten_tonal_type）。
+// Face Mesh 依赖的 skin_sti / face_lighting_contrast 由 face_service（PR2）补算。
+
+/// 1% 暗部阶调位移（黑点偏移）
+///
+/// 在亮度直方图累计分布中，找累计像素占比达到 0.5%~2% 的灰度级，
+/// 取这三个阈值的滑动平均作为黑点偏移值。
+///
+/// 滑动平均的意义：小图（如 7500 像素）单阈值会因量化误差抖动，
+/// 三个相近阈值取平均能稳定结果。
+///
+/// 返回 [0, 255]：
+/// - <4 表示死黑触底（电影调/港风标志，用暗部死黑换对比度冲击）
+/// - 较高值表示黑点上提（日系/中式柔和影调，保留暗部层次）
+double calculateBlackPointOffset(List<int> lumHist, int total) {
+  if (total == 0) return 0.0;
+  const thresholds = [0.005, 0.01, 0.02];
+  final offsets = <double>[];
+  var cumulative = 0;
+  for (var i = 0; i < 256; i++) {
+    cumulative += lumHist[i];
+    for (var j = 0; j < thresholds.length; j++) {
+      // offsets.length == j 保证每个阈值只记录第一次达到的灰度级
+      if (cumulative >= total * thresholds[j] && offsets.length == j) {
+        offsets.add(i.toDouble());
+      }
+    }
+    if (offsets.length == thresholds.length) break;
+  }
+  return offsets.isEmpty
+      ? 0.0
+      : offsets.reduce((a, b) => a + b) / offsets.length;
+}
+
+/// 99% 高光阶调位移（白点压缩）
+///
+/// 在亮度直方图累计分布中，找累计像素占比达到 98%~99.5% 的灰度级，
+/// 取滑动平均作为白点压缩值。
+///
+/// 返回 [0, 255]：
+/// - 接近 255 表示白点触顶（高光溢出/高反差）
+/// - 较低值表示白点压缩（柔和高光，保留细节）
+double calculateWhitePointCompression(List<int> lumHist, int total) {
+  if (total == 0) return 255.0;
+  const thresholds = [0.98, 0.99, 0.995];
+  final offsets = <double>[];
+  var cumulative = 0;
+  for (var i = 0; i < 256; i++) {
+    cumulative += lumHist[i];
+    for (var j = 0; j < thresholds.length; j++) {
+      if (cumulative >= total * thresholds[j] && offsets.length == j) {
+        offsets.add(i.toDouble());
+      }
+    }
+    if (offsets.length == thresholds.length) break;
+  }
+  return offsets.isEmpty
+      ? 255.0
+      : offsets.reduce((a, b) => a + b) / offsets.length;
+}
+
+/// 十大影调分类（复用 toneKey×toneRange，基于像素分布）
+///
+/// 弃用 plan.md 的 classifyTenTonalities(mean/stdDev 阈值)：
+/// - 与现有 [_classifyToneKey]（基于峰值+合并段占比）和 [_classifyToneRange]
+///   （基于最值分布范围）的双逻辑冲突
+/// - 现有实现基于像素分布更扎实，直接组合即可
+///
+/// 返回中文标签，如 "高长调" / "中短调" / "全长调"。
+String classifyTenTonalType(String toneKey, String toneRange) {
+  const keyLabel = {
+    'high': '高',
+    'mid': '中',
+    'low': '低',
+    'full': '全长',
+  };
+  const rangeLabel = {
+    'long': '长调',
+    'medium': '中调',
+    'short': '短调',
+  };
+  // toneKey='full' 时组合为"全长调"（rangeLabel 不再拼接，避免"全长长调"）
+  if (toneKey == 'full') return '全长调';
+  final key = keyLabel[toneKey] ?? '中';
+  final range = rangeLabel[toneRange] ?? '中调';
+  return '$key$range';
+}
