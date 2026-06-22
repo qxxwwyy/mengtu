@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'tag_manage_page.dart';
 import 'settings_page.dart';
+import 'style_profile_page.dart';
 import '../providers/photo_provider.dart';
 import '../providers/tag_provider.dart';
 import '../providers/album_provider.dart';
@@ -61,6 +62,13 @@ class ProfilePage extends ConsumerWidget {
                   ),
           ),
           // 功能入口
+          _MenuItem(
+            icon: Icons.style_outlined,
+            title: '风格档案',
+            subtitle: '导入样片创建风格档案，解构新照片（v3.5）',
+            onTap: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const StyleProfilePage())),
+          ),
           _MenuItem(
             icon: Icons.local_offer_outlined,
             title: '标签管理',

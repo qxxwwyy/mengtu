@@ -9,6 +9,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'database/app_database.dart';
 import 'exif_service.dart';
+import 'histogram_service.dart' show computeHistogram;
+import 'tone_service.dart' show analyzeTone;
+import '../models/tone_result.dart' show HistogramData;
 
 const _uuid = Uuid();
 
@@ -201,6 +204,62 @@ Future<String> regenerateThumbnail(String photoId) async {
       debugPrint('Read EXIF failed: $photoId — $e');
       return false;
     }
+  }
+
+  /// v3.5 PR4：批量预计算照片的分析数据（用于档案创建/匹配）
+  ///
+  /// 现有架构是懒计算（详情页打开才算），档案系统需要全量数据，
+  /// 必须在创建档案时主动触发（gotcha #49）。
+  ///
+  /// 填充 Photos 表的 rgbHistogram/lumHistogram/hueHistogram/toneJson 缓存，
+  /// 不填 advanced 键（advanced 的 STI/FLC 依赖 Face Mesh，由详情页按需算）。
+  ///
+  /// 返回 (success, failed) 计数。
+  Future<({int success, int failed})> precomputeAnalysisForPhotos(
+      List<String> photoIds) async {
+    var success = 0;
+    var failed = 0;
+    for (final photoId in photoIds) {
+      try {
+        final photo = await _db.photoDao.getPhotoById(photoId);
+        if (photo == null) {
+          failed++;
+          continue;
+        }
+
+        // 1. 直方图（若未缓存）
+        if (photo.rgbHistogram == null || photo.lumHistogram == null) {
+          final hist = await computeHistogram(photo.filePath);
+          final combined = hist.toBytes();
+          await _db.photoDao.updateHistogramCache(
+            photoId,
+            rgbHistogram: Uint8List.fromList(combined.sublist(0, 1536)),
+            lumHistogram: Uint8List.fromList(combined.sublist(1536, 2048)),
+            hueHistogram: Uint8List.fromList(combined.sublist(2048, 2768)),
+          );
+        }
+
+        // 2. 影调（若未缓存，含 5 段 + entropy/rms，不含 advanced 键）
+        if (photo.toneJson == null || photo.toneJson!.isEmpty) {
+          // 重新读 photo 拿到刚写入的直方图缓存
+          final fresh = await _db.photoDao.getPhotoById(photoId);
+          if (fresh?.rgbHistogram != null && fresh?.lumHistogram != null) {
+            final combined = fresh!.hueHistogram != null
+                ? Uint8List.fromList(
+                    [...fresh.rgbHistogram!, ...fresh.lumHistogram!, ...fresh.hueHistogram!])
+                : Uint8List.fromList([...fresh.rgbHistogram!, ...fresh.lumHistogram!]);
+            final hist = HistogramData.fromBytes(combined);
+            final tone = analyzeTone(hist.lum);
+            await _db.photoDao.updateToneCache(photoId, tone.toJsonString());
+          }
+        }
+        success++;
+      } catch (e) {
+        debugPrint('Precompute failed: $photoId — $e');
+        failed++;
+      }
+    }
+    return (success: success, failed: failed);
   }
 }
 

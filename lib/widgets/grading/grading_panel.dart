@@ -37,7 +37,15 @@ class GradingPanel extends ConsumerWidget {
         const SizedBox(height: 8),
         StageIsolationCard(photoId: photoId, advanced: advanced),
         const SizedBox(height: 8),
-        StageArchiveMatchCard(photoId: photoId),
+        // 阶④需要 tone + advanced 供 PR5 复刻参数生成
+        Builder(builder: (context) {
+          final toneAsync = ref.watch(toneProvider(photoId));
+          return StageArchiveMatchCard(
+            photoId: photoId,
+            tone: toneAsync,
+            advanced: advanced,
+          );
+        }),
       ],
     );
   }

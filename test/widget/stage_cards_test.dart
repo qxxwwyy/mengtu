@@ -21,6 +21,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/models/advanced_portrait_metrics.dart';
 import 'package:mengtu/models/tone_result.dart';
 import 'package:mengtu/providers/analysis_provider.dart';
+import 'package:mengtu/providers/style_profile_provider.dart';
+import 'package:mengtu/services/database/app_database.dart' show StyleProfile;
 import 'package:mengtu/widgets/grading/grading_panel.dart';
 import 'package:mengtu/widgets/grading/stage_archive_match_card.dart';
 import 'package:mengtu/widgets/grading/stage_card.dart';
@@ -72,6 +74,9 @@ void main() {
   const emptySkin = SkinAnalysis(); // 空 → 各卡片显示「未检出」
 
   /// 构建带 provider override 的测试 harness
+  ///
+  /// override styleProfilesProvider 为空流 → 阶④显示空状态引导（不触发
+  /// styleProfileMatchProvider 的 DB 查询，避免 timer pending 测试失败）
   Widget buildHarness(Widget child) {
     return ProviderScope(
       overrides: [
@@ -80,6 +85,8 @@ void main() {
         skinProvider('p1').overrideWith((ref) async => emptySkin),
         advancedMetricsProvider('p1')
             .overrideWith((ref) async => sampleAdvanced),
+        // 阶④依赖：空档案流（立即发出空列表）→ 引导卡片（不触发匹配查询）
+        styleProfilesProvider.overrideWith((ref) => Stream.value(<StyleProfile>[])),
       ],
       child: MaterialApp(home: Scaffold(body: child)),
     );
@@ -130,10 +137,19 @@ void main() {
       expect(find.textContaining('十大影调'), findsOneWidget);
     });
 
-    testWidgets('阶④显示「创建风格档案后可匹配」引导（无 provider 依赖）',
-        (tester) async {
+    testWidgets('阶④无档案时显示引导卡片', (tester) async {
+      // buildHarness 未 override styleProfilesProvider → 空档案 → 引导卡片
       await tester.pumpWidget(buildHarness(
-        const SizedBox(height: 400, child: StageArchiveMatchCard(photoId: 'p1')),
+        SizedBox(
+          height: 400,
+          // StageArchiveMatchCard 现在需要 tone + advanced（PR4 改造）
+          // 传入 AsyncValue.data 构造测试值（不用 override，直接构造）
+          child: StageArchiveMatchCard(
+            photoId: 'p1',
+            tone: AsyncValue.data(buildTone()),
+            advanced: const AsyncValue.data(sampleAdvanced),
+          ),
+        ),
       ));
       await tester.pumpAndSettle();
 
@@ -143,17 +159,25 @@ void main() {
 
     testWidgets('阶④点击触发 SnackBar 提示', (tester) async {
       await tester.pumpWidget(buildHarness(
-        const SizedBox(height: 400, child: StageArchiveMatchCard(photoId: 'p1')),
+        SizedBox(
+          height: 400,
+          child: StageArchiveMatchCard(
+            photoId: 'p1',
+            tone: AsyncValue.data(buildTone()),
+            advanced: const AsyncValue.data(sampleAdvanced),
+          ),
+        ),
       ));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('档案比对'));
       await tester.pumpAndSettle();
 
-      expect(find.textContaining('即将上线'), findsOneWidget);
+      // 空档案 → 提示去「我的」Tab 创建（SnackBar）
+      expect(find.textContaining('我的'), findsOneWidget);
     });
 
-    testWidgets('阶①摘要显示「高调 · 长调」格式（toneKeyLabel · toneRangeLabel）',
+    testWidgets('阶①摘要显示「高调 · 长跨度」格式（toneKeyLabel · toneRangeLabel）',
         (tester) async {
       await tester.pumpWidget(ProviderScope(
         overrides: [
@@ -163,6 +187,8 @@ void main() {
           skinProvider('p1').overrideWith((ref) async => emptySkin),
           advancedMetricsProvider('p1')
               .overrideWith((ref) async => sampleAdvanced),
+          // 阶④依赖：空档案流（立即发出空列表）→ 引导卡片（不触发匹配查询）
+          styleProfilesProvider.overrideWith((ref) => Stream.value(<StyleProfile>[])),
         ],
         child: const MaterialApp(
           home: Scaffold(

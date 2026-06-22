@@ -5,9 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'pages/main_shell.dart';
 
+import 'providers/database_provider.dart';
 import 'providers/theme_provider.dart';
+import 'services/builtin_profiles.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
   // 全局错误兜底：防止 widget build 异常时显示红屏，显示友好错误页。
   // 包一层 Directionality：若错误发生在 MaterialApp 之上，
   // Text 仍能正确渲染（否则会抛 "No Directionality widget found"）。
@@ -54,6 +57,17 @@ void main() {
     debugPrint('未捕获的异步错误: $error\n$stack');
     return true; // true = 已处理，不向上重新抛出
   };
+
+  // v3.5 PR5：启动时插入内置理论档案（幂等，已存在不重复插入）
+  // 失败不阻塞启动（DB 初始化失败等极端情况降级，档案管理页为空）
+  try {
+    final container = ProviderContainer();
+    final db = container.read(appDatabaseProvider);
+    await BuiltinProfiles.ensureSeeded(db);
+    container.dispose();
+  } catch (e) {
+    debugPrint('内置档案初始化失败（不阻塞启动）: $e');
+  }
 
   runApp(const ProviderScope(child: MengtuApp()));
 }
