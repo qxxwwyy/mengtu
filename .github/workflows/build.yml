@@ -46,10 +46,13 @@ jobs:
         # 非关键步骤：coverage 报告是可选产物，失败不应阻塞 APK 构建/发布。
         # GitHub Actions 的 artifact 存储配额耗尽时会报错（账号级限制，非代码问题），
         # 用 continue-on-error 让流水线继续执行后续的 APK 构建。
+        # retention-days: 7 防止堆积（Free 私有仓库 artifact 存储 500 MB，每次 CI ~38 MB APK，
+        # 默认 90 天保留 → 8 天就超限；7 天后自动过期释放）。
         continue-on-error: true
         with:
           name: coverage-lcov
           path: coverage/lcov.info
+          retention-days: 7
 
       # 解码 keystore secret 到文件（用于 release 签名）
       - name: Decode keystore
@@ -71,10 +74,12 @@ jobs:
         uses: actions/upload-artifact@v4
         # 同 coverage：artifact 存储配额耗尽时不阻塞，APK 已在上一部生成成功。
         # 配额恢复后可重新触发 run 重新上传。
+        # retention-days: 7 防止堆积（每次 release APK ~30-38 MB，7 天自动过期）。
         continue-on-error: true
         with:
           name: mengtu-apk
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
