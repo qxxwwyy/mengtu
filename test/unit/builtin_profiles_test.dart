@@ -39,31 +39,31 @@ void main() {
       }
     });
 
-    test('isRefined=true 的档案有 replicationTemplate', () {
+    test('isRefined=true 的档案有 replicationTemplates', () {
       final refined =
           BuiltinProfiles.profiles.where((p) => p.isRefined).toList();
       expect(refined.length, 2); // 日系 + 港风
       for (final p in refined) {
-        expect(p.replicationTemplate, isNotEmpty,
-            reason: '${p.name} isRefined 但无 replicationTemplate');
+        expect(p.replicationTemplates, isNotEmpty,
+            reason: '${p.name} isRefined 但无 replicationTemplates');
       }
     });
 
-    test('isRefined=false 的档案 replicationTemplate 为空', () {
+    test('isRefined=false 的档案 replicationTemplates 为空', () {
       final notRefined =
           BuiltinProfiles.profiles.where((p) => !p.isRefined).toList();
       expect(notRefined.length, 2); // 青橙 + 中式
       for (final p in notRefined) {
-        expect(p.replicationTemplate, isEmpty,
-            reason: '${p.name} 未做精但已有 replicationTemplate');
+        expect(p.replicationTemplates, isEmpty,
+            reason: '${p.name} 未做精但已有 replicationTemplates');
       }
     });
 
     test('日系/港风的复刻模板至少 4 条参数', () {
       final japanese = BuiltinProfiles.getByKey('japanese')!;
       final hongkong = BuiltinProfiles.getByKey('hongkong')!;
-      expect(japanese.replicationTemplate.length, greaterThanOrEqualTo(4));
-      expect(hongkong.replicationTemplate.length, greaterThanOrEqualTo(4));
+      expect(japanese.replicationTemplates.length, greaterThanOrEqualTo(4));
+      expect(hongkong.replicationTemplates.length, greaterThanOrEqualTo(4));
     });
   });
 

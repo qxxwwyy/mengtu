@@ -35,12 +35,27 @@ class ReplicationHint {
 
 /// 复刻参数生成器
 class ReplicationHintsService {
+  // 阈值常量（提取自原内联魔数，便于校准 + 文档化）
+  // 黑点 < 此值视为死黑触底（电影调/港风标志）
+  static const _blackPointFloor = 4.0;
+  // 白点 > 此值视为高光触顶（高反差标志）
+  static const _whitePointCeil = 252.0;
+  // ΔH 绝对值 > 此值才生成色相调整建议（5° 内属于自然波动）
+  static const _hueOffsetThreshold = 5.0;
+  // 饱和度 > 此值视为高饱和（需降饱和）
+  static const _highSaturationCeil = 60.0;
+  // ΔH(deg) → LR HSL 调整量经验增益（肤色线偏移放大，因 HSL 滑块量纲不同）
+  static const _hueToHslGain = 1.2;
+  // 过饱和部分按 30% 折减（不直接拉满，保留风格余地）
+  static const _satReduceGain = 0.3;
+
   /// 根据样片指标生成复刻参数列表
   ///
+  /// [tone] 当前未使用（预留：未来可加 RMS/entropy 复刻建议）。传 null 即可。
   /// [targetStyleKey] 内置档案 key（japanese/hongkong/cinematic/chinoiserie），
   /// 用于叠加该风格的复刻模板（仅 isRefined 的档案有完整模板）。
   List<ReplicationHint> generateHints({
-    required ToneResult? tone,
+    ToneResult? tone,
     required AdvancedPortraitMetrics? advanced,
     required SkinAnalysis? skin,
     String? targetStyleKey,
@@ -50,7 +65,7 @@ class ReplicationHintsService {
 
     // 1. 影调复刻（来自 advanced）
     if (advanced != null) {
-      if (advanced.blackPointOffset < 4) {
+      if (advanced.blackPointOffset < _blackPointFloor) {
         hints.add(const ReplicationHint(
           category: '曲线',
           parameter: '黑点端点',
@@ -66,7 +81,7 @@ class ReplicationHintsService {
         ));
       }
 
-      if (advanced.whitePointCompression > 252) {
+      if (advanced.whitePointCompression > _whitePointCeil) {
         hints.add(const ReplicationHint(
           category: '曲线',
           parameter: '白点端点',
@@ -85,8 +100,9 @@ class ReplicationHintsService {
 
     // 2. 色彩复刻（来自 skin）
     if (skin != null && !skin.isEmpty && skin.hueOffset != null) {
-      if (skin.hueOffset!.abs() > 5) {
-        final adjust = (skin.hueOffset!.abs() * 1.2).round();
+      if (skin.hueOffset!.abs() > _hueOffsetThreshold) {
+        final adjust =
+            (skin.hueOffset!.abs() * _hueToHslGain).round();
         hints.add(ReplicationHint(
           category: 'HSL',
           parameter: '橙色色相',
@@ -95,11 +111,11 @@ class ReplicationHintsService {
               '样片肤色 ΔH=${skin.hueOffset!.toStringAsFixed(1)}°，复刻此色调需微调',
         ));
       }
-      if (skin.saturation != null && skin.saturation! > 60) {
+      if (skin.saturation != null && skin.saturation! > _highSaturationCeil) {
         hints.add(ReplicationHint(
           category: 'HSL',
           parameter: '橙色饱和度',
-          value: '-${((skin.saturation! - 50) * 0.3).round()}',
+          value: '-${((skin.saturation! - 50) * _satReduceGain).round()}',
           note: '样片肤色饱和度 ${skin.saturation!.toStringAsFixed(0)}% 偏高，复刻可略降',
         ));
       }

@@ -23,8 +23,9 @@ class PhotoFingerprint {
 
   /// 标量特征向量（顺序固定，与 [scalarLabels] 一一对应）
   ///
-  /// `[RMS对比度, 冷暖比, 黑点偏移(归一化), 白点压缩(归一化), 信息熵(归一化),
-  ///   SCS/180, SLS/100, STI, FLC]`
+  /// 单位为 RAW 值（未归一化，与 FingerprintService._computeFingerprintIsolate 一致）：
+  /// `[RMS对比度(0~128), 冷暖比(0.5~2), 黑点偏移(0~255), 白点压缩(0~255),
+  ///   信息熵(0~8), SCS(0~180), SLS(-100~100), STI(0~1), FLC(0~1)]`
   ///
   /// 缺失维度（如无脸照片的 STI/FLC）用 `-1` 占位，匹配时跳过该维度。
   final List<double> scalarFeatures;

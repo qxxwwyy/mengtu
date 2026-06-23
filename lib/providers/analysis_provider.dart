@@ -207,35 +207,34 @@ final advancedMetricsProvider =
   final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) return null;
 
-  // 1. 先尝试读缓存（完整 advanced 键）
-  final cached = AdvancedPortraitMetrics.fromJsonString(photo.toneJson);
-  if (cached != null) {
-    // 缓存的直方图部分有效。但 STI/FLC 可能仍缺（旧缓存/无脸时写入）→ 尝试补算。
-    if (cached.skinSti != null && cached.faceLightingContrast != null) {
-      return cached; // 完整缓存，直接返回
-    }
-  }
-
-  // 2. 现算直方图可算部分（强制必有结果）
+  // gotcha #33 修正：上游 provider 必须无条件 watch，建立依赖边，
+  // 让 invalidate 能级联（原实现 cache-hit 提前 return 跳过 watch，导致
+  // 直方图/skin 变化时 advanced 不刷新）。
   final hist = await ref.watch(histogramProvider(photoId).future);
   final tone = await ref.watch(toneProvider(photoId).future);
+  final skin = await ref.watch(skinProvider(photoId).future);
+
+  // 读缓存：仅复用 STI/FLC（Face Mesh 依赖，重算昂贵且无脸时为 null）。
+  // 直方图部分（black/white/ten_tonal）始终现算（纯函数，廉价），保证新鲜。
+  final cached = AdvancedPortraitMetrics.fromJsonString(photo.toneJson);
+  final cachedSti = cached?.skinSti ?? skin.sti;
+  final cachedFlc = cached?.faceLightingContrast ?? skin.flc;
+
+  // 现算直方图可算部分（强制必有结果）
   final total = hist.lum.fold<int>(0, (a, b) => a + b);
   final blackPoint = calculateBlackPointOffset(hist.lum, total);
   final whitePoint = calculateWhitePointCompression(hist.lum, total);
   final tenTonal = classifyTenTonalType(tone.toneKey, tone.toneRange);
 
-  // 3. 从 skinProvider 补 STI/FLC（可能为 null：无脸/侧脸/mesh 失败）
-  final skin = await ref.watch(skinProvider(photoId).future);
-
   final metrics = AdvancedPortraitMetrics(
-    skinSti: skin.sti,
-    faceLightingContrast: skin.flc,
+    skinSti: cachedSti,
+    faceLightingContrast: cachedFlc,
     blackPointOffset: blackPoint,
     whitePointCompression: whitePoint,
     tenTonalType: tenTonal,
   );
 
-  // 4. 回写缓存（合并到现有 toneJson 的 advanced 键，保留 ToneResult 扁平字段）
+  // 回写缓存（合并到现有 toneJson 的 advanced 键，保留 ToneResult 扁平字段）
   final merged =
       AdvancedPortraitMetrics.mergeIntoToneJson(photo.toneJson, metrics);
   await db.photoDao.updateToneCache(photoId, merged);

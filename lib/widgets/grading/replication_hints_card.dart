@@ -38,7 +38,7 @@ class ReplicationHintsCard extends ConsumerWidget {
 
     final service = ReplicationHintsService();
     final targetProfile = BuiltinProfiles.getByKey(targetStyleKey);
-    final targetTemplate = targetProfile?.replicationTemplate ?? const <ReplicationHint>[];
+    final targetTemplate = targetProfile?.replicationTemplates ?? const <ReplicationHint>[];
 
     final hints = service.generateHints(
       tone: toneVal,
