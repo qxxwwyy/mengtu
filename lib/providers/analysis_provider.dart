@@ -220,18 +220,14 @@ final advancedMetricsProvider =
   final cachedSti = cached?.skinSti ?? skin.sti;
   final cachedFlc = cached?.faceLightingContrast ?? skin.flc;
 
-  // 现算直方图可算部分（强制必有结果）
-  final total = hist.lum.fold<int>(0, (a, b) => a + b);
-  final blackPoint = calculateBlackPointOffset(hist.lum, total);
-  final whitePoint = calculateWhitePointCompression(hist.lum, total);
-  final tenTonal = classifyTenTonalType(tone.toneKey, tone.toneRange);
-
-  final metrics = AdvancedPortraitMetrics(
-    skinSti: cachedSti,
-    faceLightingContrast: cachedFlc,
-    blackPointOffset: blackPoint,
-    whitePointCompression: whitePoint,
-    tenTonalType: tenTonal,
+  // 复用 tone_service.computeAdvancedMetrics 纯函数（与
+  // precomputeAnalysisForPhotos 共享同一份计算逻辑，gotcha #49）
+  final metrics = computeAdvancedMetrics(
+    lumHist: hist.lum,
+    toneKey: tone.toneKey,
+    toneRange: tone.toneRange,
+    sti: cachedSti,
+    flc: cachedFlc,
   );
 
   // 回写缓存（合并到现有 toneJson 的 advanced 键，保留 ToneResult 扁平字段）

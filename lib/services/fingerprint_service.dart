@@ -229,7 +229,12 @@ class FingerprintService {
 
     // 3. 融合（经验权重：直方图 60%，标量 40%）
     final combinedDist = 0.6 * histDist + 0.4 * scalarDist;
-    return math.exp(-combinedDist * combinedDist / 2.0);
+    // v3.5 二轮复核：衰减系数 2.0 → 4.0（更宽容）。
+    // 原因：内置理论档案的 hist_means 是高斯生成（单峰干净分布），与真实照片
+    // 多峰/长尾分布天然偏离，2.0 系数会让相似度系统性偏低（用户看到日系样片
+    // 匹配日系档案只有 40-50%，产生困惑）。4.0 让分布差异更宽容，同时仍能区分
+    // 「同风格」与「异风格」（差异大的指纹 sim 仍 < 0.5，见 fingerprint_service_test）。
+    return math.exp(-combinedDist * combinedDist / 4.0);
   }
 }
 

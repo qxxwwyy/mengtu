@@ -842,6 +842,7 @@ Future<Interpreter?> _loadInterpreterFromPath(String modelPath) async {
 /// full 路径通过 [_fullModelPathProvider] 单独读取。
 Future<String?> ensureModelsExtracted() async {
   final dir = await _getModelsDir();
+  if (dir == null) return null; // 临时目录不可用（如测试环境 platform channel 缺失）
   final shortPath = await _extractModel(
       _kShortModelAssetKey, '${dir.path}/face_detection_short_range.tflite');
   // full_range_sparse 也解压，但失败不阻塞（仅回退用）
@@ -867,6 +868,7 @@ Future<String?> _extractModel(String assetKey, String targetPath) async {
 /// 失败返回 null（仅影响回退检测，不影响主流程）
 Future<String?> getFullModelPath() async {
   final dir = await _getModelsDir();
+  if (dir == null) return null;
   final path = '${dir.path}/face_detection_full_range_sparse.tflite';
   return await File(path).exists() ? path : null;
 }
@@ -877,6 +879,7 @@ Future<String?> getFullModelPath() async {
 /// 失败返回 null（仅影响 STI/FLC，不影响 ΔH/饱和/SLS/SCS）。
 Future<String?> ensureMeshModelExtracted() async {
   final dir = await _getModelsDir();
+  if (dir == null) return null;
   return _extractModel(
       _kMeshModelAssetKey, '${dir.path}/face_mesh.tflite');
 }
@@ -885,6 +888,7 @@ Future<String?> ensureMeshModelExtracted() async {
 /// 失败返回 null（仅影响 STI/FLC，不影响主流程）
 Future<String?> getMeshModelPath() async {
   final dir = await _getModelsDir();
+  if (dir == null) return null;
   final path = '${dir.path}/face_mesh.tflite';
   return await File(path).exists() ? path : null;
 }
@@ -892,15 +896,24 @@ Future<String?> getMeshModelPath() async {
 /// 向后兼容：原 [ensureModelExtracted]（单模型），内部委托给 [ensureModelsExtracted]
 Future<String?> ensureModelExtracted() => ensureModelsExtracted();
 
-Future<Directory> _getModelsDir() async {
-  // 用应用临时目录，避免污染文档目录
-  // 仅在主线程调用（Isolate 内不可用 path_provider）
-  final base = await getTemporaryDirectory();
-  final dir = Directory('${base.path}/tflite_models');
-  if (!await dir.exists()) {
-    await dir.create(recursive: true);
+/// 模型解压目录（应用临时目录下 tflite_models/）
+///
+/// 返回 null 表示临时目录不可用（如 platform channel 未初始化的测试环境）。
+/// 调用方据此返回 null，让上层（skinProvider / precompute）走降级路径，
+/// 不让 path_provider 失败阻塞整个分析流程。
+Future<Directory?> _getModelsDir() async {
+  try {
+    // 用应用临时目录，避免污染文档目录
+    // 仅在主线程调用（Isolate 内不可用 path_provider）
+    final base = await getTemporaryDirectory();
+    final dir = Directory('${base.path}/tflite_models');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  } catch (_) {
+    return null; // platform channel 失败（测试环境 / path_provider 异常）
   }
-  return dir;
 }
 
 // ============ 测试用导出（@visibleForTesting）============

@@ -10,6 +10,7 @@
 //
 // 参考取色卡 tone_analysis.py 的影调分类规则（仅功能设计参考，独立实现）
 import 'dart:math' as math;
+import '../models/advanced_portrait_metrics.dart';
 import '../models/tone_result.dart';
 
 /// 从亮度直方图（256 bins）计算影调分析结果（纯内存版，不含肤色 ROI）
@@ -342,4 +343,32 @@ String classifyTenTonalType(String toneKey, String toneRange) {
   final key = keyLabel[toneKey] ?? '中';
   final range = rangeLabel[toneRange] ?? '中调';
   return '$key$range';
+}
+
+/// 组装 v3.5 高级人像指标（纯函数，无副作用）
+///
+/// 把 [calculateBlackPointOffset] / [calculateWhitePointCompression] /
+/// [classifyTenTonalType] 三个纯直方图函数 + 可选的 STI/FLC（Face Mesh 依赖）
+/// 合并为 [AdvancedPortraitMetrics]，供两个调用方共用，避免逻辑重复：
+/// - [advancedMetricsProvider]（详情页按需算，gotcha #33 无条件 watch 上游）
+/// - [ImportService.precomputeAnalysisForPhotos]（创建档案时批量预计算，
+///   gotcha #49：让 STI/FLC 进入档案匹配，而非恒为 -1 被跳过）
+///
+/// [sti]/[flc] 传 null 时仅填充直方图可算部分（STI/FLC 缺失，由调用方决定
+/// 是否触发 Face Mesh 重算）。总像素数为 0 时 black/white 走兜底值。
+AdvancedPortraitMetrics computeAdvancedMetrics({
+  required List<int> lumHist,
+  required String toneKey,
+  required String toneRange,
+  double? sti,
+  double? flc,
+}) {
+  final total = lumHist.fold<int>(0, (a, b) => a + b);
+  return AdvancedPortraitMetrics(
+    skinSti: sti,
+    faceLightingContrast: flc,
+    blackPointOffset: calculateBlackPointOffset(lumHist, total),
+    whitePointCompression: calculateWhitePointCompression(lumHist, total),
+    tenTonalType: classifyTenTonalType(toneKey, toneRange),
+  );
 }

@@ -176,6 +176,12 @@ class _MatchedCardState extends ConsumerState<_MatchedCard> {
 }
 
 /// 相似度条目（分层置信度展示）
+///
+/// 颜色与文字同步分层（v3.5 二轮复核修复 P4）：
+/// - 内置理论档案 → 中性 accent 色（不误导为「好」，配合「理论参照」文案）
+/// - 小样本（N<5）→ 定性色（方向接近=neutral / 差异较大=low），不用 good 绿色
+///   避免与 similarityText 的「差异较大」定性文字矛盾
+/// - N≥5 → 才用绝对阈值的 good/warn/low
 class _SimilarityTile extends StatelessWidget {
   final StyleProfileMatch match;
   const _SimilarityTile({required this.match});
@@ -183,32 +189,69 @@ class _SimilarityTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sim = match.similarity;
-    final color = sim > 0.7
-        ? InterpretationStatus.good
-        : (sim > 0.4 ? InterpretationStatus.warn : InterpretationStatus.low);
+    final Color color;
+    if (match.isBuiltin) {
+      // 内置理论档案：中性色，配合 confidenceHint「理论推导值」说明
+      color = InterpretationStatus.neutral;
+    } else if (match.sampleCount < 5) {
+      // 小样本：定性（与 similarityText 的 0.7 阈值一致）
+      color = sim > 0.7
+          ? InterpretationStatus.neutral
+          : InterpretationStatus.low;
+    } else {
+      // N≥5：绝对阈值
+      color = sim > 0.7
+          ? InterpretationStatus.good
+          : (sim > 0.4 ? InterpretationStatus.warn : InterpretationStatus.low);
+    }
+
+    // confidenceHint：内置档案或小样本时补充说明（P3，理论参照数值偏低属正常）
+    final hint = match.confidenceHint;
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
             width: 6,
             height: 6,
+            margin: const EdgeInsets.only(top: 4),
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 8),
           Expanded(
-            child: Text(match.profileName,
-                style:
-                    const TextStyle(color: AppColors.darkTextPrimary, fontSize: 12)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(match.profileName,
+                          style: const TextStyle(
+                              color: AppColors.darkTextPrimary, fontSize: 12)),
+                    ),
+                    Text(match.similarityText,
+                        style: TextStyle(
+                          color: color,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          fontFamily: 'monospace',
+                        )),
+                  ],
+                ),
+                if (hint != null) ...[
+                  const SizedBox(height: 2),
+                  Text(hint,
+                      style: const TextStyle(
+                        color: DetailColors.textMuted,
+                        fontSize: 10,
+                        height: 1.3,
+                      )),
+                ],
+              ],
+            ),
           ),
-          Text(match.similarityText,
-              style: TextStyle(
-                color: color,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                fontFamily: 'monospace',
-              )),
         ],
       ),
     );

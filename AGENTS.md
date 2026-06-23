@@ -13,11 +13,11 @@
 **目标平台：** Android（优先）→ Windows（二期）
 **详细需求：** 以本文档"已完成"清单 + [README.md](./README.md) 功能列表为准（PRD.md/DEVPLAN.md 未入库）
 
-## 当前开发状态（v2.0.0）
+## 当前开发状态（v3.5）
 
 ### 已完成
 - ✅ §1.1 项目初始化（Flutter 3.44 + Riverpod 3.x + drift + CI/CD）
-- ✅ §1.2 数据层（drift 9 表 + 5 DAO + build_runner）
+- ✅ §1.2 数据层（drift 11 表 + 6 DAO + build_runner）
 - ✅ §1.3 照片导入（SHA256 去重 + fileHash 唯一约束 + Isolate 缩略图 + 解码失败保护）
 - ✅ §1.4 瀑布流浏览（MasonryGridView + StreamProvider + 长按多选 + 批量操作）
 - ✅ §1.5 照片详情（InteractiveViewer + 渐进式披露分层工具栏）
@@ -29,7 +29,7 @@
 - ✅ §3.2 色彩占比（色块宽度按占比动态分配）
 - ✅ §3.4 设置页面（存储统计 + 清理缓存 + 关于）
 - ✅ §4.1 MMCQ + K-Means 算法（三种算法可切换 + 数量可调节 3-8）
-- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3→v7）
+- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3→v7）<br>（当前 schemaVersion 已演进至 v11，见下"数据库表"小节）
 - ✅ §5.x CI 体积优化（`--debug` → `--release`，APK 从 ~150MB 降到 ~30MB）
 - ✅ v2.0 底部导航 4 Tab（作品库/相册/策划/我的）
 - ✅ v2.0 详情页渐进式披露（常驻4按钮 + 激活工具栏 + 更多BottomSheet）
@@ -50,6 +50,12 @@
 - ✅ v3.0 策划关联样片相册（ShootingPlans.associatedAlbumId，schemaVersion v9→v10 + FK setNull + deleteAlbum 事务内显式清关联 + PlanEditPage 下拉选择器 + PlanDetailPage 跳转卡片）
 - ✅ v3.0 BlazeFace 离线人脸 ROI（tflite_flutter 0.11 + face_detection_short_range.tflite 229KB + face_service Isolate 推理 + NMS + 主脸面积最大 + ROI 内缩 20% + SLS/SCS 隔离度 + 手动覆盖通路）
 - ✅ v3.0 峰值对焦蒙层（sharpness_service 拉普拉斯边缘响应 240×160 降采样 + Variance of Laplacian 全局锐度评分 + SharpnessOverlay CustomPainter + BlendMode.screen 发光叠加 + 详情页「对焦」工具按钮）
+- ✅ v3.5 PR1 数据地基（AdvancedPortraitMetrics[STI/FLC 可空 + black_point/white_point/ten_tonal 强制重算] + PhotoFingerprint[96维直方图+9维标量] + StyleProfiles/StyleProfilePhotos 两表 + schemaVersion v10→v11 + tone_service 黑点/白点/十大影调纯直方图函数 + deletePhoto 钩子清档案关联）
+- ✅ v3.5 PR2 三段式 Face Mesh + STI/FLC（BlazeFace short→full→face_mesh.tflite[468 landmarks] 三段式 + STI 高斯接近度公式 + FLC 带可见性判定[侧脸降级 null] + SkinAnalysis 扩展 sti/flc + advancedMetricsProvider 聚合 + mesh 失败降级 bbox ROI）
+- ✅ v3.5 PR3 解构卡片重构（DetailBottomPanel 6 Tab → 四阶卡片[影调/色彩/主体/档案] + 参照直方图叠放[教学核心] + 数据仪表盘全屏页[4 section] + stage_card 通用折叠容器 + interpretation_row 解读式措辞）
+- ✅ v3.5 PR4+PR5 风格档案 + 标准化欧氏匹配 + 复刻参数 + 内置理论档案（FingerprintService 卡方60%+标准化欧氏40% 融合 + precomputeAnalysisForPhotos 批量预计算 + StyleProfileMatch 分层置信度 + 风格档案列表/创建/详情 + 阶④接入真实匹配 + ReplicationHintsService 解读式复刻参数 + BuiltinProfiles 日系/港风[做精]/青橙/中式[待校准] + ensureSeeded 幂等启动插入）
+- ✅ v3.5 复核修复（BLOCKER: 内置档案 scalar_means 改 RAW 单位 + 补 hist_means；MAJOR: advancedMetricsProvider cache-hit 提前 return 跳过 ref.watch[gotcha #33] + ReplicationHintsService 魔数文档化；MINOR: PhotoFingerprint 标量单位标注与实现一致）
+- ✅ v3.5 二轮复核修复（P1: precomputeAnalysisForPhotos 补 advanced 含 Face Mesh，让 STI/FLC 进入档案匹配 + tone_service 提取 computeAdvancedMetrics 纯函数共享；P3: computeSimilarity exp 衰减 2.0→4.0 宽容理论档案 + 内置档案相似度补 confidenceHint 文案；P4: _SimilarityTile 颜色跟随 similarityText 分层[isBuiltin/<5/≥5]；P5: AGENTS.md 同步 schemaVersion/版本/gotcha #46-50/项目结构）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -134,32 +140,39 @@ mengtu/
 ├── lib/
 │   ├── main.dart                    # 应用入口（ErrorWidget 兜底 + MainShell）
 │   ├── models/
-│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）
+│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）+ SkinAnalysis（v3.5 扩展 sti/flc）
 │   │   ├── palette_result.dart      # PaletteColor + PaletteResult
-│   │   └── exif_info.dart           # ExifInfo 强类型 + JSON 序列化 + 格式化（f/2.8、1/250s）
+│   │   ├── exif_info.dart           # ExifInfo 强类型 + JSON 序列化 + 格式化（f/2.8、1/250s）
+│   │   ├── advanced_portrait_metrics.dart # v3.5 高级人像指标（STI/FLC 可空 + black/white/ten_tonal 强制重算 + mergeIntoToneJson）
+│   │   ├── photo_fingerprint.dart   # v3.5 照片指纹（96维直方图 + 9维标量[RAW 单位]）
+│   │   └── style_profile_match.dart # v3.5 档案匹配结果（分层置信度 similarityText/confidenceHint）
 │   ├── theme/
 │   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=10）
-│   │   │   ├── tables.dart          # 表定义（9张表，见下）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=11）
+│   │   │   ├── tables.dart          # 表定义（11张表，见下）
 │   │   │   └── daos/
 │   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + watchPhotosByName(按文件名搜索) + 缓存更新 + 清缩略图 + updateExifCache
 │   │   │       ├── tag_dao.dart     # 标签CRUD + 相册-标签关联（v2.1 标签迁移到相册）
 │   │   │       ├── album_dao.dart   # 相册CRUD + 关联 + getCoverPhoto + watchAlbumsByTag/getAlbumsWithTagInfo/watchAlbumsForPhoto（v2.1）+ AlbumWithTags 聚合类
 │   │   │       ├── color_pin_dao.dart # 取色点CRUD
 │   │   │       ├── plan_dao.dart    # 拍摄策划CRUD + shot list/gear序列化 + 模板
+│   │   │       ├── style_profile_dao.dart # v3.5 风格档案CRUD + 关联 + removePhotoFromAllProfiles(删照片钩子) + getProfilePhotoCount
 │   │   │       └── *.g.dart        # 自动生成（gitignore）
-│   │   ├── import_service.dart      # 导入去重+缩略图+EXIF解析+删除+regenerateThumbnail+readExifForExistingPhoto
+│   │   ├── import_service.dart      # 导入去重+缩略图+EXIF解析+删除+regenerateThumbnail+readExifForExistingPhoto+precomputeAnalysisForPhotos(v3.5 批量预计算含advanced)
 │   │   ├── exif_service.dart        # EXIF 解析纯函数（extractExifJson，Isolate 内调用）
 │   │   ├── histogram_service.dart   # 直方图计算（Isolate）
-│   │   ├── tone_service.dart        # 影调分析（5区域 + 合并段基调 + 信息熵 + RMS对比度 + 冷暖比 + P3补偿）
+│   │   ├── tone_service.dart        # 影调分析（5区域 + 合并段基调 + 信息熵 + RMS对比度 + 冷暖比 + P3补偿 + v3.5 黑点/白点/十大影调/computeAdvancedMetrics 纯函数）
 │   │   ├── palette_service.dart     # 色卡提取
 │   │   ├── clipping_service.dart    # 高光/阴影溢出警告（动态step）
 │   │   ├── harmony_service.dart     # 配色和谐度（6种HarmonyType）
 │   │   ├── pixel_picker_service.dart # 取色器像素拾取
-│   │   ├── face_service.dart        # v3.0 BlazeFace 人脸 ROI + 肤色 HSL 统计（Isolate 推理）
-│   │   └── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
+│   │   ├── face_service.dart        # v3.0 BlazeFace 人脸 ROI + 肤色 HSL + v3.5 三段式 Face Mesh + STI/FLC（Isolate 推理）
+│   │   ├── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
+│   │   ├── fingerprint_service.dart # v3.5 照片指纹（96维直方图+9维标量 Isolate）+ 档案统计 + 标准化欧氏+卡方融合匹配
+│   │   ├── builtin_profiles.dart    # v3.5 内置理论档案（日系/港风[做精]/青橙/中式[待校准]）+ ensureSeeded 幂等
+│   │   └── replication_hints_service.dart # v3.5 复刻参数生成（解读式「样片手法」语境，非诊断）
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
 │   │   ├── home_page.dart           # 作品库（瀑布流+按文件名搜索+长按多选[加入相册/删除]+静默导入）v2.1去标签化
@@ -170,12 +183,14 @@ mengtu/
 │   │   ├── plan_list_page.dart      # 策划列表（状态筛选chips+卡片）
 │   │   ├── plan_edit_page.dart      # 策划创建/编辑（EditableShotRow子组件隔离+吸底保存）
 │   │   ├── plan_detail_page.dart    # 策划详情（shot完成度+实拍照片）
-│   │   ├── profile_page.dart        # 我的（统计+标签管理[全局相册标签]+设置入口）
+│   │   ├── profile_page.dart        # 我的（统计+标签管理[全局相册标签]+设置入口+v3.5 风格档案入口）
 │   │   ├── settings_page.dart       # 设置（存储+缓存+主题切换+版本）
-│   │   └── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
+│   │   ├── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
+│   │   ├── style_profile_page.dart  # v3.5 风格档案列表/创建（选样片→预计算→关联→recomputeProfileStats）
+│   │   └── style_profile_detail_page.dart # v3.5 风格档案详情（照片列表+移除+重算指纹）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层；v2.1移除快速标签按钮）
-│   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行[黑白/溢出/构图/对焦/取色] + 展开 TabBarView：信息/直方图/色卡/影调/和谐/取色）
+│   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行[黑白/溢出/构图/锐度/取色/数据] + 展开 GradingPanel 四阶解构卡片[v3.5 重构]）
 │   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
 │   │   ├── tone_guide_card.dart     # v3.0 数理审美调色指引（信息熵/RMS/肤色4维度纯文字卡片）
@@ -185,17 +200,30 @@ mengtu/
 │   │   ├── color_picker_loupe.dart  # 取色放大镜 + ColorPinMarker
 │   │   ├── clipping_overlay.dart    # 溢出警告蒙层
 │   │   ├── sharpness_overlay.dart   # v3.0 峰值对焦蒙层（拉普拉斯响应 CustomPainter + BlendMode.screen 发光）
-│   │   └── composition_overlay.dart # 构图辅助线
+│   │   ├── composition_overlay.dart # 构图辅助线
+│   │   └── grading/                 # v3.5 四阶解构卡片（替代原 6 Tab）
+│   │       ├── grading_panel.dart   # 四阶卡片 ListView 容器（watch advancedMetricsProvider 一次）
+│   │       ├── stage_card.dart      # 通用阶卡片（序号+标题+摘要+折叠/展开）
+│   │       ├── stage_tonal_card.dart # 阶①影调手法（黑点/白点/RMS/十大影调 + 参照直方图）
+│   │       ├── stage_color_card.dart # 阶②色彩手法（STI/ΔH/饱和解读）
+│   │       ├── stage_isolation_card.dart # 阶③主体手法（SLS/SCS/FLC/锐度解读）
+│   │       ├── stage_archive_match_card.dart # 阶④档案比对（相似度列表+雷达图+复刻参数；颜色跟随 similarityText 分层）
+│   │       ├── reference_histogram.dart # 参照直方图叠放（教学核心，当前 vs 典型影调高斯/U型）
+│   │       ├── fingerprint_radar.dart # 9 维雷达图（current vs archive）
+│   │       ├── interpretation_row.dart # 解读行（共享）+ InterpretationStatus 状态色
+│   │       ├── replication_hints_card.dart # 复刻参数附录（解读式「样片手法」）
+│   │       └── raw_data_dashboard.dart # 数据仪表盘全屏页（4 section：影调/色彩/隔离/EXIF）
 │   ├── providers/
 │   │   ├── database_provider.dart   # AppDatabase + ImportService 单例
 │   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序 + photosByNameSearchProvider
 │   │   ├── tag_provider.dart        # 标签流 + TagActions（v2.1 相册作用域：addTagToAlbum/removeTagFromAlbum）
 │   │   ├── album_provider.dart      # 相册流（v2.1 集中：albumsProvider/albumsWithTagsProvider/albumPhotosProvider/albumTagsProvider/albumsByTagProvider/photoAlbumsProvider + albumTagFilterProvider）
-│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（BlazeFace 肤色 ROI）+ modelPathProvider
+│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（BlazeFace 肤色 ROI）+ modelPathProvider + v3.5 meshModelPathProvider/advancedMetricsProvider（聚合 advanced 含 STI/FLC）
 │   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
 │   │   ├── sharpness_provider.dart  # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源，按需计算不缓存）
 │   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
+│   │   ├── style_profile_provider.dart # v3.5 风格档案流 + fingerprintServiceProvider + photoFingerprintProvider + styleProfileMatchProvider
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
 │       ├── app_info.dart           # 应用版本常量（单一数据源，与 pubspec version 对齐）
@@ -223,11 +251,11 @@ mengtu/
 ├── AGENTS.md                        # 本文件
 ├── LICENSE                          # MIT + 第三方依赖致谢
 ├── README.md                        # 项目说明
-└── pubspec.yaml                     # version: 1.2.0+1
+└── pubspec.yaml                     # version: 1.3.0+1
 ```
 
-**数据库表（9 张，schemaVersion=10）：**
-- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引
+**数据库表（11 张，schemaVersion=11）：**
+- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引。v3.5：toneJson 内嵌 `advanced` 键（black_point/white_point/ten_tonal/skin_sti/face_lighting_contrast），不改表结构
 - `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）。v2.1 起标签是相册的子系统，全局定义、可复用
 - `AlbumTags` — 相册-标签多对多（v2.1 替代原 PhotoTags，标签从照片迁移到相册）
 - `ColorPins` — 取色点（v4）
@@ -236,6 +264,8 @@ mengtu/
 - `ShootingPlans` — 拍摄策划（v7，标题/风格/器材/shot list/状态 + v10 associatedAlbumId 关联样片相册，FK setNull）
 - `PlanPhotos` — 策划-照片关联（区分 reference/result 角色）
 - `PlanTemplates` — 策划模板（内置 3 个：人像外拍/街拍/静物）
+- `StyleProfiles` — v3.5 风格档案（id/name/description/fingerprintStats[JSON{mean,std}]/isBuiltin/builtinKey）
+- `StyleProfilePhotos` — v3.5 档案-照片多对多（profileId FK cascade / photoId FK setNull，测试库不生效由 DAO 显式清理，gotcha #40）
 
 ## 编码规范
 
@@ -395,6 +425,17 @@ CI 流程（`.github/workflows/build.yml`）：
 43. **ToneInfoCard 不自带滚动容器** — v3.0 重构后 `ToneInfoCard` 去掉了内部 `SingleChildScrollView`（避免与 `_buildToneTab` 外层 `SingleChildScrollView` 嵌套产生 ScrollController 异常）。Widget 测试需手动包 `SingleChildScrollView` 模拟真实使用场景，否则内容溢出 576px 测试视口
 44. **tflite_flutter 触发两个 Android 构建坑** — 引入 `tflite_flutter: ^0.11.0` 后 CI 连续三次构建失败，根因和修复：(a) 插件 Java(1.8) 与主项目 Kotlin(17) JVM 目标不一致 → 根 `build.gradle.kts` 加 `subprojects { afterEvaluate { ...统一 JVM 17 } }`，**必须**在 `evaluationDependsOn(":app")` 之前注册；(b) 插件间接依赖 `org.tensorflow:tensorflow-lite{,-gpu,-api}:2.11.0` 共用 namespace `org.tensorflow.lite` 触发 AGP 9.x 的 `uniqueManifestNamespace` 校验。**关键**：`android.uniqueManifestNamespaceRequired=false` 降级 flag 在 AGP 9.x **已被忽略**，不能靠 gradle.properties 关闭。正确修复：根 `build.gradle.kts` 的 `allprojects { configurations.configureEach { resolutionStrategy.eachDependency { ... } } }` 强制 `org.tensorflow:*` 升级到 2.16.1（已正确声明独立 namespace），**必须放在 allprojects 内**让 `:tflite_flutter` 插件模块的依赖解析也生效
 45. **像素物理属性蒙层必须挂在 InteractiveViewer 内部** — `ClippingOverlay` / `SharpnessOverlay` 表达的是照片像素属性（合焦/溢出），必须与 Image 共享 InteractiveViewer 的缩放/平移变换。若挂外层 Stack（如取色放大镜那种屏幕坐标组件），放大检查时斑点会错位、对焦/溢出功能彻底失效。构图参考线 `CompositionOverlay` 相反，是屏幕坐标三分线，应挂外层不随缩放
+46. **STI 接近度公式弃用乘积** — `plan.md` 原 STI = Y×(1−S)×(1−Texture) 乘积公式在低饱和/低纹理场景反直觉（塑料脸误判为高通透）。改为高斯接近度 `⅓·gaussian(Y,0.65,0.15) + ⅓·gaussian(S,0.25,0.1) + ⅓·(1−|ΔH|/30)`，理想肤色点 Y=0.65/S=0.25/H=17°（达芬奇肤色线）。Texture 独立为粗糙度维度，不参与通透度。**已知限制（待修）**：STI 理想肤色测试阈值 `>0.85` 可收紧到 `>0.95`（高斯理想点理论值=1.0，采样扰动下 0.85 偏松，属测试精度优化）
+47. **标准化欧氏距离替代马氏距离** — 用户档案匹配用各维度 {mean, std} 的标准化欧氏距离，**不用**多维高斯马氏距离（N=3 协方差矩阵奇异，数学硬伤）。融合：直方图卡方 60% + 标量标准化欧氏 40%，相似度 `exp(-D²/4.0)`（衰减系数 v3.5 二轮复核从 2.0 放宽到 4.0，因为内置理论档案 hist_means 是高斯生成、与真实照片多峰分布天然偏离，2.0 系数会让相似度系统性偏低）。缺失维度（STI/FLC = -1）跳过，不影响其他维度
+48. **Face Mesh 需可见性判定** — FLC 切左右脸时，`visibility < 0.5` 的 landmark 跳过，左右脸区域平均 visibility < 0.5 时 FLC 返回 null（侧脸降级）。旧格式 `face_mesh.tflite` 无原生 visibility，用 z 深度归一化近似。**已知限制（待修）**：(a) 当前左右脸划分用固定 landmark 索引集（leftFaceRegion/rightFaceRegion）而非动态中轴线（鼻尖 1 + 双眼 33/133），轻微偏头场景数值偏小，待对称 landmark 对方案；(b) z 归一化对侧脸检测语义偏弱
+49. **导入不预计算，档案需批量钩子** — 现有架构是懒计算（详情页打开才算），档案系统需全量数据，必须在创建档案时主动调用 `precomputeAnalysisForPhotos`。**v3.5 二轮复核修复**：`precomputeAnalysisForPhotos` 现在也计算 advanced（含 Face Mesh 的 STI/FLC），让档案样片即使未打开详情页，STI/FLC 也能进入指纹匹配（之前预计算只写 toneJson 不写 advanced 键，导致用户档案的 STI/FLC 维度恒为 -1 被跳过）。核心计算逻辑提取为 `tone_service.computeAdvancedMetrics` 纯函数，`advancedMetricsProvider` 和 `precomputeAnalysisForPhotos` 共用
+50. **ten_tonal_type 复用 toneKey×toneRange** — 不引入 `plan.md` 的 `classifyTenTonalities(mean/stdDev 阈值)` 分类（与现有基于像素分布的 `_classifyToneKey`[峰值+合并段占比] 和 `_classifyToneRange`[最值分布范围] 双逻辑冲突）。直接组合 `toneKey×toneRange`，`toneKey='full'` 时特判为「全长调」（不再拼接 rangeLabel，避免「全长长调」）。**v3.5 二轮复核修复**：`builtin_profiles.dart` 的 `scalar_means` 必须用 RAW 单位（与 `_computeFingerprintIsolate` 一致）—— 原 RMS=0.15~0.35 差 2 个数量级（应为 0~128 区间），导致内置档案匹配功能失效，已修正为日系 RMS≈25/港风≈45/青橙≈60/中式≈22，并补全 hist_means（原缺失导致卡方融合退化为 0/40）
+
+## v3.5 已知限制（非阻塞，待后续优化）
+
+- **P6**：`style_profile_page._PhotoSelectDialog` 当前用文字列表 + checkbox 选样片，无缩略图预览（与 v2.0 瀑布流多选体验割裂）。MVP 可接受，待补缩略图瀑布流多选
+- **P7**：STI 理想肤色测试阈值 >0.85 可收紧到 >0.95（见 gotcha #46）
+- **P2**：FLC 左右脸划分用固定 landmark 集而非动态中轴线（见 gotcha #48）
 
 ## 许可证合规
 

@@ -9,6 +9,7 @@
 // 注：computeFingerprint 依赖 Isolate + 照片文件，测试通过 DB 注入预计算的
 // 直方图缓存 + toneJson 间接验证（不读真实图片）。
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_test/flutter_test.dart';
@@ -168,6 +169,87 @@ void main() {
           scalars: [0.8, 2.0, 100.0, 255.0, 8.0, 90.0, 40.0, 0.9, 0.8]);
       final sim = await svc.computeSimilarity(fp, 'p1');
       expect(sim, lessThan(0.5));
+    });
+
+    test('中等差异的指纹 → sim 在合理区间（0.2~0.8）', () async {
+      // v3.5 二轮复核新增：验证 exp 衰减系数从 2.0 放宽到 4.0 后，
+      // 中等差异的指纹既不会被压到接近 0（过严），也不会虚高（过松）。
+      final db = createTestDatabase();
+      final svc = FingerprintService(db);
+      // 档案指纹：RMS=0.4，黑点=20
+      final fps = [
+        buildFingerprint(
+            scalars: [0.4, 1.0, 20.0, 245.0, 6.5, 50.0, 15.0, 0.6, 0.25])
+      ];
+      final stats = svc.computeStats(fps);
+      await db.styleProfileDao.insertProfile(
+        StyleProfilesCompanion.insert(
+          id: 'p1',
+          name: 'test',
+          fingerprintStats: Value(jsonEncode(stats)),
+        ),
+      );
+
+      // 当前指纹：与档案接近但有偏离（RMS 0.5 vs 0.4，黑点 30 vs 20）
+      final fp = buildFingerprint(
+          scalars: [0.5, 1.2, 30.0, 248.0, 6.8, 55.0, 18.0, 0.62, 0.28]);
+      final sim = await svc.computeSimilarity(fp, 'p1');
+      // 中等差异应落在 0.2~0.8（既非「很相似」也非「完全无关」）
+      expect(sim, greaterThan(0.2));
+      expect(sim, lessThan(0.95));
+    });
+
+    test('内置理论档案风格：hist_means 用高斯生成，sim 不会被压到接近 0', () async {
+      // v3.5 二轮复核新增：验证 exp 衰减放宽（2.0→4.0）后，理论档案的高斯
+      // hist_means 与真实照片（多峰）的卡方距离不再让相似度系统性偏低。
+      // 构造一个与理论档案接近但不完全相同的直方图，sim 应 > 0.3。
+      final db = createTestDatabase();
+      final svc = FingerprintService(db);
+      // 档案：单峰高斯直方图（峰值 bin 16）
+      final hist = List<double>.filled(96, 0.0);
+      var sum = 0.0;
+      for (var i = 0; i < 96; i++) {
+        final d = (i - 16) / 8.0;
+        hist[i] = (i < 32) ? math.exp(-0.5 * d * d) : 0.0;
+        sum += hist[i];
+      }
+      for (var i = 0; i < 96; i++) {
+        hist[i] /= sum;
+      }
+      final fps = [
+        PhotoFingerprint(
+          histogramFeatures: hist,
+          scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25],
+        )
+      ];
+      final stats = svc.computeStats(fps);
+      await db.styleProfileDao.insertProfile(
+        StyleProfilesCompanion.insert(
+          id: 'p1',
+          name: 'theory',
+          fingerprintStats: Value(jsonEncode(stats)),
+        ),
+      );
+
+      // 当前：峰值略偏移的高斯（bin 18 vs 档案 bin 16），模拟真实照片偏离理论分布
+      final hist2 = List<double>.filled(96, 0.0);
+      var sum2 = 0.0;
+      for (var i = 0; i < 96; i++) {
+        final d = (i - 18) / 9.0;
+        hist2[i] = (i < 32) ? math.exp(-0.5 * d * d) : 0.0;
+        sum2 += hist2[i];
+      }
+      for (var i = 0; i < 96; i++) {
+        hist2[i] /= sum2;
+      }
+      final fp = PhotoFingerprint(
+        histogramFeatures: hist2,
+        scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25],
+      );
+      final sim = await svc.computeSimilarity(fp, 'p1');
+      // 系数放宽后，相似风格不应被系统性压低
+      expect(sim, greaterThan(0.3),
+          reason: '理论档案与近似风格 sim 应 > 0.3，否则衰减系数过严');
     });
   });
 }

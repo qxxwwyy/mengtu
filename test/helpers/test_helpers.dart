@@ -1,5 +1,6 @@
 // test_helpers.dart — 测试辅助工具
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:drift/native.dart';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -116,6 +117,46 @@ Future<String> insertTestPhoto(
     fileName: fileName,
     fileHash: fileHash ?? 'hash_$photoId',
   ));
+  return photoId;
+}
+
+/// 插入一张带预填缓存（直方图 + toneJson）的测试照片
+///
+/// 用于 v3.5 预计算/指纹链路集成测试：直接写入分析缓存，跳过 Isolate 计算路径，
+/// 验证 precomputeAnalysisForPhotos 的幂等性（已有缓存不重算）和
+/// FingerprintService 读缓存算指纹的行为。
+///
+/// [rgbHistogram]/[lumHistogram]/[hueHistogram] 为原始 bytes（Photo 表存 Uint8List）。
+/// [toneJson] 直接写入 toneJson 列（可含或不含 advanced 键）。
+Future<String> insertPhotoWithCaches(
+  AppDatabase db, {
+  String? id,
+  String filePath = '/test/photo.jpg',
+  String fileName = 'photo.jpg',
+  String? fileHash,
+  Uint8List? rgbHistogram,
+  Uint8List? lumHistogram,
+  Uint8List? hueHistogram,
+  String? toneJson,
+}) async {
+  final photoId = id ?? 'photo-${DateTime.now().microsecondsSinceEpoch}';
+  await db.photoDao.insertPhoto(buildPhotoCompanion(
+    id: photoId,
+    filePath: filePath,
+    fileName: fileName,
+    fileHash: fileHash ?? 'hash_$photoId',
+  ));
+  if (rgbHistogram != null || lumHistogram != null || hueHistogram != null) {
+    await db.photoDao.updateHistogramCache(
+      photoId,
+      rgbHistogram: rgbHistogram,
+      lumHistogram: lumHistogram,
+      hueHistogram: hueHistogram,
+    );
+  }
+  if (toneJson != null) {
+    await db.photoDao.updateToneCache(photoId, toneJson);
+  }
   return photoId;
 }
 

@@ -9,9 +9,16 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'database/app_database.dart';
 import 'exif_service.dart';
+import 'face_service.dart'
+    show
+        analyzeSkinTone,
+        ensureModelsExtracted,
+        getFullModelPath,
+        ensureMeshModelExtracted;
 import 'histogram_service.dart' show computeHistogram;
-import 'tone_service.dart' show analyzeTone;
-import '../models/tone_result.dart' show HistogramData;
+import 'tone_service.dart' show analyzeTone, computeAdvancedMetrics;
+import '../models/advanced_portrait_metrics.dart' show AdvancedPortraitMetrics;
+import '../models/tone_result.dart' show HistogramData, SkinAnalysis;
 
 const _uuid = Uuid();
 
@@ -46,6 +53,13 @@ class ImportService {
     await Directory(thumbnailsDir).create(recursive: true);
     return ImportService._(db, thumbnailsDir);
   }
+
+  /// v3.5：测试用工厂（绕开 path_provider platform channel）
+  ///
+  /// [precomputeAnalysisForPhotos] 不使用 `_thumbnailsDir`，仅算分析缓存，
+  /// 因此测试可注入任意临时目录，无需 platform channel 初始化。
+  @visibleForTesting
+  ImportService.forTesting(this._db, this._thumbnailsDir);
 
   /// 批量导入照片
   /// [filePaths] 源文件路径列表
@@ -212,11 +226,22 @@ Future<String> regenerateThumbnail(String photoId) async {
   /// 必须在创建档案时主动触发（gotcha #49）。
   ///
   /// 填充 Photos 表的 rgbHistogram/lumHistogram/hueHistogram/toneJson 缓存，
-  /// 不填 advanced 键（advanced 的 STI/FLC 依赖 Face Mesh，由详情页按需算）。
+  /// **v3.5 二轮复核修复**：现也填充 toneJson 的 `advanced` 键（含 Face Mesh
+  /// 的 STI/FLC）。之前只写 toneJson 不写 advanced，导致档案样片即使预计算过，
+  /// `_computeFingerprintIsolate` 读出的 STI/FLC 仍为 -1 → 档案匹配时这两维
+  /// 被跳过，肤色维度（v3.5 主打的"亚洲人像垂直战场"差异化指标）系统性失效。
+  /// 现在让 STI/FLC 真正进入指纹，9 维标量全部参与匹配。
   ///
   /// 返回 (success, failed) 计数。
   Future<({int success, int failed})> precomputeAnalysisForPhotos(
       List<String> photoIds) async {
+    // 主线程一次性解压三个模型（gotcha #41：rootBundle 不能进 Isolate）。
+    // 失败不阻塞：short 缺失则 skin 全空，mesh 缺失则 STI/FLC 为 null，
+    // advanced 仍写 black/white/ten_tonal（直方图可算，无 Face Mesh 依赖）。
+    final shortModelPath = await ensureModelsExtracted();
+    final fullModelPath = await getFullModelPath();
+    final meshModelPath = await ensureMeshModelExtracted();
+
     var success = 0;
     var failed = 0;
     for (final photoId in photoIds) {
@@ -239,19 +264,73 @@ Future<String> regenerateThumbnail(String photoId) async {
           );
         }
 
-        // 2. 影调（若未缓存，含 5 段 + entropy/rms，不含 advanced 键）
-        if (photo.toneJson == null || photo.toneJson!.isEmpty) {
-          // 重新读 photo 拿到刚写入的直方图缓存
-          final fresh = await _db.photoDao.getPhotoById(photoId);
-          if (fresh?.rgbHistogram != null && fresh?.lumHistogram != null) {
-            final combined = fresh!.hueHistogram != null
-                ? Uint8List.fromList(
-                    [...fresh.rgbHistogram!, ...fresh.lumHistogram!, ...fresh.hueHistogram!])
-                : Uint8List.fromList([...fresh.rgbHistogram!, ...fresh.lumHistogram!]);
+        // 2. 影调（若未缓存，含 5 段 + entropy/rms）
+        // 重新读 photo 拿到刚写入的直方图缓存（避免用旧对象）
+        var current = await _db.photoDao.getPhotoById(photoId);
+        if (current == null) {
+          failed++;
+          continue;
+        }
+        if (current.toneJson == null || current.toneJson!.isEmpty) {
+          if (current.rgbHistogram != null && current.lumHistogram != null) {
+            final combined = current.hueHistogram != null
+                ? Uint8List.fromList([
+                    ...current.rgbHistogram!,
+                    ...current.lumHistogram!,
+                    ...current.hueHistogram!
+                  ])
+                : Uint8List.fromList(
+                    [...current.rgbHistogram!, ...current.lumHistogram!]);
             final hist = HistogramData.fromBytes(combined);
             final tone = analyzeTone(hist.lum);
             await _db.photoDao.updateToneCache(photoId, tone.toJsonString());
+            // 再次读取，拿到含 toneJson 的最新行（用于下方 advanced 合并）
+            current = await _db.photoDao.getPhotoById(photoId);
+            if (current == null) {
+              failed++;
+              continue;
+            }
           }
+        }
+
+        // 3. v3.5 二轮复核新增：advanced 指标（含 Face Mesh 的 STI/FLC）
+        // 仅当 toneJson 里还没有 advanced 键时补算（幂等，已有则跳过避免重算 mesh）。
+        final alreadyHasAdvanced =
+            AdvancedPortraitMetrics.fromJsonString(current.toneJson) != null;
+        if (!alreadyHasAdvanced &&
+            current.rgbHistogram != null &&
+            current.lumHistogram != null &&
+            current.toneJson != null) {
+          // 解析已缓存的直方图 + tone（用于 black/white/ten_tonal 纯直方图计算）
+          final combined = current.hueHistogram != null
+              ? Uint8List.fromList([
+                  ...current.rgbHistogram!,
+                  ...current.lumHistogram!,
+                  ...current.hueHistogram!
+                ])
+              : Uint8List.fromList(
+                  [...current.rgbHistogram!, ...current.lumHistogram!]);
+          final hist = HistogramData.fromBytes(combined);
+          final tone = analyzeTone(hist.lum);
+          // Face Mesh 推理拿 STI/FLC（mesh 缺失时降级为 null，不报错）
+          final skin = (shortModelPath == null)
+              ? const SkinAnalysis()
+              : await analyzeSkinTone(
+                  current.filePath,
+                  shortModelPath: shortModelPath,
+                  fullModelPath: fullModelPath,
+                  meshModelPath: meshModelPath,
+                );
+          final metrics = computeAdvancedMetrics(
+            lumHist: hist.lum,
+            toneKey: tone.toneKey,
+            toneRange: tone.toneRange,
+            sti: skin.sti,
+            flc: skin.flc,
+          );
+          final merged = AdvancedPortraitMetrics.mergeIntoToneJson(
+              current.toneJson, metrics);
+          await _db.photoDao.updateToneCache(photoId, merged);
         }
         success++;
       } catch (e) {
