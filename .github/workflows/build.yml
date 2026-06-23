@@ -43,6 +43,10 @@ jobs:
 
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v4
+        # 非关键步骤：coverage 报告是可选产物，失败不应阻塞 APK 构建/发布。
+        # GitHub Actions 的 artifact 存储配额耗尽时会报错（账号级限制，非代码问题），
+        # 用 continue-on-error 让流水线继续执行后续的 APK 构建。
+        continue-on-error: true
         with:
           name: coverage-lcov
           path: coverage/lcov.info
@@ -65,6 +69,9 @@ jobs:
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
+        # 同 coverage：artifact 存储配额耗尽时不阻塞，APK 已在上一部生成成功。
+        # 配额恢复后可重新触发 run 重新上传。
+        continue-on-error: true
         with:
           name: mengtu-apk
           path: build/app/outputs/flutter-apk/app-release.apk
