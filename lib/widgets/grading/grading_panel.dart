@@ -1,8 +1,10 @@
-// grading_panel.dart — 解构视图（v3.5 PR3）
+// grading_panel.dart — 解构视图（v3.5 PR3，v6.0 修黑框）
 //
 // 替换 DetailBottomPanel 展开态的 6 Tab 内容，改为四阶卡片纵向滚动。
 // 布局：展开区可用约 262px（308 − 顶部把手），4 张卡片用 ListView 滚动，
 // 每张默认折叠（只显示标题 + 摘要），点击展开详情。
+//
+// v6.0（问题7）：去掉顶部 padding，卡片紧贴工具行（消除展开后顶部「大黑框」）。
 //
 // 数据流：watch advancedMetricsProvider 一次，作为 AsyncValue 传给各卡片，
 // 避免每张卡片重复 watch（减少 provider 订阅）。
@@ -29,7 +31,9 @@ class GradingPanel extends ConsumerWidget {
     final advanced = ref.watch(advancedMetricsProvider(photoId));
 
     return ListView(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      // v6.0：去掉顶部 vertical padding，让卡片紧贴工具行（消除「大黑框」间隙，
+      // 问题7）。底部留 8 padding 防止最后一张卡片贴底。左右 12 对齐工具行按钮。
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
       children: [
         StageTonalCard(photoId: photoId, advanced: advanced),
         const SizedBox(height: 8),

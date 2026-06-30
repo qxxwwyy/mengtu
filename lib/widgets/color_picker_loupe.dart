@@ -1,8 +1,18 @@
 // color_picker_loupe.dart — 取色放大镜组件
 //
-// 长按图片时显示的放大镜，中心十字准星 + 局部像素网格
+// 长按图片时显示的放大镜：局部像素网格 + 中心十字准星 + 色值标签。
+//
+// v6.0 易用性优化（问题5）：
+// - 放大镜从 80px → 130px（cell 11.8px，比原 7.2px 更清晰，看得清单格颜色）
+// - 中心格 accent 描边高亮，明确「就取这一格」
+// - 放大镜下方直接显示 HEX + HSV，所见即所得判断是否肤色（不用再找底部面板）
+//
+// 取色点标记 ColorPinMarker（问题4）：支持 onTap 弹出菜单 + selected 高亮
+// （当前肤色基准用 accent 描边）。
 import 'package:flutter/material.dart';
 import '../services/pixel_picker_service.dart';
+import '../theme/app_theme.dart';
+import '../utils/color_utils.dart';
 
 /// 取色放大镜
 class ColorPickerLoupe extends StatelessWidget {
@@ -17,8 +27,12 @@ class ColorPickerLoupe extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const loupeSize = 80.0;
-    const cellSize = loupeSize / 11; // 11x11 网格
+    const loupeSize = 130.0;
+    const gridSize = 11; // 与 ColorPickerSession 的 regionRgb 11×11 保持一致
+    const cellSize = loupeSize / gridSize;
+    final pixel = result.pixel;
+    final color = Color.fromARGB(0xFF, pixel.r, pixel.g, pixel.b);
+    final hsl = rgbToHsl(pixel.r, pixel.g, pixel.b);
 
     return Positioned(
       left: position.dx - loupeSize / 2,
@@ -26,7 +40,7 @@ class ColorPickerLoupe extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // 放大镜圆圈
+          // 放大镜圆圈（像素网格）
           Container(
             width: loupeSize,
             height: loupeSize,
@@ -36,7 +50,7 @@ class ColorPickerLoupe extends StatelessWidget {
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.5),
-                  blurRadius: 8,
+                  blurRadius: 10,
                 ),
               ],
             ),
@@ -50,19 +64,43 @@ class ColorPickerLoupe extends StatelessWidget {
               ),
             ),
           ),
-          // 颜色预览小块
+          // v6.0：放大镜下方直接显示色值 + HSV（所见即所得判断肤色）
           Container(
-            width: 16,
-            height: 16,
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: Color.fromARGB(
-                0xFF,
-                result.pixel.r,
-                result.pixel.g,
-                result.pixel.b,
-              ),
-              border: Border.all(color: Colors.white, width: 1),
-              borderRadius: BorderRadius.circular(2),
+              color: Colors.black.withValues(alpha: 0.75),
+              borderRadius: BorderRadius.circular(6),
+              border: Border.all(color: Colors.white24),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: color,
+                    border: Border.all(color: Colors.white, width: 1),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  pixel.hex,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  'H${hsl.h.round()}° S${hsl.s.round()}%',
+                  style: const TextStyle(color: Colors.white60, fontSize: 10),
+                ),
+              ],
             ),
           ),
         ],
@@ -104,22 +142,35 @@ class _LoupePainter extends CustomPainter {
       }
     }
 
+    // v6.0：中心格 accent 描边高亮（明确「就取这一格」）
+    final centerRect = Rect.fromLTWH(
+      centerX - cellSize / 2,
+      centerY - cellSize / 2,
+      cellSize,
+      cellSize,
+    );
+    final highlightPaint = Paint()
+      ..color = AppColors.darkAccent
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    canvas.drawRect(centerRect, highlightPaint);
+
     // 中心十字准星
     final crossPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.8)
+      ..color = Colors.white.withValues(alpha: 0.85)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
     // 水平线
     canvas.drawLine(
-      Offset(centerX - 8, centerY),
-      Offset(centerX + 8, centerY),
+      Offset(centerX - 10, centerY),
+      Offset(centerX + 10, centerY),
       crossPaint,
     );
     // 垂直线
     canvas.drawLine(
-      Offset(centerX, centerY - 8),
-      Offset(centerX, centerY + 8),
+      Offset(centerX, centerY - 10),
+      Offset(centerX, centerY + 10),
       crossPaint,
     );
   }
@@ -194,12 +245,17 @@ class PixelInfoPanel extends StatelessWidget {
 }
 
 /// 取色点标记（图片上的小圆点）
+///
+/// v6.0（问题4）：
+/// - [onTap] 弹出菜单（设为肤色基准 / 删除）
+/// - [selected] 为 true 时用 accent 描边高亮（当前肤色基准）
 class ColorPinMarker extends StatelessWidget {
   final int r;
   final int g;
   final int b;
-  final Offset position; // 归一化坐标 (0-1)
+  final Offset position; // 相对 Image RenderBox 的局部坐标（像素）
   final VoidCallback? onTap;
+  final bool selected;
 
   const ColorPinMarker({
     super.key,
@@ -208,29 +264,43 @@ class ColorPinMarker extends StatelessWidget {
     required this.b,
     required this.position,
     this.onTap,
+    this.selected = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      left: position.dx - 8,
-      top: position.dy - 8,
+      left: position.dx - 10,
+      top: position.dy - 10,
       child: GestureDetector(
         onTap: onTap,
+        behavior: HitTestBehavior.opaque,
         child: Container(
-          width: 16,
-          height: 16,
+          width: 20,
+          height: 20,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
             color: Color.fromARGB(0xFF, r, g, b),
-            border: Border.all(color: Colors.white, width: 1.5),
+            border: Border.all(
+              color: selected ? AppColors.darkAccent : Colors.white,
+              width: selected ? 2.5 : 1.5,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.5),
                 blurRadius: 4,
               ),
+              if (selected)
+                BoxShadow(
+                  color: AppColors.darkAccent.withValues(alpha: 0.6),
+                  blurRadius: 8,
+                  spreadRadius: 1,
+                ),
             ],
           ),
+          child: selected
+              ? const Icon(Icons.face, size: 11, color: Colors.white)
+              : null,
         ),
       ),
     );

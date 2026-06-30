@@ -8,8 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/advanced_portrait_metrics.dart';
+import '../../models/tone_result.dart';
 import '../../providers/analysis_provider.dart';
 import 'interpretation_row.dart';
+import 'skin_radar.dart';
 import 'stage_card.dart';
 
 /// 阶②色彩手法卡片
@@ -71,12 +73,34 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
         // skin 是 SkinAnalysis
         final s = skin;
         if (s.isEmpty) {
-          return const Text('未检出肤色。可尝试用取色工具长按皮肤区域手动校准。',
-              style: TextStyle(color: InterpretationStatus.low, fontSize: 11, height: 1.4));
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // v6.0（问题8）：无肤色时也显示空雷达占位 + 引导手动校准
+              const Text('未检出肤色。可尝试用取色工具长按皮肤区域手动校准。',
+                  style: TextStyle(
+                      color: InterpretationStatus.low,
+                      fontSize: 11,
+                      height: 1.4)),
+              const SizedBox(height: 8),
+              SkinRadar(
+                skin: const SkinAnalysis(),
+                advanced: widget.advanced.asData?.value,
+              ),
+            ],
+          );
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // v6.0（问题8）：肤色雷达图 —— 心心念念的「肤色合理性」可视化模块，
+            // 放在色彩卡片展开内容顶部。5 维雷达（ΔH/饱和/明度/STI/SLS），
+            // 中心=理想肤色，越饱满越健康。下方保留文字解读行。
+            SkinRadar(
+              skin: s,
+              advanced: widget.advanced.asData?.value,
+            ),
+            const SizedBox(height: 10),
             // STI 通透度（来自 advanced，可能为 null：无脸/侧脸/mesh 失败）
             widget.advanced.maybeWhen(
               data: (a) => a?.skinSti == null

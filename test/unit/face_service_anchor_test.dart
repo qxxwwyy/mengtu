@@ -90,4 +90,62 @@ void main() {
       expect(face.top, greaterThanOrEqualTo(0.0));
     });
   });
+
+  // v6.0 回归测试：BlazeFace 解码三大致命 bug 修复
+  group('BlazeFace v6.0 解码修复', () {
+    test('sigmoid：classifier logit → 概率（防"未 sigmoid 导致阈值过不了"）', () {
+      // logit=0 → sigmoid=0.5（决策边界）
+      expect(sigmoidForTest(0), closeTo(0.5, 1e-9));
+      // 大正 logit → 接近 1
+      expect(sigmoidForTest(5), greaterThan(0.99));
+      // 大负 logit → 接近 0
+      expect(sigmoidForTest(-5), lessThan(0.01));
+      // 原 bug：classifier 输出 logit 被当概率用，负 logit 永远 < 0.5 阈值
+    });
+
+    test('box 回归值按 inputSize 归一化（防"中心点偏离几百倍"）', () {
+      // anchor 中心 + regressor 偏移必须 / inputSize 才回到 [0,1] 归一化空间
+      // 原 bug：cx = anchor[0] + r[0]，r[0] 是 128 像素空间的值（如 20），
+      // 直接加到 [0,1] 的 anchor 上 → cx=20.5，clamp 后全跑到边缘，bbox 全画面外
+      final anchors = blazefaceAnchorsForTest;
+      final anchorIdx = 0;
+      final anchor = anchors[anchorIdx];
+      // regressor[0]=20（像素空间，对应 20/128≈0.156 归一化）
+      final face = decodeAnchorForTest(
+          anchorIdx, [20.0, 0.0, 30.0, 30.0], 0.9);
+      final centerX = (face.left + face.right) / 2;
+      // 归一化后中心 = anchor + 20/128，而非 anchor + 20
+      final expectedCx = anchor[0] + 20.0 / 128;
+      expect((centerX - expectedCx).abs(), lessThan(1e-9),
+          reason: 'box 偏移必须 / inputSize 归一化，否则中心偏离几百倍');
+      expect(centerX, inInclusiveRange(0.0, 1.0));
+    });
+
+    test('full_range (inputSize=192) 与 short_range (128) 解码独立正确', () {
+      // full_range 用 192 输入，box 偏移除以 192；short 除以 128。
+      // 同样的 regressor 值在两模型下应产生不同归一化偏移。
+      final face128 = decodeAnchorForTest(
+          0, [40.0, 0.0, 40.0, 40.0], 0.9,
+          inputSize: 128);
+      final face192 = decodeAnchorForTest(
+          0, [40.0, 0.0, 40.0, 40.0], 0.9,
+          inputSize: 192);
+      final cx128 = (face128.left + face128.right) / 2;
+      final cx192 = (face192.left + face192.right) / 2;
+      // 40/128 ≈ 0.3125 vs 40/192 ≈ 0.208 → 不同
+      expect(cx128, greaterThan(cx192),
+          reason: '相同像素偏移下，短距模型归一化偏移更大（除以更小的 inputSize）');
+    });
+
+    test('short & full 都生成 896 anchor（防锚点结构不匹配）', () {
+      // 两个模型的 anchor 数都必须 = 896（feature map [16,8,8,8]×2）
+      expect(blazefaceAnchorsForTest.length, 896);
+      // full 的 anchor 通过 inputSize=192 路径也能取到（结构与 short 同）
+      final fullFace = decodeAnchorForTest(
+          895, [0.0, 0.0, 0.5, 0.5], 0.8,
+          inputSize: 192);
+      expect(fullFace.area, greaterThan(0),
+          reason: 'full_range 最后一个 anchor（index 895）必须可解码');
+    });
+  });
 }

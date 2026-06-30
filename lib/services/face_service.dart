@@ -21,16 +21,26 @@
 // - 多脸合影 → 按 BBox 面积降序取最大者作为主脸 ROI
 // - v3.5：Face Mesh 失败 → 降级 bbox ROI（STI/FLC null，但仍有 ΔH/饱和/SLS/SCS）
 //
-// v3.1 重要修复：
-// - 原 _buildAnchors 只生成 640 个 anchor（与 896 输出张量不匹配 → RangeError
-//   被吞 → 永远检测不到脸）。现按 MediaPipe SsdAnchorsCalculator 正确生成 896 个。
-// - 原 regressor 解码公式错误（exp(r[2])/size），改为标准 BlazeFace 解码。
-// - 双模型自动回退：short_range（自拍近距）检测不到脸时回退到 full_range（远距全身）。
+// v6.0 根因修复（BlazeFace 解码错误，参考 MediaPipe 官方 SsdAnchorsCalculator +
+// patlevin/face-detection-tflite 权威实现）：
+//   原实现三大致命 bug 导致「永远检测不到脸」：
+//   (1) classifier 输出是 logit，原代码当概率用（未 sigmoid）→ 阈值 0.5 永远过不了
+//   (2) 中心点解码 `cx = anchor[0] + r[0]` 错误：r[0] 是 INPUT_SIZE 像素空间的偏移，
+//       需 `/ inputSize` 归一化到 [0,1] 才能与归一化 anchor 坐标相加。原实现中心点
+//       偏离几百倍 → bbox 全部跑到画面外
+//   (3) 宽高解码同样漏了 `/ inputSize`，且 full_range（input 192）共用 896 short 锚点
+//       （input 128）→ 回退模型完全失效
 //
-// BlazeFace 输出说明（896 anchors，4 个 stride 层 [8,16,16,16] × 每 cell 2 anchor）：
-// - regressor[0..3]: 相对 anchor 的 [dx, dy, w, h]（归一化偏移）
-// - classifier[0]: 人脸置信度（sigmoid 后概率）
-// 后处理：NMS（非极大值抑制）+ 阈值过滤
+// 正确的 MediaPipe face_detection 解码公式（patlevin fdlite/blazeface.py 验证）：
+//   score       = sigmoid(classifier_logit)
+//   cx          = anchor.x_center + regressor[0] / inputSize
+//   cy          = anchor.y_center + regressor[1] / inputSize
+//   w           = regressor[2] / inputSize
+//   h           = regressor[3] / inputSize
+//   （anchor 中心已在 [0,1] 归一化空间；box 回归值是 INPUT_SIZE 像素空间的绝对偏移，
+//    fixed_anchor_size:true 的 MediaPipe face 模型不乘 anchor.w/h）
+//
+// 双模型自动回退：short_range（自拍近距）检测不到脸时回退到 full_range（远距全身）。
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
@@ -127,8 +137,11 @@ class _FaceAnalysisArgs {
   );
 }
 
-/// 模型固定输入尺寸（BlazeFace 短/全距均为 128×128）
-const _modelInputSize = 128;
+/// short_range 模型输入尺寸（自拍近距）
+const _shortModelInputSize = 128;
+
+/// full_range_sparse 模型输入尺寸（远景全身，更大输入）
+const _fullModelInputSize = 192;
 
 /// 置信度阈值（过滤背景噪声）
 const _minConfidence = 0.5;
@@ -138,9 +151,6 @@ const _nmsIouThreshold = 0.3;
 
 /// 检测上限（避免合影场景跑太多 BBox）
 const _maxDetections = 10;
-
-/// 模型输出 anchor 数（必须与模型输出张量第二维一致）
-const _numAnchors = 896;
 
 /// 模型 asset keys
 const _kShortModelAssetKey =
@@ -200,11 +210,13 @@ Future<SkinAnalysis> _analyzeSkinIsolate(_FaceAnalysisArgs args) async {
   // 1) short_range（自拍近距）→ 主脸 bbox
   DetectedFace? face;
   if (args.shortModelPath.isNotEmpty) {
-    face = await _detectPrimaryFace(decoded, args.shortModelPath);
+    face = await _detectPrimaryFace(decoded, args.shortModelPath,
+        inputSize: _shortModelInputSize);
   }
   // 2) short 未命中 → full_range（远处/全身/小脸场景召回更好）
   if (face == null && args.fullModelPath.isNotEmpty) {
-    face = await _detectPrimaryFace(decoded, args.fullModelPath);
+    face = await _detectPrimaryFace(decoded, args.fullModelPath,
+        inputSize: _fullModelInputSize);
   }
   if (face == null) {
     return const SkinAnalysis(); // 无脸 → 空结果，UI 提示手动校准
@@ -671,23 +683,27 @@ double? calculateFlc(FaceMeshResult mesh, img.Image image, bool isP3) {
 
 /// 在 Isolate 内从文件系统路径加载 Interpreter 并检测主脸。
 ///
-/// v3.1 修复：原实现 anchor 数（640）与模型输出（896）不匹配 → 越界被 try/catch
-/// 吞掉 → 永远返回 null。现按 MediaPipe SsdAnchorsCalculator 正确生成 896 anchor。
+/// [inputSize] 决定 anchor 配置与 box 回归归一化：short_range=128，full_range=192。
+/// 二者锚点数量/分布不同，必须用对应 [inputSize] 的 anchor 集。
+///
+/// v6.0 修复：classifier 需 sigmoid；box 回归值是 INPUT_SIZE 像素空间偏移，需
+/// `/ inputSize` 归一化到 [0,1] 才能加到归一化 anchor 坐标上（原实现漏除 → 全画面外）。
 Future<DetectedFace?> _detectPrimaryFace(
-    img.Image image, String modelPath) async {
+    img.Image image, String modelPath,
+    {required int inputSize}) async {
   try {
     final interpreter = await _loadInterpreterFromPath(modelPath);
     if (interpreter == null) return null;
 
-    // 预处理：resize 到 128×128，归一化到 [-1, 1]（BlazeFace 标准）
+    // 预处理：resize 到 inputSize×inputSize，归一化到 [-1, 1]（BlazeFace 标准）
     final resized =
-        img.copyResize(image, width: _modelInputSize, height: _modelInputSize);
+        img.copyResize(image, width: inputSize, height: inputSize);
     final input = List.generate(
       1,
       (_) => List.generate(
-        _modelInputSize,
+        inputSize,
         (y) => List.generate(
-          _modelInputSize,
+          inputSize,
           (x) {
             final p = resized.getPixel(x, y);
             // 归一化到 [-1, 1]
@@ -701,13 +717,18 @@ Future<DetectedFace?> _detectPrimaryFace(
       ),
     );
 
+    // 该 inputSize 对应的 anchor 集（不同模型锚点数/分布不同）
+    final anchors = _anchorsFor(inputSize);
+
     // BlazeFace 输出：
-    // output[0]: [1, 896, 16] — regressor (每个 anchor 的 [dx,dy,w,h] + landmarks)
-    // output[1]: [1, 896, 1]  — classifier (每个 anchor 的置信度，已是 sigmoid 后概率)
+    // output[0]: [1, numAnchors, 16] — regressor (每个 anchor 的 [dx,dy,w,h] + landmarks)
+    // output[1]: [1, numAnchors, 1]  — classifier (每个 anchor 的 logit，需 sigmoid)
+    final numAnchors = anchors.length;
     final output = {
       0: List.generate(
-          1, (_) => List.generate(896, (_) => List.filled(16, 0.0))),
-      1: List.generate(1, (_) => List.generate(896, (_) => List.filled(1, 0.0))),
+          1, (_) => List.generate(numAnchors, (_) => List.filled(16, 0.0))),
+      1: List.generate(
+          1, (_) => List.generate(numAnchors, (_) => List.filled(1, 0.0))),
     };
     interpreter.runForMultipleInputs([input], output);
 
@@ -715,22 +736,23 @@ Future<DetectedFace?> _detectPrimaryFace(
     final classifiers = output[1]![0] as List;
 
     // 1) 收集候选框
-    // v3.1: anchor 数量必须与输出维度一致（896），否则 _anchors[i] 越界
     final candidates = <DetectedFace>[];
-    for (var i = 0; i < _numAnchors; i++) {
-      final score = (classifiers[i] as List)[0] as double;
-      // classifier 已是 sigmoid 后的概率，无需再套 sigmoid
+    for (var i = 0; i < numAnchors; i++) {
+      // classifier 输出是 logit → sigmoid 得概率（原实现漏此步，阈值永远过不了）
+      final logit = (classifiers[i] as List)[0] as double;
+      final score = 1.0 / (1.0 + math.exp(-logit));
       if (score < _minConfidence) continue;
       final r = regressors[i] as List;
-      final anchor = _anchors[i];
-      // BlazeFace 解码（归一化空间）：
-      //   center = anchor_center + [dx, dy]
-      //   size   = anchor_size * exp([dw, dh])（部分实现 regressor[2],[3] 是 log 空间）
-      // 这里 regressor[0..3] = [dx, dy, w, h] 均在归一化 0~1 空间（模型已含尺寸回归）
-      final cx = anchor[0] + (r[0] as double);
-      final cy = anchor[1] + (r[1] as double);
-      final w = (r[2] as double).abs().clamp(0.001, 1.0);
-      final h = (r[3] as double).abs().clamp(0.001, 1.0);
+      final anchor = anchors[i];
+      // MediaPipe face_detection 解码（fixed_anchor_size，box 回归为像素绝对偏移）：
+      //   cx = anchor.x + r[0] / inputSize   （anchor 在 [0,1]，r 在像素空间）
+      //   cy = anchor.y + r[1] / inputSize
+      //   w  = r[2] / inputSize
+      //   h  = r[3] / inputSize
+      final cx = anchor[0] + (r[0] as double) / inputSize;
+      final cy = anchor[1] + (r[1] as double) / inputSize;
+      final w = ((r[2] as double) / inputSize).clamp(0.001, 1.0);
+      final h = ((r[3] as double) / inputSize).clamp(0.001, 1.0);
       candidates.add(DetectedFace(
         left: (cx - w / 2).clamp(0.0, 1.0),
         top: (cy - h / 2).clamp(0.0, 1.0),
@@ -754,25 +776,30 @@ Future<DetectedFace?> _detectPrimaryFace(
   }
 }
 
-/// BlazeFace 896 anchors（v3.1 修正：与模型输出张量第二维严格一致）
+/// 按 inputSize 返回对应的 BlazeFace anchor 集（归一化 [0,1] 坐标）
 ///
-/// 生成规则（MediaPipe SsdAnchorsCalculator，face_detection short/full 通用）：
-///   896 = (16×16 + 8×8 + 8×8 + 8×8) × 2
-///       = 4 个 stride 层 [8, 16, 16, 16]，每 cell 2 个 anchor
-///   每个 anchor = [cx, cy]（归一化 0~1，相对 128×128 输入空间）
-///   anchor 中心 = ((cell_x + 0.5) / feature_map_size, (cell_y + 0.5) / feature_map_size)
-final List<List<double>> _anchors = _buildAnchors();
+/// - short_range (input 128)：896 anchors = (16²+8²+8²+8²)×2，stride [8,16,16,16]
+/// - full_range_sparse (input 192)：与 short 同结构（stride 占输入比例相同），
+///   feature map 仍为 [16,8,8,8]，anchor 中心计算同 short，故复用同一生成函数。
+///
+/// 每个 anchor = [cx, cy]（归一化 [0,1]，相对 feature map 空间）。
+/// 中心 = ((cell_x + 0.5) / fmSize, (cell_y + 0.5) / fmSize)。
+/// 每 cell 2 个 anchor（不同 aspect，由模型内部处理 size，fixed_anchor_size）。
+final Map<int, List<List<double>>> _anchorsCache = {};
 
-List<List<double>> _buildAnchors() {
+List<List<double>> _anchorsFor(int inputSize) {
+  return _anchorsCache.putIfAbsent(inputSize, () => _buildAnchors(inputSize));
+}
+
+List<List<double>> _buildAnchors(int inputSize) {
   final anchors = <List<double>>[];
-  // MediaPipe face_detection：4 个 feature map 层，stride [8,16,16,16]
-  // feature map size = input_size / stride = 128/8=16, 128/16=8, 8, 8
-  // 每层每 cell 2 个 anchor → (16*16 + 8*8 + 8*8 + 8*8) * 2 = 896
+  // MediaPipe face_detection short & full：feature map [16,8,8,8]，每 cell 2 anchor
+  // → (16*16 + 8*8 + 8*8 + 8*8) * 2 = 896（两个模型锚点结构一致，与 inputSize 解耦）
   const featureMapSizes = [16, 8, 8, 8];
   for (final fmSize in featureMapSizes) {
     for (var y = 0; y < fmSize; y++) {
       for (var x = 0; x < fmSize; x++) {
-        // 每 cell 2 个 anchor，中心相同（尺寸不同由模型内部处理）
+        // 每 cell 2 个 anchor，中心相同（不同 aspect，size 由模型 fixed_anchor_size 处理）
         final cx = (x + 0.5) / fmSize;
         final cy = (y + 0.5) / fmSize;
         anchors.add([cx, cy]);
@@ -780,9 +807,9 @@ List<List<double>> _buildAnchors() {
       }
     }
   }
-  // 断言：必须正好 896，否则与模型输出不匹配（曾因此 bug 导致越界静默失败）
-  assert(anchors.length == _numAnchors,
-      'BlazeFace anchors must be $_numAnchors, got ${anchors.length}');
+  // 断言：short & full 均为 896，与模型输出张量第二维严格一致
+  assert(anchors.length == 896,
+      'BlazeFace anchors must be 896, got ${anchors.length} (inputSize=$inputSize)');
   return anchors;
 }
 
@@ -919,21 +946,25 @@ Future<Directory?> _getModelsDir() async {
 // ============ 测试用导出（@visibleForTesting）============
 //
 // 让单元测试能验证 anchor 数量与解码逻辑，防止 v3.0 那样的"640 vs 896
-// 不匹配被 try/catch 吞掉"回归。
+// 不匹配被 try/catch 吞掉"回归，以及 v6.0 修复 sigmoid / inputSize 归一化不回归。
 
-/// 生成好的 896 个 anchor（测试用）
+/// short_range (128) 的 896 个 anchor（测试用）
 @visibleForTesting
-List<List<double>> get blazefaceAnchorsForTest => _anchors;
+List<List<double>> get blazefaceAnchorsForTest => _anchorsFor(_shortModelInputSize);
 
 /// 解码单个 anchor 的 regressor 输出为归一化 bbox（测试用）
+///
+/// [inputSize] 必须与模型实际输入一致（short=128 / full=192），
+/// 因为 regressor 值是像素空间偏移，需 `/ inputSize` 归一化。
 @visibleForTesting
 DetectedFace decodeAnchorForTest(
-    int anchorIndex, List<double> regressor, double score) {
-  final anchor = _anchors[anchorIndex];
-  final cx = anchor[0] + regressor[0];
-  final cy = anchor[1] + regressor[1];
-  final w = regressor[2].abs().clamp(0.001, 1.0);
-  final h = regressor[3].abs().clamp(0.001, 1.0);
+    int anchorIndex, List<double> regressor, double score,
+    {int inputSize = _shortModelInputSize}) {
+  final anchor = _anchorsFor(inputSize)[anchorIndex];
+  final cx = anchor[0] + regressor[0] / inputSize;
+  final cy = anchor[1] + regressor[1] / inputSize;
+  final w = (regressor[2] / inputSize).clamp(0.001, 1.0);
+  final h = (regressor[3] / inputSize).clamp(0.001, 1.0);
   return DetectedFace(
     left: (cx - w / 2).clamp(0.0, 1.0),
     top: (cy - h / 2).clamp(0.0, 1.0),
@@ -942,3 +973,7 @@ DetectedFace decodeAnchorForTest(
     confidence: score,
   );
 }
+
+/// 测试用：把 classifier logit 转 sigmoid 概率
+@visibleForTesting
+double sigmoidForTest(double logit) => 1.0 / (1.0 + math.exp(-logit));

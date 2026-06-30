@@ -13,12 +13,14 @@ import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/analysis_provider.dart' show manualSkinSelectionProvider;
 import '../providers/clipping_provider.dart';
+import '../providers/sharpness_provider.dart';
 import '../providers/exif_provider.dart' show colorPinsProvider;
 import '../services/database/app_database.dart';
 import 'compare_page.dart';
 import '../widgets/detail_bottom_panel.dart';
 import '../widgets/clipping_overlay.dart';
 import '../widgets/composition_overlay.dart';
+import '../widgets/sharpness_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
 import '../services/pixel_picker_service.dart';
 import '../theme/app_theme.dart';
@@ -51,25 +53,56 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       ValueNotifier(null);
   final ValueNotifier<Offset?> _loupePositionNotifier = ValueNotifier(null);
   // v3.1: 会话级解码缓存，拖动期间纯内存取色（修原"每次 Isolate 解码全图"卡顿）
-  // v3.2: 进一步降采样到长边 1600px，进入取色从几秒降到 ~0.5 秒
+  // v6.0: 进一步降采样到长边 1200px + 进入详情页时后台预解码，
+  // 用户点「取色」时零等待（_prefetchedSession 命中直接复用）。
   ColorPickerSession? _pickerSession;
+  // 后台预解码的 session（initState 触发，用户点取色时优先取用）
+  ColorPickerSession? _prefetchedSession;
   bool _pickerLoading = false;
   // v3.2: 取色节流提到 ~60fps（16ms），配合局部重建后成本可控，跟手感更好
   DateTime? _lastPickAt;
   // 缓存当前照片尺寸，session.pick 时无需再 await provider
   int _sessionImgW = 0;
   int _sessionImgH = 0;
+  // 当前照片文件路径（initState 预解码 + Pin 菜单删除/校准复用）
+  String? _photoFilePath;
 
   @override
   void dispose() {
     // v3.1: 释放取色会话 + 清空全局手动肤色校准（避免泄漏到下一张照片）
     _pickerSession?.dispose();
+    _prefetchedSession?.dispose();
     _currentPickNotifier.dispose();
     _loupePositionNotifier.dispose();
     // manualSkinSelectionProvider 是全局 Notifier，离开详情页必须清空
     // （ref 在 dispose 后不可用，需在 super.dispose 之前访问）
     ref.read(manualSkinSelectionProvider.notifier).clear();
     super.dispose();
+  }
+
+  /// v6.0: 进入详情页时后台预解码取色 session（fire-and-forget）
+  ///
+  /// 用户大概率会点「取色」（这是详情页核心调色工具之一），提前在后台把全图
+  /// 降采样解码好，点取色时直接复用 _prefetchedSession，零等待。
+  /// 失败静默（取色按钮按下时再正常走 _enterColorPickMode 兜底）。
+  void _prefetchPickerSession(Photo photo) {
+    _photoFilePath = photo.filePath;
+    _sessionImgW = photo.width;
+    _sessionImgH = photo.height;
+    ColorPickerSession.begin(photo.filePath, maxDim: 1200).then((session) {
+      if (!mounted) {
+        session.dispose();
+        return;
+      }
+      // 已被取色模式消费或已退出则丢弃
+      if (_pickerSession != null) {
+        session.dispose();
+        return;
+      }
+      _prefetchedSession = session;
+    }).catchError((_) {
+      // 预解码失败不打扰用户，按下取色再兜底
+    });
   }
 
   /// 处理取色手势 — 使用 globalPosition 与 _calculateImageDisplayRect 统一坐标系
@@ -145,14 +178,26 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   }
 
   /// 进入取色模式时一次性解码全图（Isolate 内），完成后启用 session.pick
+  ///
+  /// v6.0: 优先复用 initState 后台预解码的 _prefetchedSession（零等待）。
+  /// 命中则直接启用；未命中（预解码未完成/失败）才显示 loading 等待解码。
   Future<void> _enterColorPickMode(Photo photo) async {
-    setState(() {
-      _pickerLoading = true;
-      _sessionImgW = photo.width;
-      _sessionImgH = photo.height;
-    });
+    _sessionImgW = photo.width;
+    _sessionImgH = photo.height;
+
+    // 命中预解码缓存 → 零等待启用
+    final prefetched = _prefetchedSession;
+    if (prefetched != null) {
+      _prefetchedSession = null;
+      _pickerSession = prefetched;
+      return;
+    }
+
+    // 未命中 → 显示 loading，等待解码
+    setState(() => _pickerLoading = true);
     try {
-      final session = await ColorPickerSession.begin(photo.filePath);
+      final session =
+          await ColorPickerSession.begin(photo.filePath, maxDim: 1200);
       if (!mounted) {
         session.dispose();
         return;
@@ -172,6 +217,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   void _exitColorPickMode() {
     _pickerSession?.dispose();
     _pickerSession = null;
+    _prefetchedSession?.dispose();
+    _prefetchedSession = null;
     _pickerLoading = false;
     _lastPickAt = null;
     _currentPickNotifier.value = null;
@@ -223,6 +270,14 @@ class _DetailPageState extends ConsumerState<DetailPage> {
             return const Center(
                 child: Text('照片不存在',
                     style: TextStyle(color: DetailColors.textPrimary)));
+          }
+          // v6.0: 照片首次加载时后台预解码取色 session（用户点取色零等待）。
+          // 用 _photoFilePath 做幂等 guard：同一张照片只触发一次（_prefetchPickerSession
+          // 内部还会跳过 _pickerSession 已激活的情况）。
+          if (_photoFilePath != photo.filePath &&
+              _prefetchedSession == null &&
+              _pickerSession == null) {
+            _prefetchPickerSession(photo);
           }
           return SafeArea(
             child: Column(
@@ -305,25 +360,27 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       );
     }
 
-    // 像素物理属性蒙层（仅 clipping）必须放在 InteractiveViewer 内部，
-    // 与 Image 共享缩放/平移变换，否则放大检查溢出时斑点会错位（review 漏洞）
-    // 注：v3.1 起"对焦"工具改为影调面板数据读数，不再叠加发光蒙层
-    // （SharpnessOverlay 已移除，锐度数据在影调 Tab 的 SharpnessGuideCard 展示）
+    // 像素物理属性蒙层（clipping / sharpness）必须放在 InteractiveViewer 内部，
+    // 与 Image 共享缩放/平移变换，否则放大检查溢出/合焦时斑点会错位（gotcha #45）
+    final clippingResult = clippingAsync?.asData?.value;
+    final sharpnessAsync = _showFocusPeaking
+        ? ref.watch(sharpnessProvider(widget.photoId))
+        : null;
+    final sharpnessMap = sharpnessAsync?.asData?.value;
+
     final imageStackChildren = <Widget>[
       Center(child: imageWithFilters),
-      if (_showClipping && clippingAsync != null)
-        clippingAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (result) => ClippingOverlay(result: result),
-        ),
+      if (_showClipping && clippingResult != null)
+        IgnorePointer(child: ClippingOverlay(result: clippingResult)),
+      if (_showFocusPeaking && sharpnessMap != null)
+        IgnorePointer(child: SharpnessOverlay(map: sharpnessMap)),
     ];
 
     // 取色点标记也放在 InteractiveViewer 内部（共享变换，位置始终正确）
     // 注：仅在非取色模式分支由本 InteractiveViewer 渲染；
     // 取色模式分支单独构建一个带 pins 的 InteractiveViewer（见下方 if 块）。
     if (!_colorPickMode) {
-      // 常规模式：单一 InteractiveViewer 包 Image + clipping
+      // 常规模式：单一 InteractiveViewer 包 Image + clipping + sharpness
       return Stack(
         children: [
           InteractiveViewer(
@@ -334,10 +391,14 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               children: imageStackChildren,
             ),
           ),
-          // 构图参考线：屏幕坐标系（三分线/黄金分割不随缩放），保持外层
+          // 构图参考线（v6.0：基于图片实际显示区域，letterbox 补偿，不溢出图片）
           if (_compositionMode != CompositionMode.none)
             IgnorePointer(
-              child: CompositionOverlay(mode: _compositionMode),
+              child: CompositionOverlay(
+                mode: _compositionMode,
+                imageWidth: photo.width,
+                imageHeight: photo.height,
+              ),
             ),
         ],
       );
@@ -358,7 +419,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // 复用 imageStackChildren（含 Image + clipping）
+                // 复用 imageStackChildren（含 Image + clipping + sharpness）
                 ...imageStackChildren,
                 // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
                 pinsAsync.when(
@@ -369,10 +430,14 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               ],
             ),
           ),
-          // 构图参考线：屏幕坐标系，保持外层
+          // 构图参考线（v6.0：基于图片实际显示区域，letterbox 补偿）
           if (_compositionMode != CompositionMode.none)
             IgnorePointer(
-              child: CompositionOverlay(mode: _compositionMode),
+              child: CompositionOverlay(
+                mode: _compositionMode,
+                imageWidth: photo.width,
+                imageHeight: photo.height,
+              ),
             ),
           // v3.1: 取色会话解码中（首次进入取色模式的一次性解码）
           if (_pickerLoading)
@@ -424,25 +489,147 @@ class _DetailPageState extends ConsumerState<DetailPage> {
 
   /// 构建取色点标记列表（局部坐标，基于 Image 的 RenderBox size）
   /// pin 存的是像素坐标，渲染时按 photo.width/height 比例映射到 Image 显示区域
+  ///
+  /// v6.0：pin 可点击 → 弹出菜单（设为肤色基准 / 删除）。当前选为肤色基准的 pin
+  /// 用 accent 描边高亮（与 [manualSkinSelectionProvider] 联动）。
   Widget _buildPinMarkers(List<ColorPin> pins, Photo photo) {
     final ctx = _imageKey.currentContext;
     if (ctx == null) return const SizedBox.shrink();
     final box = ctx.findRenderObject() as RenderBox?;
     if (box == null || !box.hasSize) return const SizedBox.shrink();
 
-    // Image 在 InteractiveViewer 内部，RenderBox 局部原点 (0,0) 即图片左上
-    // pin 按 photo 像素尺寸比例映射到 box.size
+    final manual = ref.read(manualSkinSelectionProvider);
+    final isCurrentSkin = manual != null && manual.photoId == widget.photoId;
+
     return Stack(
       children: pins.map((pin) {
         final px = pin.x / photo.width * box.size.width;
         final py = pin.y / photo.height * box.size.height;
+        // 命中当前肤色基准（RGB 三通道一致）→ accent 描边高亮
+        // isCurrentSkin 为 true 时 manual 必非空（类型提升），无需 `!`
+        final selected = isCurrentSkin &&
+            (manual.rgb[0] - pin.r).abs() < 1 &&
+            (manual.rgb[1] - pin.g).abs() < 1 &&
+            (manual.rgb[2] - pin.b).abs() < 1;
         return ColorPinMarker(
           r: pin.r,
           g: pin.g,
           b: pin.b,
           position: Offset(px, py),
+          selected: selected,
+          onTap: () => _showPinMenu(pin, photo),
         );
       }).toList(),
+    );
+  }
+
+  /// 取色点菜单：色值预览 / 设为肤色基准 / 删除（v6.0 问题4）
+  void _showPinMenu(ColorPin pin, Photo photo) {
+    final color = Color.fromARGB(0xFF, pin.r, pin.g, pin.b);
+    final hsl = rgbToHsl(pin.r, pin.g, pin.b);
+    final hue = hsl.h.round();
+    final sat = hsl.s.round();
+    final lum = hsl.l.round();
+    final hex = argbToHex(0xFF000000 | (pin.r << 16) | (pin.g << 8) | pin.b);
+    final manual = ref.read(manualSkinSelectionProvider);
+    final isCurrentSkin = manual != null &&
+        manual.photoId == widget.photoId &&
+        (manual.rgb[0] - pin.r).abs() < 1 &&
+        (manual.rgb[1] - pin.g).abs() < 1 &&
+        (manual.rgb[2] - pin.b).abs() < 1;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: DetailColors.panelSurface,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: color,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.white24),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(hex,
+                            style: const TextStyle(
+                                color: DetailColors.textPrimary,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontFamily: 'monospace')),
+                        const SizedBox(height: 2),
+                        Text('HSL $hue° / $sat% / $lum%',
+                            style: const TextStyle(
+                                color: DetailColors.textMuted, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(height: 1, color: DetailColors.divider),
+            ListTile(
+              leading: Icon(
+                isCurrentSkin
+                    ? Icons.check_circle
+                    : Icons.face_retouching_natural,
+                color: AppColors.darkAccent,
+              ),
+              title: Text(isCurrentSkin ? '当前肤色基准' : '设为肤色基准',
+                  style: const TextStyle(color: DetailColors.textPrimary)),
+              subtitle: Text(
+                  isCurrentSkin
+                      ? '肤色卡片正以此色校准'
+                      : '把此取色点作为肤色样本，重算 ΔH/饱和度等指标',
+                  style: const TextStyle(
+                      color: DetailColors.textMuted, fontSize: 11)),
+              onTap: () {
+                Navigator.pop(ctx);
+                ref.read(manualSkinSelectionProvider.notifier).select(
+                      widget.photoId,
+                      pin.r,
+                      pin.g,
+                      pin.b,
+                    );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                      content: Text('已设为肤色基准，肤色卡片已更新'),
+                      duration: Duration(seconds: 2)),
+                );
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline, color: DetailColors.warning),
+              title: const Text('删除取色点',
+                  style: TextStyle(color: DetailColors.warning)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await ref
+                    .read(appDatabaseProvider)
+                    .colorPinDao
+                    .deletePin(pin.id);
+                // 若删的是当前肤色基准 → 清空校准（避免悬空引用）
+                if (isCurrentSkin) {
+                  ref.read(manualSkinSelectionProvider.notifier).clear();
+                }
+              },
+            ),
+            const SizedBox(height: 4),
+          ],
+        ),
+      ),
     );
   }
 

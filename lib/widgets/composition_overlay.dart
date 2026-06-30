@@ -1,6 +1,12 @@
 // composition_overlay.dart — 构图参考线叠加层
 //
-// 九宫格、黄金螺旋、对角线三种构图辅助模式
+// 九宫格、黄金螺旋、对角线三种构图辅助模式。
+//
+// v6.0 修复：参考线必须基于【图片实际显示区域】而非整个屏幕/容器。
+// 原实现 size: Size.infinite 直接用整个 Stack 尺寸画线，BoxFit.contain 下图片
+// 是 letterboxed（上下/左右留黑），导致三分线溢出图片到黑边区域，看着「飘出框外」。
+// 现在传入 imageWidth/imageHeight，paint 时按 BoxFit.contain 计算「图片实际矩形」
+// （与 ClippingOverlay 同款 letterbox 逻辑），只在图片矩形内画线。
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 
@@ -9,14 +15,24 @@ enum CompositionMode {
   none, // 关闭
   thirds, // 九宫格（三分法）
   golden, // 黄金螺旋
-  diagonals, // 对角线
+  diagonals, // 对角线,
 }
 
 /// 构图参考线叠加层
+///
+/// [imageWidth]/[imageHeight] 为照片原始像素尺寸，用于按 BoxFit.contain 计算图片
+/// 在容器内的实际显示矩形（letterbox 补偿），参考线只画在该矩形内，不会溢出图片。
 class CompositionOverlay extends StatelessWidget {
   final CompositionMode mode;
+  final int imageWidth;
+  final int imageHeight;
 
-  const CompositionOverlay({super.key, required this.mode});
+  const CompositionOverlay({
+    super.key,
+    required this.mode,
+    required this.imageWidth,
+    required this.imageHeight,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -24,47 +40,76 @@ class CompositionOverlay extends StatelessWidget {
 
     return IgnorePointer(
       child: CustomPaint(
-        painter: _CompositionPainter(mode: mode),
+        painter: _CompositionPainter(
+          mode: mode,
+          imageAspect: imageWidth / imageHeight,
+        ),
         size: Size.infinite,
       ),
     );
   }
 }
 
+/// 按 BoxFit.contain 在 [size] 内计算图片实际显示矩形（居中 letterbox）
+///
+/// 与 ClippingOverlay 的 letterbox 计算保持一致，确保构图线/溢出斑点对齐。
+Rect _imageRectInContainer(Size size, double imageAspect) {
+  final containerAspect = size.width / size.height;
+  if (imageAspect > containerAspect) {
+    // 图片更宽 → 以宽度为准，上下留白
+    final drawHeight = size.width / imageAspect;
+    final offsetY = (size.height - drawHeight) / 2;
+    return Offset(0, offsetY) & Size(size.width, drawHeight);
+  } else {
+    // 图片更高 → 以高度为准，左右留白
+    final drawWidth = size.height * imageAspect;
+    final offsetX = (size.width - drawWidth) / 2;
+    return Offset(offsetX, 0) & Size(drawWidth, size.height);
+  }
+}
+
 class _CompositionPainter extends CustomPainter {
   final CompositionMode mode;
+  final double imageAspect;
 
   static final _linePaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.3)
-    ..strokeWidth = 0.5
-    ..style = PaintingStyle.stroke;
-
-  static final _pointPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.5)
-    ..style = PaintingStyle.fill;
-
-  static final _spiralPaint = Paint()
-    ..color = Colors.amber.withValues(alpha: 0.3)
+    ..color = Colors.white.withValues(alpha: 0.45)
     ..strokeWidth = 0.8
     ..style = PaintingStyle.stroke;
 
-  _CompositionPainter({required this.mode});
+  static final _pointPaint = Paint()
+    ..color = Colors.white.withValues(alpha: 0.6)
+    ..style = PaintingStyle.fill;
+
+  static final _spiralPaint = Paint()
+    ..color = Colors.amber.withValues(alpha: 0.4)
+    ..strokeWidth = 1.0
+    ..style = PaintingStyle.stroke;
+
+  _CompositionPainter({required this.mode, required this.imageAspect});
 
   @override
   void paint(Canvas canvas, Size size) {
+    final rect = _imageRectInContainer(size, imageAspect);
+    // 把坐标系平移+裁剪到图片实际矩形，所有子绘制都基于 rect 的局部坐标
+    canvas.save();
+    canvas.clipRect(rect);
+    canvas.translate(rect.left, rect.top);
+    final localSize = rect.size;
     switch (mode) {
       case CompositionMode.thirds:
-        _drawThirds(canvas, size);
+        _drawThirds(canvas, localSize);
         break;
       case CompositionMode.golden:
-        _drawGoldenSpiral(canvas, size);
+        _drawGoldenSpiral(canvas, localSize);
         break;
       case CompositionMode.diagonals:
-        _drawDiagonals(canvas, size);
+        _drawDiagonals(canvas, localSize);
         break;
       case CompositionMode.none:
         break;
     }
+    canvas.restore();
   }
 
   /// 绘制九宫格（三分法）
@@ -176,6 +221,6 @@ class _CompositionPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CompositionPainter oldDelegate) {
-    return oldDelegate.mode != mode;
+    return oldDelegate.mode != mode || oldDelegate.imageAspect != imageAspect;
   }
 }

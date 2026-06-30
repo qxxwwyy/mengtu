@@ -56,6 +56,7 @@
 - ✅ v3.5 PR4+PR5 风格档案 + 标准化欧氏匹配 + 复刻参数 + 内置理论档案（FingerprintService 卡方60%+标准化欧氏40% 融合 + precomputeAnalysisForPhotos 批量预计算 + StyleProfileMatch 分层置信度 + 风格档案列表/创建/详情 + 阶④接入真实匹配 + ReplicationHintsService 解读式复刻参数 + BuiltinProfiles 日系/港风[做精]/青橙/中式[待校准] + ensureSeeded 幂等启动插入）
 - ✅ v3.5 复核修复（BLOCKER: 内置档案 scalar_means 改 RAW 单位 + 补 hist_means；MAJOR: advancedMetricsProvider cache-hit 提前 return 跳过 ref.watch[gotcha #33] + ReplicationHintsService 魔数文档化；MINOR: PhotoFingerprint 标量单位标注与实现一致）
 - ✅ v3.5 二轮复核修复（P1: precomputeAnalysisForPhotos 补 advanced 含 Face Mesh，让 STI/FLC 进入档案匹配 + tone_service 提取 computeAdvancedMetrics 纯函数共享；P3: computeSimilarity exp 衰减 2.0→4.0 宽容理论档案 + 内置档案相似度补 confidenceHint 文案；P4: _SimilarityTile 颜色跟随 similarityText 分层[isBuiltin/<5/≥5]；P5: AGENTS.md 同步 schemaVersion/版本/gotcha #46-50/项目结构）
+- ✅ v6.0 八大问题修复（①BlazeFace 解码三大 bug[sigmoid+inputSize 归一化]让人脸检测真正生效；②取色后台预解码[maxDim 1200]零等待；③构图线 letterbox 补偿基于图片不溢出；④取色 Pin 弹菜单+设为肤色基准[manualSkinSelectionProvider 接 UI]；⑤放大镜 130px+中心格高亮+HSV 标签；⑥锐度蒙层恢复[SharpnessOverlay BlendMode 发光+数据卡]；⑦GradingPanel 顶部黑框消除+FingerprintRadar AspectRatio 居中+补全 polygon；⑧SkinRadar 肤色合理性雷达[5 维/中心=理想肤色]嵌入阶②色彩卡片）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -197,19 +198,20 @@ mengtu/
 │   │   ├── color_card.dart          # 色卡展示
 │   │   ├── harmony_card.dart        # 配色和谐度
 │   │   ├── color_wheel.dart         # 色轮
-│   │   ├── color_picker_loupe.dart  # 取色放大镜 + ColorPinMarker
+│   │   ├── color_picker_loupe.dart  # 取色放大镜 + ColorPinMarker（v6.0：Pin 弹菜单设肤色基准 + 选中高亮）
 │   │   ├── clipping_overlay.dart    # 溢出警告蒙层
-│   │   ├── sharpness_overlay.dart   # v3.0 峰值对焦蒙层（拉普拉斯响应 CustomPainter + BlendMode.screen 发光）
-│   │   ├── composition_overlay.dart # 构图辅助线
+│   │   ├── sharpness_overlay.dart   # v6.0 恢复峰值对焦蒙层（拉普拉斯响应 CustomPainter，按强度暖橙→青绿，letterbox 补偿）
+│   │   ├── composition_overlay.dart # 构图辅助线（v6.0：letterbox 补偿，基于图片实际矩形不溢出）
 │   │   └── grading/                 # v3.5 四阶解构卡片（替代原 6 Tab）
-│   │       ├── grading_panel.dart   # 四阶卡片 ListView 容器（watch advancedMetricsProvider 一次）
+│   │       ├── grading_panel.dart   # 四阶卡片 ListView 容器（watch advancedMetricsProvider 一次；v6.0 去顶部 padding 消黑框）
 │   │       ├── stage_card.dart      # 通用阶卡片（序号+标题+摘要+折叠/展开）
 │   │       ├── stage_tonal_card.dart # 阶①影调手法（黑点/白点/RMS/十大影调 + 参照直方图）
-│   │       ├── stage_color_card.dart # 阶②色彩手法（STI/ΔH/饱和解读）
+│   │       ├── stage_color_card.dart # 阶②色彩手法（v6.0：顶部嵌 SkinRadar + STI/ΔH/饱和解读）
 │   │       ├── stage_isolation_card.dart # 阶③主体手法（SLS/SCS/FLC/锐度解读）
 │   │       ├── stage_archive_match_card.dart # 阶④档案比对（相似度列表+雷达图+复刻参数；颜色跟随 similarityText 分层）
 │   │       ├── reference_histogram.dart # 参照直方图叠放（教学核心，当前 vs 典型影调高斯/U型）
-│   │       ├── fingerprint_radar.dart # 9 维雷达图（current vs archive）
+│   │       ├── fingerprint_radar.dart # 指纹雷达图 9 维（current vs archive；v6.0：AspectRatio 居中+补全 polygon）
+│   │       ├── skin_radar.dart      # v6.0 肤色合理性雷达图 5 维（中心=理想肤色，嵌入阶②色彩卡片）
 │   │       ├── interpretation_row.dart # 解读行（共享）+ InterpretationStatus 状态色
 │   │       ├── replication_hints_card.dart # 复刻参数附录（解读式「样片手法」）
 │   │       └── raw_data_dashboard.dart # 数据仪表盘全屏页（4 section：影调/色彩/隔离/EXIF）
@@ -430,6 +432,11 @@ CI 流程（`.github/workflows/build.yml`）：
 48. **Face Mesh 需可见性判定** — FLC 切左右脸时，`visibility < 0.5` 的 landmark 跳过，左右脸区域平均 visibility < 0.5 时 FLC 返回 null（侧脸降级）。旧格式 `face_mesh.tflite` 无原生 visibility，用 z 深度归一化近似。**已知限制（待修）**：(a) 当前左右脸划分用固定 landmark 索引集（leftFaceRegion/rightFaceRegion）而非动态中轴线（鼻尖 1 + 双眼 33/133），轻微偏头场景数值偏小，待对称 landmark 对方案；(b) z 归一化对侧脸检测语义偏弱
 49. **导入不预计算，档案需批量钩子** — 现有架构是懒计算（详情页打开才算），档案系统需全量数据，必须在创建档案时主动调用 `precomputeAnalysisForPhotos`。**v3.5 二轮复核修复**：`precomputeAnalysisForPhotos` 现在也计算 advanced（含 Face Mesh 的 STI/FLC），让档案样片即使未打开详情页，STI/FLC 也能进入指纹匹配（之前预计算只写 toneJson 不写 advanced 键，导致用户档案的 STI/FLC 维度恒为 -1 被跳过）。核心计算逻辑提取为 `tone_service.computeAdvancedMetrics` 纯函数，`advancedMetricsProvider` 和 `precomputeAnalysisForPhotos` 共用
 50. **ten_tonal_type 复用 toneKey×toneRange** — 不引入 `plan.md` 的 `classifyTenTonalities(mean/stdDev 阈值)` 分类（与现有基于像素分布的 `_classifyToneKey`[峰值+合并段占比] 和 `_classifyToneRange`[最值分布范围] 双逻辑冲突）。直接组合 `toneKey×toneRange`，`toneKey='full'` 时特判为「全长调」（不再拼接 rangeLabel，避免「全长长调」）。**v3.5 二轮复核修复**：`builtin_profiles.dart` 的 `scalar_means` 必须用 RAW 单位（与 `_computeFingerprintIsolate` 一致）—— 原 RMS=0.15~0.35 差 2 个数量级（应为 0~128 区间），导致内置档案匹配功能失效，已修正为日系 RMS≈25/港风≈45/青橙≈60/中式≈22，并补全 hist_means（原缺失导致卡方融合退化为 0/40）
+51. **BlazeFace 解码三大致命 bug（v6.0 根因修复）** — `_detectPrimaryFace` 与 MediaPipe 官方解码不符（参考 [patlevin/face-detection-tflite](https://github.com/patlevin/face-detection-tflite/blob/main/fdlite/face_detection.py)），导致「永远检测不到脸」：(a) classifier 输出是 **logit**，原代码当概率用 → 阈值 0.5 永远过不了 → 必须套 `sigmoid`；(b) box 回归值是 **INPUT_SIZE 像素空间**的偏移，原 `cx = anchor[0] + r[0]` 直接加到 [0,1] 归一化 anchor 上 → 中心偏离几百倍 → 必须 `/ inputSize` 归一化；(c) short(128)/full(192) inputSize 不同，必须传对应 inputSize 给解码。anchor 数 short&full 都是 896（feature map [16,8,8,8]×2 与 inputSize 解耦）。回归测试在 `face_service_anchor_test.dart` v6.0 组
+52. **构图/锐度蒙层的 letterbox 补偿** — `Image(fit: BoxFit.contain)` 在容器内是 letterboxed（上下/左右留黑），蒙层（CompositionOverlay/SharpnessOverlay/ClippingOverlay）若直接用整个 Stack 尺寸画线/斑点会溢出图片到黑边区域。**必须按 imageAspect 计算「图片实际矩形」**（offsetX/offsetY + drawWidth/drawHeight），只在图片矩形内绘制。CompositionOverlay 现用 `canvas.clipRect(rect)` + translate 裁剪到图片区域；蒙层（clipping/sharpness/构图）必须挂 InteractiveViewer **内部**共享变换（gotcha #45），但 letterbox 补偿是独立的坐标问题，两者都要做
+53. **取色 session 后台预解码** — 进入详情页时 fire-and-forget 预解码 `ColorPickerSession.begin(maxDim:1200)`，用户点「取色」时命中缓存零等待（v3.1 的同步 `setState(loading=true)` 阻塞 UI 几秒）。用 `_photoFilePath` guard 幂等（同一张照片只触发一次）。预解码失败静默兜底，按下取色按钮再走正常 `_enterColorPickMode`。maxDim 1600→1200 降 30% 内存（取色精度 1200 长边仍足够单像素）
+54. **取色 Pin 弹菜单 + 设为肤色基准** — `ColorPinMarker` 的 `onTap` 接到 `_showPinMenu`：色值预览/「设为肤色基准」(`manualSkinSelectionProvider.select`)/删除。当前选中的 pin 用 accent 描边 + face 图标高亮（与 manualSkinSelectionProvider 联动，RGB 三通道匹配）。删的若是当前基准必须清 manualSkinSelection 避免悬空引用。手动校准优先于 BlazeFace（skinProvider 已支持，见 gotcha #39 skin 容错策略）
+55. **肤色雷达图（5 维合理性可视化）** — `SkinRadar` 把肤色 5 维（ΔH/饱和/明度/STI/SLS）归一化到 [0,1] 画雷达多边形，中心=理想肤色（达芬奇线 H=17/S=25/Y=65），越饱满越健康。区别于「指纹雷达」FingerprintRadar（9 维物理量，档案匹配用）。归一化阈值与 ToneGuideCard/stage_color_card 解读阈值对齐（ΔH ±30°、饱和 40±30、明度 65±25、STI 0.85、SLS 20）。嵌入阶②色彩卡片顶部，无肤色时显示空雷达占位 + 手动校准引导
 
 ## v3.5 已知限制（非阻塞，待后续优化）
 
