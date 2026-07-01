@@ -138,7 +138,7 @@ struct Detector {
 
         // 预处理：RGBA → BGR + resize 到 input_size×input_size（直接 resize，非 letterbox）
         ncnn::Mat in = ncnn::Mat::from_pixels_resize(
-            rgba_data, ncnn::MAT_RGBA2BGR, width, height, stride,
+            rgba_data, ncnn::Mat::PIXEL_RGBA2BGR, width, height, stride,
             input_size, input_size);
         const float mean_vals[3] = {127.5f, 127.5f, 127.5f};
         const float norm_vals[3] = {1.0f / 128.0f, 1.0f / 128.0f, 1.0f / 128.0f};
