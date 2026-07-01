@@ -25,9 +25,11 @@ class PhotoFingerprint {
   ///
   /// 单位为 RAW 值（未归一化，与 FingerprintService._computeFingerprintIsolate 一致）：
   /// `[RMS对比度(0~128), 冷暖比(0.5~2), 黑点偏移(0~255), 白点压缩(0~255),
-  ///   信息熵(0~8), SCS(0~180), SLS(-100~100), STI(0~1), FLC(0~1)]`
+  ///   信息熵(0~8), SCS(0~180), SLS(-100~100)]`
   ///
-  /// 缺失维度（如无脸照片的 STI/FLC）用 `-1` 占位，匹配时跳过该维度。
+  /// v7.0：原 9 维（含 STI/FLC）缩减为 7 维（移除依赖 Face Mesh 的 STI/FLC，
+  /// SCRFD 只给 5 点无法计算）。缺失维度（如无脸照片的 SCS/SLS）用 `-1` 占位，
+  /// 匹配时跳过该维度。
   final List<double> scalarFeatures;
 
   /// 标量特征标签（用于调试与 UI 展示，顺序与 [scalarFeatures] 一致）
@@ -39,8 +41,6 @@ class PhotoFingerprint {
     'entropy',
     'scs',
     'sls',
-    'sti',
-    'flc',
   ];
 
   /// 缺失维度的占位值（匹配时跳过）

@@ -137,9 +137,7 @@ void main() {
 
   group('AdvancedPortraitMetrics 序列化', () {
     test('toJson + fromJson 往返保持一致（完整字段）', () {
-      final original = const AdvancedPortraitMetrics(
-        skinSti: 0.72,
-        faceLightingContrast: 0.35,
+      const original = AdvancedPortraitMetrics(
         blackPointOffset: 3.5,
         whitePointCompression: 252.0,
         tenTonalType: '高长调',
@@ -147,31 +145,13 @@ void main() {
       final json = original.toJson();
       final restored = AdvancedPortraitMetrics.fromJson(json);
 
-      expect(restored.skinSti, closeTo(0.72, 1e-9));
-      expect(restored.faceLightingContrast, closeTo(0.35, 1e-9));
       expect(restored.blackPointOffset, closeTo(3.5, 1e-9));
       expect(restored.whitePointCompression, closeTo(252.0, 1e-9));
       expect(restored.tenTonalType, '高长调');
     });
 
-    test('toJson 省略 null 的 skin_sti / face_lighting_contrast', () {
-      const metrics = AdvancedPortraitMetrics(
-        blackPointOffset: 0,
-        whitePointCompression: 255,
-        tenTonalType: '全长调',
-      );
-      final json = metrics.toJson();
-      // null 字段不应出现在 JSON 中
-      expect(json.containsKey('skin_sti'), isFalse);
-      expect(json.containsKey('face_lighting_contrast'), isFalse);
-      expect(json['black_point_offset'], 0);
-      expect(json['ten_tonal_type'], '全长调');
-    });
-
     test('fromJson 缺 black_point_offset → 抛 TypeError（强制重算）', () {
-      // 模拟旧缓存：只有 skin_sti，缺 black_point_offset
-      const legacy = {'skin_sti': 0.5};
-      // 强转 (j['black_point_offset'] as num) 缺键抛 TypeError
+      const legacy = {'ten_tonal_type': '高长调'};
       expect(() => AdvancedPortraitMetrics.fromJson(legacy),
           throwsA(isA<TypeError>()));
     });
@@ -194,19 +174,6 @@ void main() {
           throwsA(isA<TypeError>()));
     });
 
-    test('fromJson 缺 skin_sti → 返回 null（容错，不抛）', () {
-      // Face Mesh 依赖指标缺则 null，不触发重算
-      const partial = {
-        'black_point_offset': 5.0,
-        'white_point_compression': 250.0,
-        'ten_tonal_type': '高长调',
-      };
-      final m = AdvancedPortraitMetrics.fromJson(partial);
-      expect(m.skinSti, isNull);
-      expect(m.faceLightingContrast, isNull);
-      expect(m.blackPointOffset, 5.0);
-    });
-
     test('fromJsonString(null) → null', () {
       expect(AdvancedPortraitMetrics.fromJsonString(null), isNull);
     });
@@ -226,20 +193,17 @@ void main() {
     });
 
     test('fromJsonString(advanced 缺强制字段) → null（强制重算触发）', () {
-      // advanced 存在但缺 black_point_offset → fromJson 抛 TypeError → try/catch 返回 null
-      const broken = '{"advanced":{"skin_sti":0.5}}';
+      const broken = '{"advanced":{"some_key":0.5}}';
       expect(AdvancedPortraitMetrics.fromJsonString(broken), isNull);
     });
 
     test('fromJsonString(完整 advanced) → 正常解析', () {
       const full = '{"mean":128,"advanced":{'
-          '"skin_sti":0.72,"face_lighting_contrast":0.35,'
           '"black_point_offset":3.5,"white_point_compression":252.0,'
           '"ten_tonal_type":"高长调"}}';
       final m = AdvancedPortraitMetrics.fromJsonString(full);
       expect(m, isNotNull);
-      expect(m!.skinSti, 0.72);
-      expect(m.blackPointOffset, 3.5);
+      expect(m!.blackPointOffset, 3.5);
       expect(m.tenTonalType, '高长调');
     });
   });
@@ -309,17 +273,17 @@ void main() {
     test('toJson + fromJson 往返保持一致', () {
       final original = PhotoFingerprint(
         histogramFeatures: List.generate(96, (i) => i / 96),
-        scalarFeatures: const [0.5, 1.2, 0.04, 0.98, 0.5, 0.3, 0.2, 0.7, 0.1],
+        scalarFeatures: const [0.5, 1.2, 0.04, 0.98, 0.5, 0.3, 0.2],
       );
       final json = original.toJson();
       final restored = PhotoFingerprint.fromJson(json);
 
       expect(restored.histogramFeatures.length, 96);
-      expect(restored.scalarFeatures.length, 9);
+      expect(restored.scalarFeatures.length, 7);
       for (var i = 0; i < 96; i++) {
         expect(restored.histogramFeatures[i], closeTo(original.histogramFeatures[i], 1e-9));
       }
-      for (var i = 0; i < 9; i++) {
+      for (var i = 0; i < 7; i++) {
         expect(restored.scalarFeatures[i], closeTo(original.scalarFeatures[i], 1e-9));
       }
     });
@@ -335,11 +299,11 @@ void main() {
       expect(json.containsKey('scalar'), isTrue);
     });
 
-    test('scalarLabels 长度 = 9，与 scalarFeatures 维度一致', () {
-      expect(PhotoFingerprint.scalarLabels.length, 9);
+    test('scalarLabels 长度 = 7，与 scalarFeatures 维度一致', () {
+      expect(PhotoFingerprint.scalarLabels.length, 7);
       expect(PhotoFingerprint.scalarLabels, [
         'rms_contrast', 'warm_cold_ratio', 'black_point', 'white_point',
-        'entropy', 'scs', 'sls', 'sti', 'flc',
+        'entropy', 'scs', 'sls',
       ]);
     });
 

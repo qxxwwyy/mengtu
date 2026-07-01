@@ -1,13 +1,14 @@
 // stage_color_card.dart — 阶②色彩手法（v3.5 PR3）
 //
-// 数据来源：skinProvider（ΔH 色相偏差/饱和度/STI 通透度）。
-// 解读措辞：STI 高 → 肤色通透；ΔH → 色相对齐达芬奇线；饱和 → 浓郁/克制。
+// 数据来源：skinProvider（ΔH 色相偏差/饱和度）。
+// 解读措辞：ΔH → 色相对齐达芬奇线；饱和 → 浓郁/克制。
 //
-// 容错：无脸/侧脸 → skinProvider 返回空 SkinAnalysis，STI/ΔH 显示「未检出」。
+// 容错：无脸/侧脸 → skinProvider 返回空 SkinAnalysis，ΔH 显示「未检出」。
+//
+// v7.0：STI 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../models/advanced_portrait_metrics.dart';
 import '../../models/tone_result.dart';
 import '../../providers/analysis_provider.dart';
 import 'interpretation_row.dart';
@@ -18,14 +19,9 @@ import 'stage_card.dart';
 class StageColorCard extends ConsumerStatefulWidget {
   final String photoId;
 
-  /// 从 GradingPanel 传入的 advanced 指标（STI 也在此，但此处直接用 skinProvider
-  /// 保持单一数据源 —— advanced 的 STI 即来自 skinProvider）
-  final AsyncValue<AdvancedPortraitMetrics?> advanced;
-
   const StageColorCard({
     super.key,
     required this.photoId,
-    required this.advanced,
   });
 
   @override
@@ -51,7 +47,17 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
       title: '色彩手法',
       summary: summary,
       expanded: _expanded,
-      onTap: () => setState(() => _expanded = !_expanded),
+      // v6.2：展开/折叠时同步 colorCardExpandedProvider，让详情页的
+      // 人脸检测框只在展开时可见（gotcha #62）
+      onTap: () {
+        setState(() => _expanded = !_expanded);
+        final notifier = ref.read(colorCardExpandedProvider.notifier);
+        if (_expanded) {
+          notifier.setExpanded(widget.photoId);
+        } else {
+          notifier.setCollapsed(widget.photoId);
+        }
+      },
       children: [
         if (_expanded) _buildInterpretation(skinAsync),
       ],
@@ -76,7 +82,7 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // v6.0（问题8）：无肤色时也显示空雷达占位 + 引导手动校准
+              // v6.2：无肤色时显示空示波器占位 + 引导手动校准
               const Text('未检出肤色。可尝试用取色工具长按皮肤区域手动校准。',
                   style: TextStyle(
                       color: InterpretationStatus.low,
@@ -85,7 +91,6 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
               const SizedBox(height: 8),
               SkinRadar(
                 skin: const SkinAnalysis(),
-                advanced: widget.advanced.asData?.value,
               ),
             ],
           );
@@ -93,37 +98,14 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // v6.0（问题8）：肤色雷达图 —— 心心念念的「肤色合理性」可视化模块，
-            // 放在色彩卡片展开内容顶部。5 维雷达（ΔH/饱和/明度/STI/SLS），
-            // 中心=理想肤色，越饱满越健康。下方保留文字解读行。
+            // v6.2：达芬奇式肤色示波器 —— 极坐标（角度=色相/半径=饱和度）+
+            // 固定肤色参考线。光点越靠近线 → 肤色越正。替代旧版 5 维雷达。
             SkinRadar(
               skin: s,
-              advanced: widget.advanced.asData?.value,
             ),
             const SizedBox(height: 10),
-            // STI 通透度（来自 advanced，可能为 null：无脸/侧脸/mesh 失败）
-            widget.advanced.maybeWhen(
-              data: (a) => a?.skinSti == null
-                  ? const SizedBox.shrink()
-                  : InterpretationRow(
-                      icon: Icons.opacity,
-                      label: '通透度 STI',
-                      value: a!.skinSti!.toStringAsFixed(2),
-                      statusColor: a.skinSti! > 0.7
-                          ? InterpretationStatus.good
-                          : (a.skinSti! < 0.4
-                              ? InterpretationStatus.warn
-                              : InterpretationStatus.neutral),
-                      interpretation: a.skinSti! > 0.7
-                          ? '样片手法：肤色通透自然（STI ${a.skinSti!.toStringAsFixed(2)}），'
-                              '落在理想区间 —— 明度适中、饱和克制、色相对齐达芬奇线。'
-                          : (a.skinSti! < 0.4
-                              ? '样片手法：肤色偏沉闷（STI ${a.skinSti!.toStringAsFixed(2)}），'
-                                  '可能明度过低或饱和过高 —— 泥泞感。'
-                              : '样片手法：肤色通透度中等（STI ${a.skinSti!.toStringAsFixed(2)}）。'),
-                    ),
-              orElse: () => const SizedBox.shrink(),
-            ),
+            // v7.0：STI 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
+            // 下方保留色相偏差 + 饱和度解读行（基于 bbox ROI）。
             if (s.hueOffset != null) ...[
               const SizedBox(height: 8),
               InterpretationRow(

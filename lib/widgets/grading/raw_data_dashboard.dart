@@ -329,7 +329,6 @@ class _IsolationReadingsSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final skinAsync = ref.watch(skinProvider(photoId));
-    final advancedAsync = ref.watch(advancedMetricsProvider(photoId));
 
     final tiles = <Widget>[];
 
@@ -350,20 +349,8 @@ class _IsolationReadingsSection extends ConsumerWidget {
       }
     }
 
-    // STI / FLC（来自 advanced）
-    final advanced = advancedAsync.asData?.value;
-    if (advanced != null) {
-      if (advanced.skinSti != null) {
-        tiles.add(_ReadingTile(
-            label: '通透度 STI',
-            value: advanced.skinSti!.toStringAsFixed(2)));
-      }
-      if (advanced.faceLightingContrast != null) {
-        tiles.add(_ReadingTile(
-            label: '面部光比 FLC',
-            value: advanced.faceLightingContrast!.toStringAsFixed(2)));
-      }
-    }
+    // v7.0：STI/FLC 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
+    // advanced 仍含 black_point/white_point/ten_tonal（在影调 section 展示）。
 
     if (tiles.isEmpty) {
       return Container(

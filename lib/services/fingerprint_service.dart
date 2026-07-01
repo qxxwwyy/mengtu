@@ -5,7 +5,7 @@
 //
 // 算法链：
 // 1. computeFingerprint：从 DB 缓存的直方图 + toneJson 算 96 维直方图特征 +
-//    9 维标量特征（Isolate 内纯内存操作，不重读图）
+//    7 维标量特征（Isolate 内纯内存操作，不重读图；v7.0 原 9 维缩为 7 维，移除 sti/flc）
 // 2. recomputeProfileStats：批量算档案内所有照片指纹，聚合各维度 {mean, std}
 // 3. computeSimilarity：照片指纹 vs 档案统计 → 标准化欧氏距离 → 相似度 exp(-D²/2k)
 //
@@ -104,16 +104,16 @@ class FingerprintService {
     final n = fingerprints.length;
     final histMeans = List.filled(96, 0.0);
     final histStds = List.filled(96, 0.0);
-    final scalarMeans = List.filled(9, 0.0);
-    final scalarStds = List.filled(9, 0.0);
-    final scalarCounts = List.filled(9, 0);
+    final scalarMeans = List.filled(7, 0.0);
+    final scalarStds = List.filled(7, 0.0);
+    final scalarCounts = List.filled(7, 0);
 
     // 第一遍：求和（缺失标量维度不计入）
     for (final fp in fingerprints) {
       for (var i = 0; i < 96 && i < fp.histogramFeatures.length; i++) {
         histMeans[i] += fp.histogramFeatures[i];
       }
-      for (var i = 0; i < fp.scalarFeatures.length && i < 9; i++) {
+      for (var i = 0; i < fp.scalarFeatures.length && i < 7; i++) {
         final v = fp.scalarFeatures[i];
         if (!v.isNaN && v != PhotoFingerprint.missing) {
           scalarMeans[i] += v;
@@ -126,19 +126,19 @@ class FingerprintService {
     for (var i = 0; i < 96; i++) {
       histMeans[i] /= n;
     }
-    for (var i = 0; i < 9; i++) {
+    for (var i = 0; i < 7; i++) {
       if (scalarCounts[i] > 0) scalarMeans[i] /= scalarCounts[i];
     }
 
     // 第二遍：求方差（标准差的平方）
     final histVarSums = List.filled(96, 0.0);
-    final scalarVarSums = List.filled(9, 0.0);
+    final scalarVarSums = List.filled(7, 0.0);
     for (final fp in fingerprints) {
       for (var i = 0; i < 96 && i < fp.histogramFeatures.length; i++) {
         final d = fp.histogramFeatures[i] - histMeans[i];
         histVarSums[i] += d * d;
       }
-      for (var i = 0; i < fp.scalarFeatures.length && i < 9; i++) {
+      for (var i = 0; i < fp.scalarFeatures.length && i < 7; i++) {
         final v = fp.scalarFeatures[i];
         if (!v.isNaN && v != PhotoFingerprint.missing) {
           final d = v - scalarMeans[i];
@@ -149,7 +149,7 @@ class FingerprintService {
     for (var i = 0; i < 96; i++) {
       histStds[i] = math.sqrt(histVarSums[i] / n);
     }
-    for (var i = 0; i < 9; i++) {
+    for (var i = 0; i < 7; i++) {
       final count = scalarCounts[i] > 0 ? scalarCounts[i] : 1;
       scalarStds[i] = math.sqrt(scalarVarSums[i] / count);
     }
@@ -167,7 +167,7 @@ class FingerprintService {
   /// 匹配：照片指纹 vs 档案 → 相似度 [0, 1]
   ///
   /// 标准化欧氏距离：D = sqrt(Σ((xᵢ−μᵢ)/σᵢ)²)
-  /// 相似度：sim = exp(−D²/2)，D=0 → sim=1，D 大 → sim 趋近 0
+  /// 相似度：sim = exp(−D²/2k)，D=0 → sim=1，D 大 → sim 趋近 0
   ///
   /// 融合（经验权重）：直方图卡方 60% + 标量标准化欧氏 40%
   Future<double> computeSimilarity(
@@ -211,7 +211,7 @@ class FingerprintService {
     double scalarDist = 0;
     var scalarDims = 0;
     for (var i = 0;
-        i < 9 &&
+        i < 7 &&
             i < fingerprint.scalarFeatures.length &&
             i < scalarMeans.length;
         i++) {
@@ -273,8 +273,8 @@ PhotoFingerprint _computeFingerprintIsolate(_FingerprintArgs args) {
   }
 
   // 4. 标量特征（顺序与 PhotoFingerprint.scalarLabels 一致）
-  // [rms_contrast, warm_cold_ratio, black_point, white_point, entropy,
-  //  scs, sls, sti, flc]
+  // [rms_contrast, warm_cold_ratio, black_point, white_point, entropy, scs, sls]
+  // v7.0：移除 sti/flc（原依赖 Face Mesh，SCRFD 只给 5 点无法计算）
   final scalarFeatures = <double>[
     tone?.rmsContrast ?? PhotoFingerprint.missing,
     _warmColdRatio(hist),
@@ -283,8 +283,6 @@ PhotoFingerprint _computeFingerprintIsolate(_FingerprintArgs args) {
     tone?.entropy ?? PhotoFingerprint.missing,
     tone?.scs ?? PhotoFingerprint.missing,
     tone?.sls ?? PhotoFingerprint.missing,
-    adv?.skinSti ?? PhotoFingerprint.missing,
-    adv?.faceLightingContrast ?? PhotoFingerprint.missing,
   ];
 
   return PhotoFingerprint(

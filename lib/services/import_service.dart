@@ -1,5 +1,6 @@
 // import_service.dart — 批量导入、去重、缩略图生成
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:crypto/crypto.dart';
 import 'package:drift/drift.dart';
 import 'package:flutter/foundation.dart';
@@ -9,16 +10,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:uuid/uuid.dart';
 import 'database/app_database.dart';
 import 'exif_service.dart';
-import 'face_service.dart'
-    show
-        analyzeSkinTone,
-        ensureModelsExtracted,
-        getFullModelPath,
-        ensureMeshModelExtracted;
 import 'histogram_service.dart' show computeHistogram;
 import 'tone_service.dart' show analyzeTone, computeAdvancedMetrics;
 import '../models/advanced_portrait_metrics.dart' show AdvancedPortraitMetrics;
-import '../models/tone_result.dart' show HistogramData, SkinAnalysis;
+import '../models/tone_result.dart' show HistogramData, ToneResult;
 
 const _uuid = Uuid();
 
@@ -36,6 +31,21 @@ class ImportResult {
     required this.failedCount,
     required this.failedFiles,
     required this.importedPhotoIds,
+  });
+}
+
+/// Isolate 元数据解析输出结果（不解码像素，防 48MP OOM）
+class _PhotoMetadataResult {
+  final String hash;
+  final int width;
+  final int height;
+  final String? exifJson;
+
+  _PhotoMetadataResult({
+    required this.hash,
+    required this.width,
+    required this.height,
+    this.exifJson,
   });
 }
 
@@ -78,54 +88,79 @@ class ImportService {
     for (var i = 0; i < filePaths.length; i++) {
       final srcPath = filePaths[i];
       try {
-        // 1. 合并计算：hash + 缩略图 + 宽高，单次 Isolate（避免 3 次 I/O）
-        final result = await compute(
-          _processPhotoIsolate,
-          (srcPath, _thumbnailsDir),
+        // 1. 在 Isolate 中异步提取元数据（Hash, EXIF, 仅读头部获取尺寸）。不解码 48MP 像素，使用极低内存
+        final meta = await compute(
+          _parseMetadataIsolate,
+          srcPath,
         );
 
         // 2. 去重检查
-        final existing = await _db.photoDao.getPhotoByHash(result.hash);
+        final existing = await _db.photoDao.getPhotoByHash(meta.hash);
         if (existing != null) {
-          // 重复照片，清理刚生成的缩略图，但记录已有 photoId
-          final thumbFile = File(result.thumbPath);
-          if (await thumbFile.exists()) await thumbFile.delete();
           importedPhotoIds.add(existing.id);
           skipped++;
           onProgress?.call(i + 1, total);
           continue;
         }
 
-        // 3. 不复制照片，直接使用原始路径（节省存储空间）
+        // 3. 异步高效生成缩略图（主 Isolate 使用 dart:ui 的 native 硬件解码，按需下采样到 targetWidth，防止 OOM）
+        final thumbId = _uuid.v4();
+        final thumbPath = p.join(_thumbnailsDir, 'thumb_$thumbId.jpg');
+        
+        try {
+          final fileBytes = await File(srcPath).readAsBytes();
+          final codec = await ui.instantiateImageCodec(fileBytes, targetWidth: 360);
+          final frame = await codec.getNextFrame();
+          final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+          if (byteData != null) {
+            await File(thumbPath).writeAsBytes(byteData.buffer.asUint8List());
+          } else {
+            throw Exception('Native encoding returned null');
+          }
+        } catch (e) {
+          debugPrint('Native thumbnail generation failed for $srcPath: $e. Falling back to Isolate.');
+          // 降级使用 Isolate 纯 Dart 备份方案，确保测试环境下或不支持平台的鲁棒性
+          final result = await compute(
+            _generateThumbnailIsolate,
+            (srcPath, _thumbnailsDir),
+          );
+          // 覆盖拷贝到预设的 thumbPath，保持数据库路径一致
+          await File(result).copy(thumbPath);
+          try {
+            await File(result).delete();
+          } catch (_) {}
+        }
+
+        // 4. 不复制照片，直接使用原始路径（节省存储空间）
         final fileName = p.basename(srcPath);
         final photoId = _uuid.v4();
 
         try {
-          // 4. 写入数据库（filePath = 原始路径，不复制）
+          // 5. 写入数据库（filePath = 原始路径，不复制）
           final fileStat = await File(srcPath).stat();
           await _db.photoDao.insertPhoto(PhotosCompanion.insert(
             id: photoId,
             filePath: srcPath, // 直接引用原始文件路径
-            thumbnailPath: result.thumbPath,
+            thumbnailPath: thumbPath,
             fileName: fileName,
             fileSize: Value(fileStat.size),
-            fileHash: Value(result.hash),
-            width: Value(result.width),
-            height: Value(result.height),
-            exifJson: Value(result.exifJson), // EXIF 拍摄参数（v2.0）
+            fileHash: Value(meta.hash),
+            width: Value(meta.width),
+            height: Value(meta.height),
+            exifJson: Value(meta.exifJson), // EXIF 拍摄参数（v2.0）
           ));
 
           importedPhotoIds.add(photoId);
           success++;
         } catch (e) {
           // 导入失败，清理缩略图
-          final thumbFile = File(result.thumbPath);
+          final thumbFile = File(thumbPath);
           if (await thumbFile.exists()) await thumbFile.delete();
 
           // 唯一约束冲突（并发导入竞态的最后防线）：
           // 按 hash 重查已有记录，计入 importedPhotoIds + skipped，而非 rethrow 计 failed
           if (e.toString().contains('UNIQUE constraint')) {
-            final existing = await _db.photoDao.getPhotoByHash(result.hash);
+            final existing = await _db.photoDao.getPhotoByHash(meta.hash);
             if (existing != null) {
               importedPhotoIds.add(existing.id);
               skipped++;
@@ -160,8 +195,6 @@ class ImportService {
     if (photo == null) return;
 
     // DB 操作包在事务中（删关联 + 删记录）
-    // v2.1：标签迁移到相册后，照片不再有标签，removeTagsByPhoto 已移除
-    // v3.5：新增风格档案关联清理（gotcha #31：删照片前清所有档案关联）
     await _db.transaction(() async {
       await _db.colorPinDao.deletePinsByPhotoId(photoId);
       await _db.albumDao.removePhotoFromAllAlbums(photoId);
@@ -181,23 +214,45 @@ class ImportService {
     }
   }
 
-/// 为单张照片重新生成缩略图（清缓存后 photo_card 按需调用）
-/// 返回新的缩略图路径；失败返回空字符串
-Future<String> regenerateThumbnail(String photoId) async {
+  /// 为单张照片重新生成缩略图（清缓存后 photo_card 按需调用）
+  /// 返回新的缩略图路径；失败返回空字符串
+  Future<String> regenerateThumbnail(String photoId) async {
     final photo = await _db.photoDao.getPhotoById(photoId);
     if (photo == null) return '';
 
+    final thumbId = _uuid.v4();
+    final thumbPath = p.join(_thumbnailsDir, 'thumb_$thumbId.jpg');
+
     try {
-      final result = await compute(
-        _generateThumbnailIsolate,
-        (photo.filePath, _thumbnailsDir),
-      );
-      // 回填 DB
-      await _db.photoDao.updateThumbnailPath(photoId, result);
-      return result;
+      // 优先使用 Native 硬件解码，极速且低内存
+      final fileBytes = await File(photo.filePath).readAsBytes();
+      final codec = await ui.instantiateImageCodec(fileBytes, targetWidth: 360);
+      final frame = await codec.getNextFrame();
+      final byteData = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+      if (byteData != null) {
+        await File(thumbPath).writeAsBytes(byteData.buffer.asUint8List());
+      } else {
+        throw Exception('toByteData returned null');
+      }
+      await _db.photoDao.updateThumbnailPath(photoId, thumbPath);
+      return thumbPath;
     } catch (e) {
-      debugPrint('Regenerate thumbnail failed: $photoId — $e');
-      return '';
+      debugPrint('Native thumbnail regeneration failed: $photoId, fallback to Isolate: $e');
+      try {
+        final result = await compute(
+          _generateThumbnailIsolate,
+          (photo.filePath, _thumbnailsDir),
+        );
+        await File(result).copy(thumbPath);
+        try {
+          await File(result).delete();
+        } catch (_) {}
+        await _db.photoDao.updateThumbnailPath(photoId, thumbPath);
+        return thumbPath;
+      } catch (e2) {
+        debugPrint('Fallback thumbnail regeneration failed: $e2');
+        return '';
+      }
     }
   }
 
@@ -221,27 +276,8 @@ Future<String> regenerateThumbnail(String photoId) async {
   }
 
   /// v3.5 PR4：批量预计算照片的分析数据（用于档案创建/匹配）
-  ///
-  /// 现有架构是懒计算（详情页打开才算），档案系统需要全量数据，
-  /// 必须在创建档案时主动触发（gotcha #49）。
-  ///
-  /// 填充 Photos 表的 rgbHistogram/lumHistogram/hueHistogram/toneJson 缓存，
-  /// **v3.5 二轮复核修复**：现也填充 toneJson 的 `advanced` 键（含 Face Mesh
-  /// 的 STI/FLC）。之前只写 toneJson 不写 advanced，导致档案样片即使预计算过，
-  /// `_computeFingerprintIsolate` 读出的 STI/FLC 仍为 -1 → 档案匹配时这两维
-  /// 被跳过，肤色维度（v3.5 主打的"亚洲人像垂直战场"差异化指标）系统性失效。
-  /// 现在让 STI/FLC 真正进入指纹，9 维标量全部参与匹配。
-  ///
-  /// 返回 (success, failed) 计数。
   Future<({int success, int failed})> precomputeAnalysisForPhotos(
       List<String> photoIds) async {
-    // 主线程一次性解压三个模型（gotcha #41：rootBundle 不能进 Isolate）。
-    // 失败不阻塞：short 缺失则 skin 全空，mesh 缺失则 STI/FLC 为 null，
-    // advanced 仍写 black/white/ten_tonal（直方图可算，无 Face Mesh 依赖）。
-    final shortModelPath = await ensureModelsExtracted();
-    final fullModelPath = await getFullModelPath();
-    final meshModelPath = await ensureMeshModelExtracted();
-
     var success = 0;
     var failed = 0;
     for (final photoId in photoIds) {
@@ -252,9 +288,11 @@ Future<String> regenerateThumbnail(String photoId) async {
           continue;
         }
 
-        // 1. 直方图（若未缓存）
+        // 1. 直方图（若未缓存，优先使用缩略图以极速解析直方图，防止 48MP 大图 OOM，若不存在退回原图）
         if (photo.rgbHistogram == null || photo.lumHistogram == null) {
-          final hist = await computeHistogram(photo.filePath);
+          final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
+          final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
+          final hist = await computeHistogram(targetPath);
           final combined = hist.toBytes();
           await _db.photoDao.updateHistogramCache(
             photoId,
@@ -265,7 +303,6 @@ Future<String> regenerateThumbnail(String photoId) async {
         }
 
         // 2. 影调（若未缓存，含 5 段 + entropy/rms）
-        // 重新读 photo 拿到刚写入的直方图缓存（避免用旧对象）
         var current = await _db.photoDao.getPhotoById(photoId);
         if (current == null) {
           failed++;
@@ -284,7 +321,6 @@ Future<String> regenerateThumbnail(String photoId) async {
             final hist = HistogramData.fromBytes(combined);
             final tone = analyzeTone(hist.lum);
             await _db.photoDao.updateToneCache(photoId, tone.toJsonString());
-            // 再次读取，拿到含 toneJson 的最新行（用于下方 advanced 合并）
             current = await _db.photoDao.getPhotoById(photoId);
             if (current == null) {
               failed++;
@@ -293,15 +329,13 @@ Future<String> regenerateThumbnail(String photoId) async {
           }
         }
 
-        // 3. v3.5 二轮复核新增：advanced 指标（含 Face Mesh 的 STI/FLC）
-        // 仅当 toneJson 里还没有 advanced 键时补算（幂等，已有则跳过避免重算 mesh）。
+        // 3. v3.5：advanced 指标（black/white/ten_tonal，纯直方图）
         final alreadyHasAdvanced =
             AdvancedPortraitMetrics.fromJsonString(current.toneJson) != null;
         if (!alreadyHasAdvanced &&
             current.rgbHistogram != null &&
             current.lumHistogram != null &&
             current.toneJson != null) {
-          // 解析已缓存的直方图 + tone（用于 black/white/ten_tonal 纯直方图计算）
           final combined = current.hueHistogram != null
               ? Uint8List.fromList([
                   ...current.rgbHistogram!,
@@ -311,30 +345,21 @@ Future<String> regenerateThumbnail(String photoId) async {
               : Uint8List.fromList(
                   [...current.rgbHistogram!, ...current.lumHistogram!]);
           final hist = HistogramData.fromBytes(combined);
-          final tone = analyzeTone(hist.lum);
-          // Face Mesh 推理拿 STI/FLC（mesh 缺失时降级为 null，不报错）
-          final skin = (shortModelPath == null)
-              ? const SkinAnalysis()
-              : await analyzeSkinTone(
-                  current.filePath,
-                  shortModelPath: shortModelPath,
-                  fullModelPath: fullModelPath,
-                  meshModelPath: meshModelPath,
-                );
-          final metrics = computeAdvancedMetrics(
-            lumHist: hist.lum,
-            toneKey: tone.toneKey,
-            toneRange: tone.toneRange,
-            sti: skin.sti,
-            flc: skin.flc,
-          );
-          final merged = AdvancedPortraitMetrics.mergeIntoToneJson(
-              current.toneJson, metrics);
-          await _db.photoDao.updateToneCache(photoId, merged);
+          final toneResult = ToneResult.fromJsonString(current.toneJson!);
+          if (toneResult != null) {
+            final adv = computeAdvancedMetrics(
+              lumHist: hist.lum,
+              toneKey: toneResult.toneKey,
+              toneRange: toneResult.toneRange,
+            );
+            final mergedJson = AdvancedPortraitMetrics.mergeIntoToneJson(current.toneJson!, adv);
+            await _db.photoDao.updateToneCache(photoId, mergedJson);
+          }
         }
+
         success++;
       } catch (e) {
-        debugPrint('Precompute failed: $photoId — $e');
+        debugPrint('Precompute failed for $photoId: $e');
         failed++;
       }
     }
@@ -342,60 +367,57 @@ Future<String> regenerateThumbnail(String photoId) async {
   }
 }
 
-/// Isolate 入口参数
-class _PhotoProcessResult {
-  final String hash;
-  final String thumbPath;
-  final int width;
-  final int height;
-  final String? exifJson; // EXIF 拍摄参数 JSON（v2.0），无 EXIF 时为 null
-
-  _PhotoProcessResult(
-      this.hash, this.thumbPath, this.width, this.height, this.exifJson);
-}
-
-/// 合并 Isolate：一次读取 → SHA256 → EXIF → 解码 → 缩略图 + 宽高
-/// 替代之前 3 个独立 Isolate（hash + thumbnail + dimensions）
-/// async：readExifFromBytes 返回 Future，在 Isolate 内 await（非 UI 线程）
-Future<_PhotoProcessResult> _processPhotoIsolate((String, String) args) async {
-  final (srcPath, thumbDir) = args;
+/// Isolate 入口：解析图像的元数据而不需要完整解码像素（SHA256, EXIF, 以及利用 decodeInfo 读取真实宽高）
+Future<_PhotoMetadataResult> _parseMetadataIsolate(String srcPath) async {
   final bytes = File(srcPath).readAsBytesSync();
 
-  // 1. SHA256（crypto 包）
+  // 1. SHA256
   final hash = sha256.convert(bytes).toString();
 
-  // 2. EXIF 拍摄参数（在解码前解析，解码失败也不影响 EXIF 提取）
+  // 2. EXIF
   final exifJson = await extractExifJson(bytes);
 
-  // 3. 解码图片
-  final decoded = img.decodeImage(bytes);
-  if (decoded == null) {
-    // 解码失败：抛异常，由 importPhotos 外层 catch 捕获并计入 failedFiles
-    // 不写缩略图、不返回脏数据（width=0 / 指向不存在的 thumbPath）
-    throw FormatException('无法解码图片: $srcPath');
+  // 3. 使用 startDecode 读取高像素原图的尺寸（不解码像素，极速且极低内存占用，防止 48MP OOM）
+  int width = 0;
+  int height = 0;
+  try {
+    final info = img.JpegDecoder().startDecode(bytes);
+    if (info != null) {
+      width = info.width;
+      height = info.height;
+    }
+  } catch (_) {
+    try {
+      final decoder = img.findDecoderForData(bytes);
+      if (decoder != null) {
+        final info = decoder.startDecode(bytes);
+        if (info != null) {
+          width = info.width;
+          height = info.height;
+        }
+      }
+    } catch (_) {}
   }
 
-  // 4. 解码成功才生成缩略图 + 真实宽高
-  final width = decoded.width;
-  final height = decoded.height;
-  final thumbId = _uuid.v4();
-  final thumbPath = '$thumbDir/thumb_$thumbId.jpg';
-  final thumb = img.copyResize(decoded, width: 360);
-  final thumbBytes = img.encodeJpg(thumb, quality: 85);
-  File(thumbPath).writeAsBytesSync(thumbBytes);
+  if (width == 0 || height == 0) {
+    throw FormatException('无法解析图片尺寸: $srcPath');
+  }
 
-  return _PhotoProcessResult(hash, thumbPath, width, height, exifJson);
+  return _PhotoMetadataResult(
+    hash: hash,
+    width: width,
+    height: height,
+    exifJson: exifJson,
+  );
 }
 
-/// Isolate 入口：仅读取 EXIF（历史照片补全，不生成缩略图）
-/// 返回 EXIF JSON 字符串；无 EXIF 或失败返回 null
+/// Isolate 入口：仅读取 EXIF
 Future<String?> _readExifIsolate(String srcPath) async {
   final bytes = File(srcPath).readAsBytesSync();
   return extractExifJson(bytes);
 }
 
-/// Isolate 入口：仅生成缩略图（用于清缓存后按需重生成）
-/// 返回缩略图路径；解码失败抛异常（调用方 catch 后返回空串）
+/// Isolate 入口：仅生成缩略图（测试环境备份或降级方案）
 String _generateThumbnailIsolate((String, String) args) {
   final (srcPath, thumbDir) = args;
   final bytes = File(srcPath).readAsBytesSync();

@@ -1,16 +1,17 @@
 // stage_isolation_card.dart — 阶③主体手法（v3.5 PR3）
 //
-// 数据来源：skinProvider（SLS 明度隔离/SCS 色彩隔离/FLC 面部反差）+
+// 数据来源：skinProvider（SLS 明度隔离/SCS 色彩隔离）+
 // sharpnessProvider（前景/背景锐度，可选）。
 //
-// 解读措辞：SLS 高 → 主体明度突出；FLC 高 → 侧光立体骨相；SCS 高 → 色彩脱离背景。
+// 解读措辞：SLS 高 → 主体明度突出；SCS 高 → 色彩脱离背景。
 //
-// 容错：无脸 → SLS/SCS/FLC 全 null，显示「未检出」；sharpness 按需 watch
+// 容错：无脸 → SLS/SCS 全 null，显示「未检出」；sharpness 按需 watch
 // （首次计算有延迟，loading 态显示占位）。
+//
+// v7.0：FLC 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../models/advanced_portrait_metrics.dart';
 import '../../providers/analysis_provider.dart';
 import '../../providers/sharpness_provider.dart';
 import 'interpretation_row.dart';
@@ -20,13 +21,9 @@ import 'stage_card.dart';
 class StageIsolationCard extends ConsumerStatefulWidget {
   final String photoId;
 
-  /// 从 GradingPanel 传入的 advanced 指标（FLC 在此）
-  final AsyncValue<AdvancedPortraitMetrics?> advanced;
-
   const StageIsolationCard({
     super.key,
     required this.photoId,
-    required this.advanced,
   });
 
   @override
@@ -119,28 +116,7 @@ class _StageIsolationCardState extends ConsumerState<StageIsolationCard> {
               ),
               const SizedBox(height: 8),
             ],
-            // FLC 面部反差（来自 advanced）
-            widget.advanced.maybeWhen(
-              data: (a) => a?.faceLightingContrast == null
-                  ? const SizedBox.shrink()
-                  : InterpretationRow(
-                      icon: Icons.wb_sunny_outlined,
-                      label: '面部光比 FLC',
-                      value: a!.faceLightingContrast!.toStringAsFixed(2),
-                      statusColor: a.faceLightingContrast! > 0.3
-                          ? InterpretationStatus.good
-                          : InterpretationStatus.neutral,
-                      interpretation: a.faceLightingContrast! > 0.4
-                          ? '样片手法：面部光比 ${a.faceLightingContrast!.toStringAsFixed(2)}'
-                              '（侧光强烈），塑造了立体骨相 —— 港风/电影调典型用光。'
-                          : (a.faceLightingContrast! > 0.2
-                              ? '样片手法：面部光比 ${a.faceLightingContrast!.toStringAsFixed(2)}'
-                                  '（柔光侧照），骨相清晰但不生硬 —— 商业人像常用。'
-                              : '样片手法：面部光比 ${a.faceLightingContrast!.toStringAsFixed(2)}'
-                                  '（接近平光），肤色均匀 —— 美妆/清新风格。'),
-                    ),
-              orElse: () => const SizedBox.shrink(),
-            ),
+            // v7.0：FLC 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
             // 锐度对比（可选，按需 watch，loading 不阻塞其它行）
             _buildSharpnessRow(),
           ],

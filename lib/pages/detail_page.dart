@@ -13,7 +13,10 @@ import 'package:uuid/uuid.dart';
 import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
 import '../providers/analysis_provider.dart'
-    show manualSkinSelectionProvider, detectedFaceProvider;
+    show
+        manualSkinSelectionProvider,
+        detectedFaceProvider,
+        colorCardExpandedProvider;
 import '../providers/clipping_provider.dart';
 import '../providers/sharpness_provider.dart';
 import '../providers/exif_provider.dart' show colorPinsProvider;
@@ -46,7 +49,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   bool _isBlackWhite = false;
   bool _showClipping = false;
   bool _showFocusPeaking = false; // v3.0: 峰值对焦蒙层
-  final _showFaceBox = true; // v6.1: 人脸检测框可视化（默认开，建立用户信任）
+  // v6.2：人脸检测框只在「色彩手法」卡片展开时显示（gotcha #62），
+  // 由 colorCardExpandedProvider 控制（当前 photoId == state 时为 true）。
   // v6.1：顶部通知（替代底部 SnackBar，避免遮挡底部工具栏，问题2）
   String? _topNotice;
   bool _topNoticeVisible = false; // opacity 控制（widget 常驻，淡入/淡出才生效）
@@ -89,6 +93,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     // manualSkinSelectionProvider 是全局 Notifier，离开详情页必须清空
     // （ref 在 dispose 后不可用，需在 super.dispose 之前访问）
     ref.read(manualSkinSelectionProvider.notifier).clear();
+    // v6.2：同步清空色彩卡片展开状态，避免下一张照片残留显示人脸框
+    ref.read(colorCardExpandedProvider.notifier).setCollapsed(widget.photoId);
     super.dispose();
   }
 
@@ -416,8 +422,11 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         ? ref.watch(sharpnessProvider(widget.photoId))
         : null;
     final sharpnessMap = sharpnessAsync?.asData?.value;
-    // v6.1：人脸检测框（ML Kit），让用户看到肤色识别落到哪
-    final detectedFaceAsync = _showFaceBox
+    // v6.2：人脸检测框只在「色彩手法」卡片展开时显示（gotcha #62）。
+    // watch colorCardExpandedProvider 建立依赖：卡片折叠/展开时本帧重建。
+    final showFaceBox =
+        ref.watch(colorCardExpandedProvider) == widget.photoId;
+    final detectedFaceAsync = showFaceBox
         ? ref.watch(detectedFaceProvider(widget.photoId))
         : null;
     final detection = detectedFaceAsync?.asData?.value;
@@ -433,8 +442,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         IgnorePointer(child: ClippingOverlay(result: clippingResult)),
       if (_showFocusPeaking && sharpnessMap != null)
         IgnorePointer(child: SharpnessOverlay(map: sharpnessMap)),
-      // v6.1：取色模式/构图模式隐藏人脸框（避免视觉冲突）
-      if (_showFaceBox &&
+      // v6.2：取色模式/构图模式/卡片折叠时隐藏人脸框（避免视觉冲突/噪音）
+      if (showFaceBox &&
           !_colorPickMode &&
           detectedFace != null &&
           _compositionMode == CompositionMode.none)

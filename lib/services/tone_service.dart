@@ -255,10 +255,9 @@ double calculateWarmToColdRatio(List<int> hueHist) {
 
 // ============ v3.5 高级人像指标（纯直方图可算部分）============
 //
-// 以下三个函数仅依赖亮度直方图，不依赖 Face Mesh，可在任何照片上稳定计算。
+// 以下三个函数仅依赖亮度直方图，不依赖人脸检测，可在任何照片上稳定计算。
 // 由 advancedMetricsProvider 调用，结果序列化到 toneJson 的 'advanced' 键
 // （black_point_offset / white_point_compression / ten_tonal_type）。
-// Face Mesh 依赖的 skin_sti / face_lighting_contrast 由 face_service（PR2）补算。
 
 /// 1% 暗部阶调位移（黑点偏移）
 ///
@@ -348,25 +347,20 @@ String classifyTenTonalType(String toneKey, String toneRange) {
 /// 组装 v3.5 高级人像指标（纯函数，无副作用）
 ///
 /// 把 [calculateBlackPointOffset] / [calculateWhitePointCompression] /
-/// [classifyTenTonalType] 三个纯直方图函数 + 可选的 STI/FLC（Face Mesh 依赖）
-/// 合并为 [AdvancedPortraitMetrics]，供两个调用方共用，避免逻辑重复：
+/// [classifyTenTonalType] 三个纯直方图函数合并为 [AdvancedPortraitMetrics]，
+/// 供两个调用方共用，避免逻辑重复：
 /// - [advancedMetricsProvider]（详情页按需算，gotcha #33 无条件 watch 上游）
-/// - [ImportService.precomputeAnalysisForPhotos]（创建档案时批量预计算，
-///   gotcha #49：让 STI/FLC 进入档案匹配，而非恒为 -1 被跳过）
+/// - [ImportService.precomputeAnalysisForPhotos]（创建档案时批量预计算）
 ///
-/// [sti]/[flc] 传 null 时仅填充直方图可算部分（STI/FLC 缺失，由调用方决定
-/// 是否触发 Face Mesh 重算）。总像素数为 0 时 black/white 走兜底值。
+/// v7.0：原 [sti]/[flc] 参数已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。
+/// 总像素数为 0 时 black/white 走兜底值。
 AdvancedPortraitMetrics computeAdvancedMetrics({
   required List<int> lumHist,
   required String toneKey,
   required String toneRange,
-  double? sti,
-  double? flc,
 }) {
   final total = lumHist.fold<int>(0, (a, b) => a + b);
   return AdvancedPortraitMetrics(
-    skinSti: sti,
-    faceLightingContrast: flc,
     blackPointOffset: calculateBlackPointOffset(lumHist, total),
     whitePointCompression: calculateWhitePointCompression(lumHist, total),
     tenTonalType: classifyTenTonalType(toneKey, toneRange),

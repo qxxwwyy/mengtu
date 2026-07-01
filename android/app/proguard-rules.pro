@@ -15,22 +15,11 @@
 -keep class org.chromium.** { *; }
 
 # ==============================================================================
-# 3. TensorFlow Lite 混淆保留
+# 3. SCRFD NCNN（v7.0）
+#    纯 FFI 插件（libscrfd_ncnn.so 由 CMake 打包，无 Java/Kotlin 类）。
+#    R8 不处理 .so，无需 keep 规则。v3.0/v6.1 的 TFLite + ML Kit keep 规则
+#    已随 tflite_flutter / google_mlkit_face_detection 移除而删除。
 # ==============================================================================
--keep class org.tensorflow.lite.** { *; }
--keep class com.google.android.gms.tflite.** { *; }
--dontwarn org.tensorflow.lite.**
--dontwarn com.google.android.gms.tflite.**
-
-# ==============================================================================
-# 3b. Google ML Kit 人脸检测混淆保留（v6.1）
-#     release isMinifyEnabled=true 会剥离 ML Kit 类导致检测失败，
-#     参考 Google_MLKit_FaceDetection_Flutter_部署指南 §四 步骤三
-# ==============================================================================
--keep class com.google.mlkit.** { *; }
--keep class com.google.android.gms.internal.mlkit_vision_face.** { *; }
--keep class com.google.android.gms.vision.face.** { *; }
--dontwarn com.google.mlkit.**
 
 # ==============================================================================
 # 4. Glide (图片加载框架，由 photo_manager/wechat_assets_picker 依赖) 混淆保留

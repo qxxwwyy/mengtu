@@ -1,0 +1,29 @@
+name: scrfd_ncnn
+description: "SCRFD 人脸检测 NCNN Flutter FFI 插件（萌图项目专用）"
+version: 1.0.0
+
+publish_to: 'none' # 仅 path 依赖使用
+
+environment:
+  sdk: ^3.12.0
+  flutter: '>=3.16.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  ffi: ^2.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        ffiPlugin: true
+  # 模型文件随插件打包（NCNN 运行时需复制到文件系统再加载）
+  assets:
+    - assets/scrfd_2.5g_kps-opt2.param
+    - assets/scrfd_2.5g_kps-opt2.bin

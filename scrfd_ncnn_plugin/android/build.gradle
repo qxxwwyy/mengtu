@@ -1,0 +1,62 @@
+// android/build.gradle — scrfd_ncnn 插件 Android 构建（NDK + CMake 编译 .so）
+//
+// 与主项目 mengtu 一致：arm64-v8a only（减体积），minSdk 24（SCRFD 需要）。
+// externalNativeBuild 触发 CMake 编译 src/scrfd_api.c + scrfd_detector.cpp → libscrfd_ncnn.so。
+// NCNN 静态库（libncnn.a）放在 src/main/jni/ncnn/lib/android/arm64-v8a/（下载，不入 git）。
+group 'com.mengtu.scrfd_ncnn'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.7.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    namespace 'com.mengtu.scrfd_ncnn'
+    compileSdk 35
+
+    ndkVersion "26.1.10909125"
+
+    defaultConfig {
+        minSdk 24
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DANDROID_STL=c++_shared"
+                cppFlags "-std=c++17 -frtti -fexceptions"
+                // 与主项目一致：仅 arm64-v8a（砍 armeabi-v7a 约 -50% 体积）
+                abiFilters 'arm64-v8a'
+            }
+        }
+
+        consumerProguardFiles "consumer-rules.pro"
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "CMakeLists.txt"
+            version "3.22.1"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {}

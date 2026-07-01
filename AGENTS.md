@@ -58,6 +58,8 @@
 - ✅ v3.5 二轮复核修复（P1: precomputeAnalysisForPhotos 补 advanced 含 Face Mesh，让 STI/FLC 进入档案匹配 + tone_service 提取 computeAdvancedMetrics 纯函数共享；P3: computeSimilarity exp 衰减 2.0→4.0 宽容理论档案 + 内置档案相似度补 confidenceHint 文案；P4: _SimilarityTile 颜色跟随 similarityText 分层[isBuiltin/<5/≥5]；P5: AGENTS.md 同步 schemaVersion/版本/gotcha #46-50/项目结构）
 - ✅ v6.0 八大问题修复（①BlazeFace 解码三大 bug[sigmoid+inputSize 归一化]让人脸检测真正生效；②取色后台预解码[maxDim 1200]零等待；③构图线 letterbox 补偿基于图片不溢出；④取色 Pin 弹菜单+设为肤色基准[manualSkinSelectionProvider 接 UI]；⑤放大镜 130px+中心格高亮+HSV 标签；⑥锐度蒙层恢复[SharpnessOverlay BlendMode 发光+数据卡]；⑦GradingPanel 顶部黑框消除+FingerprintRadar AspectRatio 居中+补全 polygon；⑧SkinRadar 肤色合理性雷达[5 维/中心=理想肤色]嵌入阶②色彩卡片）
 - ✅ v6.1 二轮手动测试修复（①BlazeFace→ML Kit 人脸检测迁移[google_mlkit_face_detection bundled/minFaceSize 0.15 抓大头照]+FaceBBoxOverlay 检测框可视化[建立用户信任]+Face Mesh 保留算 STI/FLC；②顶部通知替代底部 SnackBar[避开工具行操作热区]；③取色坐标系统一 Stack-local[放大镜/像素/pin 三者对齐]+InteractiveViewer 取色锁定 scale=1；④DetailBottomPanel 固定高度 368/72+Expanded 填充消除黑框；⑤作品库多选栏重构[隐藏 FAB+Material 底栏+取消 IconButton 醒目]）
+- ✅ v6.2 肤色示波器 + 人脸框可见性治理（①FaceBBoxOverlay 不再常驻，仅在「色彩手法」卡片展开时显示[colorCardExpandedProvider 按 photoId 作用域，detail_page watch + StageColorCard toggle + dispose 清空，gotcha #56]；②旧版 5 维 SkinRadar[ΔH/饱和/明度/STI/SLS 雷达]重写为达芬奇式肤色示波器[极坐标：角度=色相/半径=饱和度 + 固定 17° 肤色参考线 + 同心饱和度圆 + 光点越靠线越正，gotcha #57]）
+- ✅ v7.0 SCRFD/NCNN人脸检测重构（全面替换 BlazeFace + ML Kit + MediaPipe Face Mesh 为 SCRFD NCNN 推理，下线 STI/FLC，指纹缩至 7 维，首创 Android FFI 极速集成方案）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -108,8 +110,7 @@ flutter test
 | crypto | ^3.0.7 | SHA256 哈希 |
 | reorderable_grid_view | ^2.2.8 | 相册照片拖拽排序 |
 | shared_preferences | ^2.5.5 | 主题模式持久化 |
-| tflite_flutter | ^0.11.0 | v3.0 离线人脸检测（BlazeFace TFLite 推理，FFI 插件；v6.1 起降级为 ML Kit 不可用时的回退）|
-| google_mlkit_face_detection | ^0.13.1 | v6.1 人脸检测主链（Google ML Kit bundled，minFaceSize 0.15 抓大头照，不依赖 GMS）|
+| scrfd_ncnn | {path: scrfd_ncnn_plugin} | v7.0 离线人脸检测（SCRFD NCNN 推理，FFI 插件）|
 
 dev_dependencies: drift_dev, riverpod_generator, build_runner, flutter_lints
 
@@ -143,11 +144,11 @@ mengtu/
 ├── lib/
 │   ├── main.dart                    # 应用入口（ErrorWidget 兜底 + MainShell）
 │   ├── models/
-│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）+ SkinAnalysis（v3.5 扩展 sti/flc）
+│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）+ SkinAnalysis（v7.0 移除 sti/flc）
 │   │   ├── palette_result.dart      # PaletteColor + PaletteResult
 │   │   ├── exif_info.dart           # ExifInfo 强类型 + JSON 序列化 + 格式化（f/2.8、1/250s）
-│   │   ├── advanced_portrait_metrics.dart # v3.5 高级人像指标（STI/FLC 可空 + black/white/ten_tonal 强制重算 + mergeIntoToneJson）
-│   │   ├── photo_fingerprint.dart   # v3.5 照片指纹（96维直方图 + 9维标量[RAW 单位]）
+│   │   ├── advanced_portrait_metrics.dart # v3.5 高级人像指标（black/white/ten_tonal 强制重算 + mergeIntoToneJson；v7.0 移除 STI/FLC）
+│   │   ├── photo_fingerprint.dart   # v3.5 照片指纹（96维直方图 + 7维标量[RAW 单位]）
 │   │   └── style_profile_match.dart # v3.5 档案匹配结果（分层置信度 similarityText/confidenceHint）
 │   ├── theme/
 │   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
@@ -171,9 +172,10 @@ mengtu/
 │   │   ├── clipping_service.dart    # 高光/阴影溢出警告（动态step）
 │   │   ├── harmony_service.dart     # 配色和谐度（6种HarmonyType）
 │   │   ├── pixel_picker_service.dart # 取色器像素拾取
-│   │   ├── face_service.dart        # v3.0 BlazeFace 人脸 ROI + 肤色 HSL + v3.5 三段式 Face Mesh + STI/FLC（Isolate 推理）
+│   │   ├── face_service.dart        # v7.0: 移除 BlazeFace/Face Mesh/STI/FLC，只保留人脸 bbox 内缩 20% 肤色采样统计
+│   │   ├── scrfd_service.dart       # v7.0: SCRFD 离线人脸检测服务 (FFI 插件推理)
 │   │   ├── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
-│   │   ├── fingerprint_service.dart # v3.5 照片指纹（96维直方图+9维标量 Isolate）+ 档案统计 + 标准化欧氏+卡方融合匹配
+│   │   ├── fingerprint_service.dart # v3.5 照片指纹（96维直方图+7维标量 Isolate）+ 档案统计 + 标准化欧氏+卡方融合匹配
 │   │   ├── builtin_profiles.dart    # v3.5 内置理论档案（日系/港风[做精]/青橙/中式[待校准]）+ ensureSeeded 幂等
 │   │   └── replication_hints_service.dart # v3.5 复刻参数生成（解读式「样片手法」语境，非诊断）
 │   ├── pages/
@@ -208,12 +210,12 @@ mengtu/
 │   │       ├── grading_panel.dart   # 四阶卡片 ListView 容器（watch advancedMetricsProvider 一次；v6.0 去顶部 padding 消黑框）
 │   │       ├── stage_card.dart      # 通用阶卡片（序号+标题+摘要+折叠/展开）
 │   │       ├── stage_tonal_card.dart # 阶①影调手法（黑点/白点/RMS/十大影调 + 参照直方图）
-│   │       ├── stage_color_card.dart # 阶②色彩手法（v6.0：顶部嵌 SkinRadar + STI/ΔH/饱和解读）
+│   │       ├── stage_color_card.dart # 阶②色彩手法（v6.2：顶部嵌肤色示波器 + STI/ΔH/饱和解读；展开/折叠时 toggle colorCardExpandedProvider）
 │   │       ├── stage_isolation_card.dart # 阶③主体手法（SLS/SCS/FLC/锐度解读）
 │   │       ├── stage_archive_match_card.dart # 阶④档案比对（相似度列表+雷达图+复刻参数；颜色跟随 similarityText 分层）
 │   │       ├── reference_histogram.dart # 参照直方图叠放（教学核心，当前 vs 典型影调高斯/U型）
 │   │       ├── fingerprint_radar.dart # 指纹雷达图 9 维（current vs archive；v6.0：AspectRatio 居中+补全 polygon）
-│   │       ├── skin_radar.dart      # v6.0 肤色合理性雷达图 5 维（中心=理想肤色，嵌入阶②色彩卡片）
+│   │       ├── skin_radar.dart      # v6.2 达芬奇式肤色示波器（极坐标：角度=色相/半径=饱和度 + 17° 肤色参考线；替代旧版 5 维雷达，嵌入阶②色彩卡片）
 │   │       ├── interpretation_row.dart # 解读行（共享）+ InterpretationStatus 状态色
 │   │       ├── replication_hints_card.dart # 复刻参数附录（解读式「样片手法」）
 │   │       └── raw_data_dashboard.dart # 数据仪表盘全屏页（4 section：影调/色彩/隔离/EXIF）
@@ -222,7 +224,7 @@ mengtu/
 │   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序 + photosByNameSearchProvider
 │   │   ├── tag_provider.dart        # 标签流 + TagActions（v2.1 相册作用域：addTagToAlbum/removeTagFromAlbum）
 │   │   ├── album_provider.dart      # 相册流（v2.1 集中：albumsProvider/albumsWithTagsProvider/albumPhotosProvider/albumTagsProvider/albumsByTagProvider/photoAlbumsProvider + albumTagFilterProvider）
-│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（BlazeFace 肤色 ROI）+ modelPathProvider + v3.5 meshModelPathProvider/advancedMetricsProvider（聚合 advanced 含 STI/FLC）
+│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（ML Kit→BlazeFace→Face Mesh 肤色 ROI）+ v6.1 detectedFaceProvider（主脸 bbox）+ v6.2 colorCardExpandedProvider（色彩卡片展开状态，驱动人脸框可见性）+ v3.5 meshModelPathProvider/advancedMetricsProvider（聚合 advanced 含 STI/FLC）
 │   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
 │   │   ├── sharpness_provider.dart  # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源，按需计算不缓存）
@@ -438,13 +440,15 @@ CI 流程（`.github/workflows/build.yml`）：
 52. **构图/锐度蒙层的 letterbox 补偿** — `Image(fit: BoxFit.contain)` 在容器内是 letterboxed（上下/左右留黑），蒙层（CompositionOverlay/SharpnessOverlay/ClippingOverlay）若直接用整个 Stack 尺寸画线/斑点会溢出图片到黑边区域。**必须按 imageAspect 计算「图片实际矩形」**（offsetX/offsetY + drawWidth/drawHeight），只在图片矩形内绘制。CompositionOverlay 现用 `canvas.clipRect(rect)` + translate 裁剪到图片区域；蒙层（clipping/sharpness/构图）必须挂 InteractiveViewer **内部**共享变换（gotcha #45），但 letterbox 补偿是独立的坐标问题，两者都要做
 53. **取色 session 后台预解码** — 进入详情页时 fire-and-forget 预解码 `ColorPickerSession.begin(maxDim:1200)`，用户点「取色」时命中缓存零等待（v3.1 的同步 `setState(loading=true)` 阻塞 UI 几秒）。用 `_photoFilePath` guard 幂等（同一张照片只触发一次）。预解码失败静默兜底，按下取色按钮再走正常 `_enterColorPickMode`。maxDim 1600→1200 降 30% 内存（取色精度 1200 长边仍足够单像素）
 54. **取色 Pin 弹菜单 + 设为肤色基准** — `ColorPinMarker` 的 `onTap` 接到 `_showPinMenu`：色值预览/「设为肤色基准」(`manualSkinSelectionProvider.select`)/删除。当前选中的 pin 用 accent 描边 + face 图标高亮（与 manualSkinSelectionProvider 联动，RGB 三通道匹配）。删的若是当前基准必须清 manualSkinSelection 避免悬空引用。手动校准优先于 BlazeFace（skinProvider 已支持，见 gotcha #39 skin 容错策略）
-55. **肤色雷达图（5 维合理性可视化）** — `SkinRadar` 把肤色 5 维（ΔH/饱和/明度/STI/SLS）归一化到 [0,1] 画雷达多边形，中心=理想肤色（达芬奇线 H=17/S=25/Y=65），越饱满越健康。区别于「指纹雷达」FingerprintRadar（9 维物理量，档案匹配用）。归一化阈值与 ToneGuideCard/stage_color_card 解读阈值对齐（ΔH ±30°、饱和 40±30、明度 65±25、STI 0.85、SLS 20）。嵌入阶②色彩卡片顶部，无肤色时显示空雷达占位 + 手动校准引导
+55. **~~肤色雷达图（5 维合理性可视化）~~**（v6.2 已废弃，见 gotcha #63）— 原 `SkinRadar` 把肤色 5 维（ΔH/饱和/明度/STI/SLS）画雷达多边形，用户反馈「看不懂」。v6.2 重写为达芬奇式肤色示波器，此条仅作历史记录
 56. **ML Kit 替代 BlazeFace 作主检测链（v6.1）** — BlazeFace short_range（128 输入）对大头照/小脸召回不足（用户反馈「明显大头照检不出，露出一点皮肤反而检出」）。改用 `google_mlkit_face_detection`（bundled 不依赖 GMS）作主链：`FaceDetectorMode.accurate` + `minFaceSize:0.15` 稳定抓大头照。**关键**：(a) ML Kit 走 platform channel，**不能在 Isolate 内用**，在主线程跑返回 bbox；(b) `InputImage.fromFilePath` 的 `metadata` **恒为 null**（google_mlkit_commons 0.11.1 源码确认，只存文件路径），不能拿旋转后尺寸；(c) ML Kit 原生侧**应用 EXIF 旋转**，bbox 在【旋转后图像像素】空间，但 image 包 `decodeImage` 给【存储尺寸未旋转】——**必须读 EXIF Orientation，对 90°/270° 旋转的照片宽高互换后再归一化**（否则竖拍照片 bbox 整体扭曲）；(d) `detectedFaceProvider` 返回 `FaceDetection`（bbox + displayWidth/Height），overlay 必须用显示尺寸算 letterbox，**不能用 `photo.width/height`（存储尺寸）**；(e) `FaceDetectorMode` 不是 `PerformanceMode`（指南写错）；(f) 必须 `close()` 释放（单例 `_singletonDetector`，main.dart `_AppLifecycleObserver` detached 时 `disposeMlKitDetector`）。ML Kit 失败/不可用 → `skinProvider` 回退 BlazeFace Isolate
 57. **取色坐标系统一为 Stack-local（v6.1 问题3）** — 原放大镜用 `localPosition`、像素查找用 `globalPosition`、pin 用 `_imageKey` box 局部坐标，三者参考系不一致 → 取色位置/放大镜中心/pin 落点错位。修复：全部统一为【取色 Stack 的 local 坐标系】——(a) 取色模式 `InteractiveViewer` 锁定 scale=1 + 禁用 pan/scale（坐标固定不漂移）；(b) 像素查找 `_pickColorAtSync(localPos)` 用 `_calculateImageRectInStack()`（图片 global 坐标→Stack local via `globalToLocal`）；(c) pin 渲染用同一 `_calculateImageRectInStack` 映射。放大镜 position=localPos → 中心对准手指；像素=手指下像素；pin=取色时的放大镜中心，三者必然对齐
 58. **DetailBottomPanel 固定高度而非 maxHeight（v6.1 问题4）** — 原用 `maxHeight:380` + `Column(mainAxisSize.min)`，当内容（工具行+GradingPanel）高度 < 380 时，Column 居中导致上下留暗色空隙，展开后顶部出现「大黑框」。改为 `AnimatedContainer(height: 368/72)`（精确高度 = 工具行 60 + GradingPanel 308）+ `Column` 内 `Expanded(GradingPanel)` 紧贴工具行填满剩余空间 + `clipBehavior: hardEdge` 裁剪溢出。消除所有暗色空隙
 59. **顶部通知替代底部 SnackBar（v6.1 问题2）** — 详情页底部 SnackBar 正好挡住工具行操作按钮（黑白/构图/取色等）。改用 `_showTopNotice` 在顶栏下方浮出胶囊通知（accent 色 + check 图标），3 秒自动消失，避开操作热区。详情页所有 `ScaffoldMessenger.showSnackBar` 统一替换为 `_showTopNotice`
 60. **作品库多选模式重构（v6.1 问题5）** — 原操作栏 `Row(spaceAround)` 的「取消」按钮被导入 FAB 遮挡。修复：(a) 多选模式隐藏 FAB（`floatingActionButton: _selectMode ? null : FAB`）；(b) 操作栏改 Material elevation 底栏，左侧「取消」IconButton 醒目（绝不被遮挡）+ 已选数量 chip + 右侧「加入相册/删除」主操作按钮
 61. **AnimatedOpacity 不能配条件渲染（v6.1 review 修复）** — `AnimatedOpacity` 是 `ImplicitlyAnimatedWidget`，opacity **值变化**才触发动画，且 widget **首次挂载时不动画**（直接以当前 opacity 渲染）。反模式：`if (visible) AnimatedOpacity(opacity: visible?1:0)` —— widget 存在时 visible 必为 true（opacity 恒 1），移除时直接消失来不及播淡出，**淡入淡出都不触发（死代码）**。正确做法：widget **常驻树**，用独立的 `_visible` bool 切 opacity（先挂载 opacity:0，再 setState opacity:1 触发淡入；onTimeout 先 setState opacity:0 播淡出，动画结束再清内容）。`_buildTopNotice` 已按此重构
+62. **人脸检测框仅在「色彩手法」展开时显示（v6.2）** — v6.1 的 `FaceBBoxOverlay` 用 `_showFaceBox = true` 常驻，虽给用户「安全感」但一直挂着干扰其他工具（取色/构图/锐度）。v6.2 改为仅在用户打开「色彩手法」卡片时显示，把 bbox 与「肤色识别落点」语义绑定。实现：`colorCardExpandedProvider`（`NotifierProvider<_, String?>`，按 photoId 作用域，`analysis_provider.dart`）—— `StageColorCard.onTap` 展开→`setExpanded(photoId)`/折叠→`setCollapsed(photoId)`；`detail_page.build` `ref.watch(colorCardExpandedProvider) == widget.photoId` 决定 bbox 可见；`dispose` 调 `setCollapsed(widget.photoId)` 清空。**坑**：(a) `setCollapsed` 必须比对 photoId 相等才清空（`if(state==photoId) state=null`），否则用户在 A 照片展开后，B 照片折叠会误清 A 的状态；(b) `dispose` 里访问 `ref` 必须在 `super.dispose()` 之前（gotcha 既有模式）；(c) `import` 用 `show` 指令限定的文件（detail_page.dart）新增 provider 引用必须同步加进 show 列表，否则 `Undefined name`
+63. **肤色示波器替代 5 维雷达（v6.2）** — 旧版 `SkinRadar` 5 维雷达（ΔH/饱和/明度/STI/SLS）用户反馈「看不懂是什么意思」，重写为业界标准的**达芬奇式肤色矢量示波器**（参考 DaVinci Resolve / darktable 实现原理）：极坐标，**角度=色相**（HSV hue，0°→右/红，90°→下/黄绿，180°→左/青，270°→上/品红，与达芬奇 R/Yl/G/Cy/B/Mg 六色方位一致）、**半径=饱和度**（0~100%→0~外圈），固定一条 **17° 肤色参考线**（达芬奇肤色线，所有肤色不论种族都落在此线附近 —— 「血透过皮肤」原理：黑色素/血红蛋白决定色相，种族只改明度/饱和）。当前照片肤色画成光点（暖橙 + 白描边 + 外晕），**越靠近参考线 = 肤色越正**。判定阈值与解读文案对齐（ΔH<10° 对齐良好绿/<25° 轻微偏离/>25° 偏色橙）。数据源：`skinProvider` 的 `hueOffset`（相对 17° 的偏差，还原绝对色相 `17+hueOffset`）+ `saturation%`。**保留 `advanced` 参数**（`dynamic`，标 `ignore: unused_field`）避免破坏 StageColorCard 调用签名 —— STI 仍在下方文字解读行展示（示波器不画 STI 维度）。gotcha #55 的旧雷达实现已删
 
 ## v3.5 已知限制（非阻塞，待后续优化）
 

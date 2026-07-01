@@ -1,0 +1,17 @@
+# 二进制依赖（下载获取，不入 git）
+# NCNN 静态库（~10MB）
+android/src/main/jni/ncnn/
+# SCRFD 模型（.param ~10KB 文本 + .bin ~1.6MB 权重；统一排除，CI/本地按 README 下载）
+android/src/main/assets/*.bin
+android/src/main/assets/*.param
+assets/*.bin
+assets/*.param
+
+# Flutter 构建产物
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+build/
+.dart_tool/
+*.iml
+.idea/

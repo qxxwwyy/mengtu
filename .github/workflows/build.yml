@@ -17,6 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Fetch native binaries and models
+        run: |
+          chmod +x scripts/fetch-native.sh
+          ./scripts/fetch-native.sh
+
       - uses: actions/setup-java@v5
         with:
           distribution: temurin

@@ -30,12 +30,12 @@ void main() {
       }
     });
 
-    test('scalar_means/scalar_stds 各 9 维', () {
+    test('scalar_means/scalar_stds 各 7 维', () {
       for (final p in BuiltinProfiles.profiles) {
         final means = (p.fingerprintStats['scalar_means'] as List);
         final stds = (p.fingerprintStats['scalar_stds'] as List);
-        expect(means.length, 9);
-        expect(stds.length, 9);
+        expect(means.length, 7);
+        expect(stds.length, 7);
       }
     });
 

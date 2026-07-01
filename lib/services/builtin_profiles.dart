@@ -9,7 +9,8 @@
 // gotcha #50（PR5 复核新增）：标量单位必须与 _computeFingerprintIsolate 一致。
 // scalar_means/scalar_stds 是 RAW 值（非归一化）：
 //   [rms_contrast(0~128), warm_cold_ratio(0.5~2), black_point(0~255),
-//    white_point(0~255), entropy(0~8), scs(0~180), sls(-100~100), sti(0~1), flc(0~1)]
+//    white_point(0~255), entropy(0~8), scs(0~180), sls(-100~100)]
+// v7.0：原 9 维（含 sti/flc）缩为 7 维（SCRFD 无 Face Mesh，移除 sti/flc）。
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -93,8 +94,8 @@ class BuiltinProfiles {
       note: _theoreticalNote,
       fingerprintStats: {
         // RAW 单位（与 _computeFingerprintIsolate 一致，gotcha #50）
-        'scalar_means': [25.0, 1.1, 12.0, 242.0, 6.5, 30.0, 8.0, 0.72, 0.12],
-        'scalar_stds': [8.0, 0.3, 4.0, 6.0, 0.4, 12.0, 8.0, 0.08, 0.05],
+        'scalar_means': [25.0, 1.1, 12.0, 242.0, 6.5, 30.0, 8.0],
+        'scalar_stds': [8.0, 0.3, 4.0, 6.0, 0.4, 12.0, 8.0],
         // 直方图：高调右偏（峰值在 bin 20-24，对应亮度 160-192）
         'hist_means': _buildHistogram(rPeak: 22, gPeak: 20, bPeak: 18, spread: 7),
         'hist_stds': _uniformStd(96, 0.03),
@@ -138,8 +139,8 @@ class BuiltinProfiles {
       isRefined: true,
       note: _theoreticalNote,
       fingerprintStats: {
-        'scalar_means': [45.0, 1.3, 6.0, 250.0, 6.8, 45.0, 18.0, 0.55, 0.35],
-        'scalar_stds': [10.0, 0.4, 3.0, 4.0, 0.5, 12.0, 10.0, 0.1, 0.1],
+        'scalar_means': [45.0, 1.3, 6.0, 250.0, 6.8, 45.0, 18.0],
+        'scalar_stds': [10.0, 0.4, 3.0, 4.0, 0.5, 12.0, 10.0],
         // 直方图：中低调左偏（峰值在 bin 8-14，对应亮度 64-112）
         'hist_means': _buildHistogram(rPeak: 12, gPeak: 10, bPeak: 8, spread: 6),
         'hist_stds': _uniformStd(96, 0.03),
@@ -183,8 +184,8 @@ class BuiltinProfiles {
       isRefined: false,
       note: '$_theoreticalNote（待校准）',
       fingerprintStats: {
-        'scalar_means': [60.0, 0.8, 2.0, 252.0, 7.0, 70.0, 22.0, 0.6, 0.4],
-        'scalar_stds': [12.0, 0.3, 2.0, 3.0, 0.4, 10.0, 8.0, 0.1, 0.1],
+        'scalar_means': [60.0, 0.8, 2.0, 252.0, 7.0, 70.0, 22.0],
+        'scalar_stds': [12.0, 0.3, 2.0, 3.0, 0.4, 10.0, 8.0],
         // 直方图：全长调 U 型（两端高，中调低）—— 近似双峰
         'hist_means': _buildUShapeHistogram(),
         'hist_stds': _uniformStd(96, 0.03),
@@ -202,8 +203,8 @@ class BuiltinProfiles {
       isRefined: false,
       note: '$_theoreticalNote（待校准）',
       fingerprintStats: {
-        'scalar_means': [22.0, 1.0, 8.0, 244.0, 6.6, 35.0, 10.0, 0.65, 0.18],
-        'scalar_stds': [7.0, 0.3, 3.0, 5.0, 0.4, 12.0, 8.0, 0.1, 0.07],
+        'scalar_means': [22.0, 1.0, 8.0, 244.0, 6.6, 35.0, 10.0],
+        'scalar_stds': [7.0, 0.3, 3.0, 5.0, 0.4, 12.0, 8.0],
         // 直方图：中间调中央（峰值在 bin 15-17，对应亮度 120-136）
         'hist_means': _buildHistogram(rPeak: 16, gPeak: 16, bPeak: 16, spread: 8),
         'hist_stds': _uniformStd(96, 0.03),

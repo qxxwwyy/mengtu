@@ -132,11 +132,11 @@ void main() {
           reason: '档案指纹统计应已生成');
       final stats = jsonDecode(profile.fingerprintStats!) as Map<String, dynamic>;
       expect(stats['n'], 1);
-      // 直方图维度（96）和标量维度（9）结构完整
+      // 直方图维度（96）和标量维度（7）结构完整
       final histMeans = (stats['hist_means'] as List);
       final scalarMeans = (stats['scalar_means'] as List);
       expect(histMeans.length, 96);
-      expect(scalarMeans.length, 9);
+      expect(scalarMeans.length, 7);
       // 直方图可算维度（rms_contrast/black_point/white_point/entropy 等）count > 0
       final counts = (stats['scalar_counts'] as List).cast<int>();
       // 维度 2 = black_point，维度 3 = white_point（纯直方图可算，必计入）

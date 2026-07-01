@@ -1,11 +1,12 @@
 // analysis_provider.dart — 直方图/色卡/影调分析状态管理
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/histogram_service.dart';
 import '../services/palette_service.dart';
 import '../services/tone_service.dart';
 import '../services/face_service.dart';
-import '../services/mlkit_face_service.dart' show detectPrimaryFaceWithMlKit, FaceDetection;
+import '../services/scrfd_service.dart' show detectPrimaryFaceWithScrfd, FaceDetection;
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
 import '../models/advanced_portrait_metrics.dart';
@@ -33,8 +34,10 @@ final histogramProvider =
     return HistogramData.fromBytes(combined);
   }
 
-  // 首次计算
-  final hist = await computeHistogram(photo.filePath);
+  // 首次计算（优先使用缩略图以极速解析直方图，防止 48MP 大图 OOM，若缩略图文件不存在则退回原图）
+  final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
+  final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
+  final hist = await computeHistogram(targetPath);
   // 缓存到数据库（Uint16List 格式，hue 独立列）
   final combined = hist.toBytes(); // 2768 bytes
   await db.photoDao.updateHistogramCache(
@@ -65,9 +68,11 @@ final paletteProvider =
     if (cached.colors.isNotEmpty) return cached;
   }
 
-  // 计算
+  // 计算（优先使用缩略图以大幅提速并防止大图 OOM，若不存在退回原图）
+  final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
+  final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
   final palette = await extractPalette(
-    photo.filePath,
+    targetPath,
     desired: params.desired,
     algorithm: params.algorithm,
   );
@@ -102,27 +107,28 @@ final toneProvider =
   return tone;
 });
 
-/// v3.0：已解压的 BlazeFace short_range 模型文件路径
-///
-/// 在 app 启动或首次需要人脸检测时调用 [ensureModelsExtracted]。
-/// 返回 null 表示 asset 缺失 / 平台不支持 → skinProvider 降级。
-final modelPathProvider = FutureProvider<String?>((ref) async {
-  return ensureModelsExtracted();
-});
+/// v7.0：modelPath/fullModelPath/meshModelPath providers 已移除
+/// （BlazeFace/ML Kit/Face Mesh 全部替换为 SCRFD，scrfd_service 内部管理模型路径）。
 
-/// v3.1：full_range_sparse 模型文件路径（short 检测不到脸时的回退模型）
-final fullModelPathProvider = FutureProvider<String?>((ref) async {
-  return getFullModelPath();
-});
-
-/// v3.5：face_mesh 模型文件路径（STI/FLC 依赖）
+/// v6.2：色彩手法卡片展开状态（会话级，按 photoId 作用域）
 ///
-/// 独立于 [modelPathProvider]（mesh 失败不应阻塞 BlazeFace 检测）。
-/// 返回 null 表示 asset 缺失（face_mesh.tflite 未打包）→ STI/FLC 为 null，
-/// 但 ΔH/饱和/SLS/SCS 仍由 BlazeFace ROI 产出。
-final meshModelPathProvider = FutureProvider<String?>((ref) async {
-  return ensureMeshModelExtracted();
-});
+/// 详情页的人脸检测框（FaceBBoxOverlay）只在「色彩手法」卡片展开时显示，
+/// 告诉用户肤色识别落在脸部哪个区域（gotcha #62）。卡片折叠/切照片时回退 null。
+/// StageColorCard 在 onTap 时 set/clear；detail_page watch 本 provider 决定 bbox 可见性。
+final colorCardExpandedProvider = NotifierProvider<ColorCardExpandedNotifier, String?>(
+  ColorCardExpandedNotifier.new,
+);
+
+class ColorCardExpandedNotifier extends Notifier<String?> {
+  @override
+  String? build() => null;
+
+  void setExpanded(String photoId) => state = photoId;
+
+  void setCollapsed(String photoId) {
+    if (state == photoId) state = null;
+  }
+}
 
 /// v3.1：手动肤色校准选中状态（会话级，不持久化）
 ///
@@ -147,34 +153,35 @@ class ManualSkinSelectionNotifier
 
 /// v6.1：主脸检测 bbox（归一化 0~1）—— 详情页可视化用
 ///
-/// 用 Google ML Kit 检测主脸（主线程 platform channel），返回 bbox + 显示尺寸
-/// 让用户直观看到「肤色识别落到脸部哪个区域」（解决问题1「不知识别到哪」+ 不信任）。
-/// 无脸返回 null；ML Kit 不可用（国产 ROM 缺依赖）返回 null。
+/// v7.0：用 SCRFD (NCNN) 检测主脸（主线程 FFI 同步调用），返回 bbox + 显示尺寸
+/// 让用户直观看到「肤色识别落到脸部哪个区域」。无脸返回 null；
+/// SCRFD init 失败（模型缺失/平台不支持）返回 null。
 ///
-/// 此 provider 与 skinProvider 共享检测结果：skinProvider 优先复用本 provider
-/// 的 bbox（避免重复检测），未命中再回退 BlazeFace。
+/// 此 provider 与 skinProvider 共享检测结果：skinProvider 复用本 provider 的 bbox
+/// （避免重复检测）。
 final detectedFaceProvider =
     FutureProvider.family<FaceDetection?, String>((ref, photoId) async {
   final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) return null;
-  return detectPrimaryFaceWithMlKit(photo.filePath);
+  return detectPrimaryFaceWithScrfd(
+    photo.filePath,
+    thumbnailPath: photo.thumbnailPath,
+    originalWidth: photo.width,
+    originalHeight: photo.height,
+  );
 });
 
-/// v3.0：人脸肤色分析（BlazeFace ROI 提取）
+/// v3.0：人脸肤色分析（SCRFD bbox ROI 提取）
 ///
 /// 独立于 [toneProvider]，避免阻塞直方图/影调 Tab 的快速渲染。
 /// 无脸检测或模型加载失败时返回 [SkinAnalysis.empty]。
 ///
 /// v3.1：手动校准优先 —— 若用户在取色点列表选中了某个 pin 作为肤色基准，
-/// 直接用该点 RGB 算色相/饱和度（跳过人脸检测，即使 TFLite 不可用也工作）。
-/// 未选中时回退到 short→full 双模型自动检测。
+/// 直接用该点 RGB 算色相/饱和度（跳过人脸检测）。
 ///
-/// v3.5：三段式检测链 short→full→mesh。Face Mesh 命中时额外产出 STI/FLC
-/// （叠加到 bbox ROI 的 ΔH/饱和/SLS/SCS 上）。mesh 失败/未配置 → STI/FLC null，
-/// 其余指标照常返回。
-///
-/// v6.1：优先复用 [detectedFaceProvider]（ML Kit）的 bbox，BlazeFace 仅作回退
-/// （platform channel 不可用 / ML Kit 失败）。
+/// v7.0：复用 [detectedFaceProvider]（SCRFD）的 bbox，在 bbox 内缩 20% 后
+/// 采样像素统计 ΔH/饱和/SLS/SCS/skinLuminance/bgLuminance（face_service.Isolate）。
+/// SCRFD 只给 5 点，无法计算 STI/FLC（已移除）。
 ///
 /// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
 /// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
@@ -184,48 +191,36 @@ final skinProvider =
   final photo = await ref.watch(photoByIdProvider(photoId).future);
   if (photo == null) throw Exception('Photo not found');
 
+  // 优先使用更轻量的缩略图进行肤色统计，提速 100x 且无 OOM 风险
+  final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
+  final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
+
   // v3.1：手动校准优先（watch 确保用户切换校准点时刷新）
   final manual = ref.watch(manualSkinSelectionProvider);
   if (manual != null && manual.photoId == photoId) {
     return analyzeSkinTone(
-      photo.filePath,
+      targetPath,
       manualSkinRgb: manual.rgb,
     );
   }
 
-  // v6.1：优先复用 ML Kit 预检测的 bbox（与 detectedFaceProvider 共享）
+  // v7.0：复用 SCRFD 预检测的 bbox（与 detectedFaceProvider 共享）
   final detection = await ref.watch(detectedFaceProvider(photoId).future);
-  final primaryFace = detection?.face;
-
-  // BlazeFace 回退路径（mesh + ROI 肤色统计在 Isolate 内）
-  final modelPath = await ref.watch(modelPathProvider.future);
-  final fullModelPath = await ref.watch(fullModelPathProvider.future);
-  final meshModelPath = await ref.watch(meshModelPathProvider.future);
-
-  // ML Kit 已提供 bbox → 直接进 mesh，跳过 BlazeFace
-  // ML Kit 无 bbox 且 BlazeFace 模型不可用 → 无脸空结果
-  if (primaryFace == null && modelPath == null) return const SkinAnalysis();
+  final primaryFace = detection?.rawFace; // Use unrotated rawFace for raw image pixel sampling
 
   return analyzeSkinTone(
-    photo.filePath,
-    shortModelPath: modelPath,
-    fullModelPath: fullModelPath,
-    meshModelPath: meshModelPath, // v3.5：null 时降级（STI/FLC null）
-    primaryFace: primaryFace, // v6.1：ML Kit bbox，非空时跳过 BlazeFace
+    targetPath,
+    primaryFace: primaryFace, // SCRFD bbox，null 时返回空 SkinAnalysis
   );
 });
 
-/// v3.5：聚合 advanced 指标（black_point/white_point/ten_tonal + STI/FLC）
+/// v3.5：聚合 advanced 指标（black_point/white_point/ten_tonal）
 ///
-/// 合并两个数据源：
-/// 1. 直方图可算部分（black_point_offset/white_point_compression/ten_tonal_type）
-///    — 由 [toneProvider] 已写入的 toneJson 缓存或现算
-/// 2. Face Mesh 依赖部分（skin_sti/face_lighting_contrast）
-///    — 由 [skinProvider] 产出，可能为 null（无脸/侧脸/mesh 失败）
+/// 数据源：直方图可算部分（black_point_offset/white_point_compression/ten_tonal_type）
+///   — 由 [toneProvider] 已写入的 toneJson 缓存或现算
 ///
-/// 重算策略（gotcha #39）：
-/// - 直方图部分缺字段 → 强制重算（纯函数，必有结果）
-/// - STI/FLC 缺 → 容错（不触发重算，避免无脸照片陷入"无脸→空→重算→还是空"死循环）
+/// 重算策略（gotcha #39）：直方图部分缺字段 → 强制重算（纯函数，必有结果）。
+/// v7.0：原 STI/FLC（Face Mesh 依赖）已移除（SCRFD 只给 5 点）。
 ///
 /// 缓存：合并写入 toneJson 的 'advanced' 键（保留 ToneResult 扁平字段不变）。
 final advancedMetricsProvider =
@@ -240,13 +235,8 @@ final advancedMetricsProvider =
   // 直方图/skin 变化时 advanced 不刷新）。
   final hist = await ref.watch(histogramProvider(photoId).future);
   final tone = await ref.watch(toneProvider(photoId).future);
-  final skin = await ref.watch(skinProvider(photoId).future);
-
-  // 读缓存：仅复用 STI/FLC（Face Mesh 依赖，重算昂贵且无脸时为 null）。
-  // 直方图部分（black/white/ten_tonal）始终现算（纯函数，廉价），保证新鲜。
-  final cached = AdvancedPortraitMetrics.fromJsonString(photo.toneJson);
-  final cachedSti = cached?.skinSti ?? skin.sti;
-  final cachedFlc = cached?.faceLightingContrast ?? skin.flc;
+  // skin 仍 watch（建立依赖边，但不 await，避免阻塞直方图/影调等纯直方图指标卡片的首屏快速渲染）
+  ref.watch(skinProvider(photoId));
 
   // 复用 tone_service.computeAdvancedMetrics 纯函数（与
   // precomputeAnalysisForPhotos 共享同一份计算逻辑，gotcha #49）
@@ -254,8 +244,6 @@ final advancedMetricsProvider =
     lumHist: hist.lum,
     toneKey: tone.toneKey,
     toneRange: tone.toneRange,
-    sti: cachedSti,
-    flc: cachedFlc,
   );
 
   // 回写缓存（合并到现有 toneJson 的 advanced 键，保留 ToneResult 扁平字段）

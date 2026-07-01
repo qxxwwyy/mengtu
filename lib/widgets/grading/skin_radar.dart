@@ -1,304 +1,310 @@
-// skin_radar.dart — 肤色雷达图（v6.0 问题8）
+// skin_radar.dart — 达芬奇式肤色示波器（v6.2 重写）
 //
-// 心心念念的「肤色雷达」：把肤色的 5 个关键维度（ΔH色相 / 饱和度 / 明度 /
-// 通透STI / 隔离SLS）画成雷达多边形，中心 = 理想肤色（达芬奇肤色线 H=17°、
-// S=25%、Y=65%、STI≈1、SLS>15%），越接近中心多边形越「健康圆」。
+// 旧版是 5 维雷达图（ΔH/饱和/明度/STI/SLS），用户反馈「看不懂是什么意思」。
+// v6.2 改为业界标准的**肤色矢量示波器（skin tone vectorscope）**，参考
+// DaVinci Resolve / darktable 的实现原理：
 //
-// 设计：每个维度的「理想值」归一化到外圈，当前值偏离理想值则该轴缩进，形成
-// 不规则多边形 —— 一眼看出肤色哪个维度偏了。配合状态色描边（绿=好/橙=注意）。
+//   - 极坐标：角度 = 色相（hue），半径 = 饱和度（saturation）
+//   - 肤色线（skin tone line）：所有肤色不论种族都落在同一条色相线上
+//     （「血透过皮肤」原理 —— 黑色素/血红蛋白决定色相，种族只改明度/饱和）
+//   - 标准肤色色相 ≈ 20°（达芬奇线 H=17° 附近，HSV 暖橙区间），示波器上
+//     固定画一条径向参考线（11 点钟方向）
+//   - 当前照片的肤色画成一个光点，离参考线越近 = 肤色越「正」
 //
-// 数据来源：skinProvider（ΔH/饱和/明度/SLS）+ advancedMetricsProvider（STI）。
+// 数据来源：skinProvider（hueOffset 相对 17° 的偏差 + saturation%）。
+// advanced（STI）不再进示波器，但仍在下方文字解读行展示（见 stage_color_card）。
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-import '../../models/advanced_portrait_metrics.dart';
 import '../../models/tone_result.dart';
 import '../../theme/app_theme.dart';
 import 'interpretation_row.dart';
 
-const _pi = math.pi;
 double _cos(double x) => math.cos(x);
 double _sin(double x) => math.sin(x);
 
-/// 肤色雷达图（5 维）
+/// 肤色矢量示波器（达芬奇式）
 ///
-/// 5 轴：ΔH色相偏差 / 饱和度 / 明度 / 通透STI / 隔离SLS。
-/// 中心 = 理想肤色，越接近中心（即越接近理想）→ 多边形越饱满、越接近外圈。
+/// 把肤色画在极坐标上：角度=色相，半径=饱和度，固定一条 11 点钟方向的
+/// 肤色参考线。当前照片肤色光点越靠近参考线 → 肤色越正。
 class SkinRadar extends StatelessWidget {
-  /// 肤色分析（ΔH/饱和/明度/SLS），空时显示占位
+  /// 肤色分析（hueOffset / saturation），空时显示占位
   final SkinAnalysis skin;
 
-  /// 高级指标（含 STI，可空）
-  final AdvancedPortraitMetrics? advanced;
-
-  const SkinRadar({super.key, required this.skin, this.advanced});
+  const SkinRadar({super.key, required this.skin});
 
   @override
   Widget build(BuildContext context) {
-    // 5 维归一化分数 [0,1]：1 = 理想，0 = 严重偏离
-    final scores = _computeScores();
-    final avg = scores.reduce((a, b) => a + b) / scores.length;
+    final hasSkin = skin.hueOffset != null && skin.saturation != null;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // 雷达图（正方形，紧凑）
+          // 示波器（正方形）
           Expanded(
             flex: 3,
             child: AspectRatio(
               aspectRatio: 1,
               child: CustomPaint(
-                painter: _SkinRadarPainter(
-                  scores: scores,
-                  overallColor: _overallColor(avg),
+                painter: _VectorscopePainter(
+                  // hueOffset 相对 17° 的偏差；还原绝对色相
+                  hueDeg: hasSkin ? _normalizeHue(17 + skin.hueOffset!) : null,
+                  satPercent: hasSkin ? skin.saturation! : null,
                 ),
               ),
             ),
           ),
           const SizedBox(width: 8),
-          // 右侧总分 + 维度图例
+          // 右侧解读
           Expanded(
             flex: 2,
-            child: _Legend(avg: avg, scores: scores),
+            child: _Legend(skin: skin, hasSkin: hasSkin),
           ),
         ],
       ),
     );
   }
 
-  /// 计算 5 维归一化分数 [0,1]（1=理想）
-  ///
-  /// 各维度的「理想区间」与 [ToneGuideCard]/[stage_color_card] 解读阈值对齐：
-  /// - ΔH：|ΔH|<2° → 1；|ΔH|>30° → 0（线性插值）
-  /// - 饱和度：30~50% 理想 → 1；<10% 或 >70% → 0
-  /// - 明度（Y）：55~75% 理想（达芬奇线 Y≈65）→ 1；<30% 或 >90% → 0
-  /// - STI：>0.85 理想 → 1；<0.3 → 0
-  /// - SLS：>15% 理想（主体提亮）→ 1；<0（暗脸）→ 0
-  List<double> _computeScores() {
-    double clampScore(double v, double ideal, double halfWidth) {
-      final d = (v - ideal).abs();
-      return (1 - d / halfWidth).clamp(0.0, 1.0);
-    }
-
-    // ΔH 色相偏差（skin.hueOffset 已是相对 17° 的偏差角，直接用绝对值）
-    final dh = skin.hueOffset?.abs() ?? 15;
-    final dhScore = (1 - dh / 30).clamp(0.0, 1.0);
-
-    // 饱和度：理想 40%（30~50 区间中心），半宽 30
-    final sat = skin.saturation ?? 0;
-    final satScore = clampScore(sat, 40, 30);
-
-    // 明度：理想 65%（达芬奇肤色线 Y=0.65），半宽 25
-    final lum = skin.skinLuminance ?? 0;
-    final lumScore = clampScore(lum, 65, 25);
-
-    // STI：理想 0.85+，半宽 0.6
-    final sti = advanced?.skinSti ?? -1;
-    final stiScore = sti < 0 ? 0.0 : clampScore(sti, 0.85, 0.6);
-
-    // SLS：理想 20（>15% 主体提亮），半宽 40（覆盖 -20~60）
-    final sls = skin.luminanceSeparation ?? -50;
-    final slsScore = clampScore(sls, 20, 40);
-
-    return [dhScore, satScore, lumScore, stiScore, slsScore];
-  }
-
-  Color _overallColor(double avg) {
-    if (avg > 0.7) return InterpretationStatus.good;
-    if (avg > 0.4) return InterpretationStatus.warn;
-    return InterpretationStatus.low;
+  /// 色相归一化到 [0, 360)
+  double _normalizeHue(double h) {
+    final m = h % 360;
+    return m < 0 ? m + 360 : m;
   }
 }
 
-class _SkinRadarPainter extends CustomPainter {
-  final List<double> scores; // 5 维 [0,1]
-  final Color overallColor;
+/// 示波器画笔
+class _VectorscopePainter extends CustomPainter {
+  /// 肤色色相（度，0~360），null = 无肤色（只画空示波器）
+  final double? hueDeg;
 
-  static const _axes = [
-    '色相 ΔH',
-    '饱和度',
-    '明度 Y',
-    '通透 STI',
-    '隔离 SLS',
-  ];
+  /// 肤色饱和度（百分比 0~100），null = 无肤色
+  final double? satPercent;
 
-  _SkinRadarPainter({required this.scores, required this.overallColor});
+  _VectorscopePainter({this.hueDeg, this.satPercent});
 
+  // 示波器色相环刻度颜色（按色相环的色块标识）
+  // 与达芬奇示波器一致：在圆周上标注主要色相方位
   static final _gridPaint = Paint()
     ..color = const Color(0x33FFFFFF)
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
-  static final _idealPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.1)
-    ..style = PaintingStyle.fill;
-
-  static final _idealStroke = Paint()
-    ..color = Colors.white.withValues(alpha: 0.4)
-    ..strokeWidth = 1.0
+  static final _axisPaint = Paint()
+    ..color = Colors.white.withValues(alpha: 0.15)
+    ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
-  final _currentFill = Paint()..style = PaintingStyle.fill;
-
-  final _currentStroke = Paint()
-    ..strokeWidth = 1.8
+  // 肤色参考线（达芬奇肤色线，11 点钟方向）
+  static final _skinLinePaint = Paint()
+    ..color = const Color(0xFFFFD54F) // 暖黄，区别于数据光点
+    ..strokeWidth = 1.2
     ..style = PaintingStyle.stroke;
 
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final radius = size.shortestSide / 2 - 22;
-    final n = _axes.length;
+    final radius = size.shortestSide / 2 - 14;
 
-    // 中心标「理想肤色」（小圆点）
-    final centerPaint = Paint()..color = Colors.white.withValues(alpha: 0.5);
-    canvas.drawCircle(Offset(cx, cy), 2, centerPaint);
-
-    // 3 层网格五边形（33%/66%/100%）
-    for (final r in [0.33, 0.66, 1.0]) {
-      _drawGridPolygon(canvas, cx, cy, radius * r, n, _gridPaint);
+    // ===== 1. 同心圆（饱和度刻度：25/50/75/100%）=====
+    for (final r in [0.25, 0.5, 0.75, 1.0]) {
+      canvas.drawCircle(Offset(cx, cy), radius * r, _gridPaint);
     }
 
-    // 理想轮廓（外圈五边形，半透明白，提示「理想区域」）
-    _drawGridPolygon(canvas, cx, cy, radius, n, _idealPaint);
-    _drawGridPolygon(canvas, cx, cy, radius, n, _idealStroke);
+    // ===== 2. 十字轴线（水平/垂直 + 对角）=====
+    canvas.drawLine(Offset(cx - radius, cy), Offset(cx + radius, cy), _axisPaint);
+    canvas.drawLine(Offset(cx, cy - radius), Offset(cx, cy + radius), _axisPaint);
 
-    // 当前肤色多边形（状态色填充+描边）
-    _currentFill.color = overallColor.withValues(alpha: 0.35);
-    _currentStroke.color = overallColor;
-    final path = Path();
-    for (var i = 0; i < n; i++) {
-      final v = scores[i].clamp(0.0, 1.0);
-      final angle = -_pi / 2 + (2 * _pi * i / n);
-      final x = cx + radius * v * _cos(angle);
-      final y = cy + radius * v * _sin(angle);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
-    }
-    path.close();
-    canvas.drawPath(path, _currentFill);
-    canvas.drawPath(path, _currentStroke);
+    // ===== 3. 肤色参考线（达芬奇线）=====
+    // 标准肤色色相 = 17°（达芬奇肤色线，HSV 暖橙）。skinProvider 的 hueOffset
+    // 即相对此 17° 的偏差，所以 hueOffset=0 时光点正好落在线上。
+    // 示波器坐标系：0° 指向右（3 点钟，红），90° 下（黄绿），180° 左（青），
+    // 270° 上（品红）—— 与达芬奇 R/Yl/G/Cy/B/Mg 六色方位一致。
+    const skinHueRef = 17.0; // 达芬奇肤色线标准色相（度）
+    final refAngle = _hueToCanvasAngle(skinHueRef);
+    final refEx = cx + radius * _cos(refAngle);
+    final refEy = cy + radius * _sin(refAngle);
+    final refSx = cx - radius * _cos(refAngle);
+    final refSy = cy - radius * _sin(refAngle);
+    canvas.drawLine(Offset(refSx, refSy), Offset(refEx, refEy), _skinLinePaint);
 
-    // 各轴顶点小圆点（强调数据点位置）
-    final dotPaint = Paint()
-      ..color = overallColor
-      ..style = PaintingStyle.fill;
-    for (var i = 0; i < n; i++) {
-      final v = scores[i].clamp(0.0, 1.0);
-      final angle = -_pi / 2 + (2 * _pi * i / n);
-      final x = cx + radius * v * _cos(angle);
-      final y = cy + radius * v * _sin(angle);
-      canvas.drawCircle(Offset(x, y), 2.5, dotPaint);
+    // ===== 4. 肤色光点（当前照片）=====
+    if (hueDeg != null && satPercent != null) {
+      final angle = _hueToCanvasAngle(hueDeg!);
+      // 半径按饱和度（0~100 → 0~radius）
+      final r = (satPercent! / 100).clamp(0.0, 1.0) * radius;
+      final px = cx + r * _cos(angle);
+      final py = cy + r * _sin(angle);
+
+      // 外层光晕（柔和）
+      final glow = Paint()
+        ..color = const Color(0xFFFF7043).withValues(alpha: 0.25)
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(px, py), 9, glow);
+
+      // 内层光点
+      final dot = Paint()
+        ..color = const Color(0xFFFF8A65) // 暖橙肤色点
+        ..style = PaintingStyle.fill;
+      canvas.drawCircle(Offset(px, py), 4, dot);
+
+      // 白色描边让光点在任何背景上可见
+      final ring = Paint()
+        ..color = Colors.white.withValues(alpha: 0.9)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      canvas.drawCircle(Offset(px, py), 4, ring);
     }
+
+    // ===== 5. 中心点 =====
+    final centerPaint = Paint()..color = Colors.white.withValues(alpha: 0.3);
+    canvas.drawCircle(Offset(cx, cy), 1.5, centerPaint);
+
+    // ===== 6. 肤色参考线标签（11 点方向标「肤色」）=====
+    _drawLabel(canvas, '肤色线', Offset(refEx, refEy),
+        align: _labelAlign(refAngle));
   }
 
-  void _drawGridPolygon(
-      Canvas canvas, double cx, double cy, double radius, int n, Paint paint) {
-    final path = Path();
-    for (var i = 0; i < n; i++) {
-      final angle = -_pi / 2 + (2 * _pi * i / n);
-      final x = cx + radius * _cos(angle);
-      final y = cy + radius * _sin(angle);
-      if (i == 0) {
-        path.moveTo(x, y);
-      } else {
-        path.lineTo(x, y);
-      }
+  /// HSV 色相（0~360，红=0 在 3 点钟数学角度方向）→ 画布角度
+  /// 示波器约定：0° 指向正上方（12 点），顺时针递增。
+  /// 即画布角度 = -90° + hue（数学坐标系，y 向下）。
+  /// 输入弧度，使 0 色相（红）在 3 点，90（黄绿）在 6 点，180（青）在 9 点，
+  /// 270（品红）在 12 点 —— 与达芬奇示波器 R/Yl/G/Cy/B/Mg 六色方位一致。
+  double _hueToCanvasAngle(double hueDeg) {
+    // 数学坐标系（y 向下）：0°→右(红), 90°→下(黄绿), 180°→左(青), 270°→上(品红)
+    // Flutter 的 sin/cos 与屏幕坐标系一致（y 向下），所以直接用弧度即可
+    return hueDeg * math.pi / 180;
+  }
+
+  /// 标签对齐方向（根据光点所在象限决定文字 anchor）
+  TextAlign _labelAlign(double angle) {
+    final a = angle % (2 * math.pi);
+    // 左半圆 → 右对齐（文字在点左侧）；右半圆 → 左对齐
+    if (a > math.pi / 2 && a < 3 * math.pi / 2) return TextAlign.right;
+    return TextAlign.left;
+  }
+
+  void _drawLabel(Canvas canvas, String text, Offset pos, {required TextAlign align}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Color(0xFFFFD54F),
+          fontSize: 9,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+      textAlign: align,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    var dx = pos.dx;
+    if (align == TextAlign.right) {
+      dx -= tp.width;
+    } else if (align == TextAlign.left) {
+      dx += 4;
     }
-    path.close();
-    canvas.drawPath(path, paint);
+    tp.paint(canvas, Offset(dx, pos.dy - tp.height / 2));
   }
 
   @override
-  bool shouldRepaint(covariant _SkinRadarPainter old) =>
-      old.scores != scores || old.overallColor != overallColor;
+  bool shouldRepaint(covariant _VectorscopePainter old) =>
+      old.hueDeg != hueDeg || old.satPercent != satPercent;
 }
 
-/// 右侧图例：总分 + 5 维分数
+/// 右侧解读：色相偏差 + 饱和度 + 判定
 class _Legend extends StatelessWidget {
-  final double avg; // 平均分 [0,1]
-  final List<double> scores;
+  final SkinAnalysis skin;
+  final bool hasSkin;
 
-  const _Legend({required this.avg, required this.scores});
-
-  static const _labels = [
-    '色相 ΔH',
-    '饱和度',
-    '明度 Y',
-    '通透 STI',
-    '隔离 SLS',
-  ];
+  const _Legend({required this.skin, required this.hasSkin});
 
   @override
   Widget build(BuildContext context) {
-    final overallColor = avg > 0.7
+    if (!hasSkin) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Text('肤色示波器',
+              style: TextStyle(
+                  color: DetailColors.textPrimary,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          const Text('未检出肤色',
+              style: TextStyle(color: InterpretationStatus.low, fontSize: 11)),
+          const SizedBox(height: 6),
+          const Text(
+              '光点越靠近黄色「肤色线」→ 肤色越正。\n'
+              '可长按图片皮肤区域手动校准。',
+              style: TextStyle(
+                  color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
+        ],
+      );
+    }
+
+    final dh = skin.hueOffset!.abs();
+    final sat = skin.saturation!;
+    // 偏离判定：|ΔH| < 10° 对齐良好；< 25° 可接受；否则偏色
+    final aligned = dh < 10;
+    final ok = dh < 25;
+    final color = aligned
         ? InterpretationStatus.good
-        : (avg > 0.4 ? InterpretationStatus.warn : InterpretationStatus.low);
-    final verdict = avg > 0.7
-        ? '肤色健康自然'
-        : (avg > 0.4 ? '肤色基本合理' : '肤色需校准');
+        : (ok ? InterpretationStatus.neutral : InterpretationStatus.warn);
+    final verdict = aligned
+        ? '对齐肤色线'
+        : (ok ? '轻微偏离' : '肤色偏色');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.baseline,
-          textBaseline: TextBaseline.alphabetic,
-          children: [
-            Text('${(avg * 100).round()}',
-                style: TextStyle(
-                  color: overallColor,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w700,
-                  fontFamily: 'monospace',
-                )),
-            const Text('分',
-                style: TextStyle(color: DetailColors.textMuted, fontSize: 11)),
-          ],
-        ),
-        const SizedBox(height: 2),
+        const Text('肤色示波器',
+            style: TextStyle(
+                color: DetailColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
         Text(verdict,
             style: TextStyle(
-                color: overallColor,
-                fontSize: 11,
-                fontWeight: FontWeight.w600)),
-        const SizedBox(height: 6),
-        ...List.generate(_labels.length, (i) {
-          final s = scores[i];
-          final color = s > 0.7
-              ? InterpretationStatus.good
-              : (s > 0.4 ? InterpretationStatus.warn : InterpretationStatus.low);
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 2),
-            child: Row(
-              children: [
-                Container(
-                  width: 5,
-                  height: 5,
-                  decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(_labels[i],
-                      style: const TextStyle(
-                          color: DetailColors.textSecondary, fontSize: 9)),
-                ),
-                Text('${(s * 100).round()}',
-                    style: TextStyle(
-                        color: color,
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: 'monospace')),
-              ],
-            ),
-          );
-        }),
+                color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 8),
+        _metric('色相偏差', '${skin.hueOffset!.toStringAsFixed(0)}°', color),
+        const SizedBox(height: 3),
+        _metric('饱和度', '${sat.toStringAsFixed(0)}%', _satColor(sat)),
+      ],
+    );
+  }
+
+  Color _satColor(double sat) {
+    if (sat > 70) return InterpretationStatus.warn;
+    if (sat < 20) return InterpretationStatus.low;
+    return InterpretationStatus.good;
+  }
+
+  Widget _metric(String label, String value, Color color) {
+    return Row(
+      children: [
+        Container(
+          width: 5,
+          height: 5,
+          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 4),
+        Expanded(
+          child: Text(label,
+              style: const TextStyle(
+                  color: DetailColors.textSecondary, fontSize: 9)),
+        ),
+        Text(value,
+            style: TextStyle(
+                color: color,
+                fontSize: 10,
+                fontWeight: FontWeight.w600,
+                fontFamily: 'monospace')),
       ],
     );
   }

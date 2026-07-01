@@ -51,8 +51,10 @@ class TagDao extends DatabaseAccessor<AppDatabase> with _$TagDaoMixin {
 
   /// 删除标签（同时级联清除相册-标签关联）
   Future<int> deleteTag(String id) async {
-    await (delete(albumTags)..where((t) => t.tagId.equals(id))).go();
-    return (delete(tags)..where((t) => t.id.equals(id))).go();
+    return transaction(() async {
+      await (delete(albumTags)..where((t) => t.tagId.equals(id))).go();
+      return (delete(tags)..where((t) => t.id.equals(id))).go();
+    });
   }
 
   // ============ 相册-标签关联 ============

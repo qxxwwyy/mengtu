@@ -35,20 +35,20 @@ void main() {
       PhotoFingerprint(
         histogramFeatures: hist ?? List.filled(96, 0.5),
         scalarFeatures: scalars ??
-            const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25],
+            const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0],
       );
 
   group('computeStats 各维度统计（纯函数）', () {
     test('N=1 → mean=该指纹，std=0', () {
       final fp = buildFingerprint(
-          scalars: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
+          scalars: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5]);
       final stats = service.computeStats([fp]);
 
       expect(stats['n'], 1);
       final means = (stats['scalar_means'] as List).cast<double>();
       final stds = (stats['scalar_stds'] as List).cast<double>();
       // 单样本 std=0
-      for (var i = 0; i < 9; i++) {
+      for (var i = 0; i < 7; i++) {
         expect(means[i], 0.5);
         expect(stds[i], 0.0);
       }
@@ -57,29 +57,29 @@ void main() {
     test('N=3 → mean=平均值', () {
       final fps = [
         buildFingerprint(
-            scalars: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]),
+            scalars: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7]),
         buildFingerprint(
-            scalars: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]),
+            scalars: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3]),
         buildFingerprint(
-            scalars: [0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0, 0.0, 0.0]),
+            scalars: [0.5, 0.4, 0.3, 0.2, 0.1, 0.0, 0.0]),
       ];
       final stats = service.computeStats(fps);
 
       expect(stats['n'], 3);
       final means = (stats['scalar_means'] as List).cast<double>();
-      // 维度 2（scs）：0.3, 0.3, 0.3 → mean=0.3
+      // 维度 2（black_point）：0.3, 0.3, 0.3 → mean=0.3
       expect(means[2], closeTo(0.3, 1e-9));
       // 维度 0（rms）：0.1, 0.3, 0.5 → mean=0.3
       expect(means[0], closeTo(0.3, 1e-9));
     });
 
     test('缺失维度（-1）不计入统计', () {
-      // 维度 7（sti）和 8（flc）为 -1（无脸照片）
+      // 维度 5（scs）和 6（sls）为 -1.0（无脸照片）
       final fps = [
         buildFingerprint(
-            scalars: [0.3, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, -1.0, -1.0]),
+            scalars: [0.3, 0.3, 0.3, 0.3, 0.3, -1.0, -1.0]),
         buildFingerprint(
-            scalars: [0.5, 0.3, 0.3, 0.3, 0.3, 0.3, 0.3, -1.0, -1.0]),
+            scalars: [0.5, 0.3, 0.3, 0.3, 0.3, -1.0, -1.0]),
       ];
       final stats = service.computeStats(fps);
 
@@ -87,9 +87,9 @@ void main() {
       final means = (stats['scalar_means'] as List).cast<double>();
       // 维度 0（rms）有 2 个有效值 → count=2
       expect(counts[0], 2);
-      // 维度 7（sti）全部缺失 → count=0
-      expect(counts[7], 0);
-      expect(counts[8], 0);
+      // 维度 5（scs）全部缺失 → count=0
+      expect(counts[5], 0);
+      expect(counts[6], 0);
       // 维度 0 mean = (0.3+0.5)/2 = 0.4
       expect(means[0], closeTo(0.4, 1e-9));
     });
@@ -128,7 +128,7 @@ void main() {
     test('相同指纹 vs 档案 → sim 接近 1.0', () async {
       final db = createTestDatabase();
       final svc = FingerprintService(db);
-      const scalars = [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25];
+      const scalars = [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0];
       final fps = [buildFingerprint(scalars: scalars)];
       final stats = svc.computeStats(fps);
 
@@ -153,7 +153,7 @@ void main() {
       // 档案指纹：低 RMS、低黑点
       final fps = [
         buildFingerprint(
-            scalars: [0.1, 0.5, 2.0, 200.0, 5.0, 20.0, 5.0, 0.3, 0.1])
+            scalars: [0.1, 0.5, 2.0, 200.0, 5.0, 20.0, 5.0])
       ];
       final stats = svc.computeStats(fps);
       await db.styleProfileDao.insertProfile(
@@ -166,7 +166,7 @@ void main() {
 
       // 当前指纹：高 RMS、高黑点（差异大）
       final fp = buildFingerprint(
-          scalars: [0.8, 2.0, 100.0, 255.0, 8.0, 90.0, 40.0, 0.9, 0.8]);
+          scalars: [0.8, 2.0, 100.0, 255.0, 8.0, 90.0, 40.0]);
       final sim = await svc.computeSimilarity(fp, 'p1');
       expect(sim, lessThan(0.5));
     });
@@ -179,7 +179,7 @@ void main() {
       // 档案指纹：RMS=0.4，黑点=20
       final fps = [
         buildFingerprint(
-            scalars: [0.4, 1.0, 20.0, 245.0, 6.5, 50.0, 15.0, 0.6, 0.25])
+            scalars: [0.4, 1.0, 20.0, 245.0, 6.5, 50.0, 15.0])
       ];
       final stats = svc.computeStats(fps);
       await db.styleProfileDao.insertProfile(
@@ -192,7 +192,7 @@ void main() {
 
       // 当前指纹：与档案接近但有偏离（RMS 0.5 vs 0.4，黑点 30 vs 20）
       final fp = buildFingerprint(
-          scalars: [0.5, 1.2, 30.0, 248.0, 6.8, 55.0, 18.0, 0.62, 0.28]);
+          scalars: [0.5, 1.2, 30.0, 248.0, 6.8, 55.0, 18.0]);
       final sim = await svc.computeSimilarity(fp, 'p1');
       // 中等差异应落在 0.2~0.8（既非「很相似」也非「完全无关」）
       expect(sim, greaterThan(0.2));
@@ -219,7 +219,7 @@ void main() {
       final fps = [
         PhotoFingerprint(
           histogramFeatures: hist,
-          scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25],
+          scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0],
         )
       ];
       final stats = svc.computeStats(fps);
@@ -244,7 +244,7 @@ void main() {
       }
       final fp = PhotoFingerprint(
         histogramFeatures: hist2,
-        scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0, 0.65, 0.25],
+        scalarFeatures: const [0.3, 1.0, 5.0, 250.0, 6.5, 50.0, 15.0],
       );
       final sim = await svc.computeSimilarity(fp, 'p1');
       // 系数放宽后，相似风格不应被系统性压低

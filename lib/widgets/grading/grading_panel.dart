@@ -37,9 +37,9 @@ class GradingPanel extends ConsumerWidget {
       children: [
         StageTonalCard(photoId: photoId, advanced: advanced),
         const SizedBox(height: 8),
-        StageColorCard(photoId: photoId, advanced: advanced),
+        StageColorCard(photoId: photoId),
         const SizedBox(height: 8),
-        StageIsolationCard(photoId: photoId, advanced: advanced),
+        StageIsolationCard(photoId: photoId),
         const SizedBox(height: 8),
         // 阶④需要 tone + advanced 供 PR5 复刻参数生成
         Builder(builder: (context) {
