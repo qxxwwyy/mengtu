@@ -5,13 +5,15 @@
 // v2.1: 标签体系迁移到相册，本页不再有标签 UI（加入相册在底部面板「所属相册」/ ⋮ 菜单）
 import 'dart:io';
 import 'dart:ui';
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
-import '../providers/analysis_provider.dart' show manualSkinSelectionProvider;
+import '../providers/analysis_provider.dart'
+    show manualSkinSelectionProvider, detectedFaceProvider;
 import '../providers/clipping_provider.dart';
 import '../providers/sharpness_provider.dart';
 import '../providers/exif_provider.dart' show colorPinsProvider;
@@ -19,6 +21,7 @@ import '../services/database/app_database.dart';
 import 'compare_page.dart';
 import '../widgets/detail_bottom_panel.dart';
 import '../widgets/clipping_overlay.dart';
+import '../widgets/face_bbox_overlay.dart';
 import '../widgets/composition_overlay.dart';
 import '../widgets/sharpness_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
@@ -37,9 +40,17 @@ class DetailPage extends ConsumerStatefulWidget {
 
 class _DetailPageState extends ConsumerState<DetailPage> {
   final _imageKey = GlobalKey();
+  // v6.1：取色 Stack 的 GlobalKey，用于把图片 global 坐标转成 Stack local 坐标
+  // （统一取色放大镜/像素查找/pin 渲染的参考系，修复问题3 坐标错位）
+  final _colorPickStackKey = GlobalKey();
   bool _isBlackWhite = false;
   bool _showClipping = false;
   bool _showFocusPeaking = false; // v3.0: 峰值对焦蒙层
+  final _showFaceBox = true; // v6.1: 人脸检测框可视化（默认开，建立用户信任）
+  // v6.1：顶部通知（替代底部 SnackBar，避免遮挡底部工具栏，问题2）
+  String? _topNotice;
+  bool _topNoticeVisible = false; // opacity 控制（widget 常驻，淡入/淡出才生效）
+  Timer? _topNoticeTimer;
   CompositionMode _compositionMode = CompositionMode.none;
   double _contrast = 0; // -100 ~ +100
   double _exposure = 0; // -2.0 ~ +2.0 EV
@@ -74,6 +85,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     _prefetchedSession?.dispose();
     _currentPickNotifier.dispose();
     _loupePositionNotifier.dispose();
+    _topNoticeTimer?.cancel();
     // manualSkinSelectionProvider 是全局 Notifier，离开详情页必须清空
     // （ref 在 dispose 后不可用，需在 super.dispose 之前访问）
     ref.read(manualSkinSelectionProvider.notifier).clear();
@@ -105,11 +117,39 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     });
   }
 
-  /// 处理取色手势 — 使用 globalPosition 与 _calculateImageDisplayRect 统一坐标系
+  /// v6.1：顶部浮出通知（替代底部 SnackBar）
+  ///
+  /// 问题2：底部 SnackBar 正好挡住底部工具行的操作按钮（黑白/构图/取色等）。
+  /// 改在顶栏下方浮出通知，避开操作热区。3 秒后自动消失。
+  ///
+  /// v6.1 review 修复：原 AnimatedOpacity 配 `if(_topNotice!=null)` 条件渲染是死代码
+  /// （widget 移除时来不及播淡出）。改为独立 `_topNoticeVisible` 控制 opacity，
+  /// widget 常驻树，opacity 值变化才触发隐式动画（淡入/淡出都生效）。
+  void _showTopNotice(String message, {Duration duration = const Duration(seconds: 3)}) {
+    _topNoticeTimer?.cancel();
+    setState(() {
+      _topNotice = message;
+      _topNoticeVisible = true;
+    });
+    _topNoticeTimer = Timer(duration, () {
+      if (mounted) {
+        // 先淡出（opacity→0），动画结束后再清空文本
+        setState(() => _topNoticeVisible = false);
+        _topNoticeTimer = Timer(const Duration(milliseconds: 220), () {
+          if (mounted) setState(() => _topNotice = null);
+        });
+      }
+    });
+  }
+
+  /// 处理取色手势
+  ///
+  /// v6.1 修复问题3：所有坐标统一用 localPosition（相对取色 Stack），
+  /// 放大镜位置 / 像素查找 / pin 渲染都用同一个参考系，三者必然对齐。
   void _handleColorPickStart(LongPressStartDetails details) {
     if (!_colorPickMode || _pickerSession == null) return;
     _lastPickAt = null;
-    _pickColorAtSync(details.globalPosition, details.localPosition);
+    _pickColorAtSync(details.localPosition);
   }
 
   void _handleColorPickUpdate(LongPressMoveUpdateDetails details) {
@@ -123,7 +163,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       return;
     }
     _lastPickAt = now;
-    _pickColorAtSync(details.globalPosition, details.localPosition);
+    _pickColorAtSync(details.localPosition);
   }
 
   Future<void> _handleColorPickEnd(LongPressEndDetails details) async {
@@ -150,19 +190,24 @@ class _DetailPageState extends ConsumerState<DetailPage> {
   }
 
   /// 同步取色（基于会话级缓存，<1ms，无 Isolate）
-  void _pickColorAtSync(Offset globalPosition, Offset localLoupe) {
+  ///
+  /// v6.1：[localPos] 是相对【取色外层 Stack】的局部坐标（= 手指在 Stack 内位置）。
+  /// 放大镜就用这个坐标定位 → 放大镜中心 = 手指位置。
+  /// 像素查找把 localPos 映射到【图片在 Stack 内的实际矩形】→ 像素 = 手指下像素。
+  void _pickColorAtSync(Offset localPos) {
     final session = _pickerSession;
     if (session == null) return;
     if (_sessionImgW == 0 || _sessionImgH == 0) return;
 
-    final rect = _calculateImageDisplayRect();
+    // 图片在取色 Stack 内的实际矩形（local 坐标系，与 localPos 同参考系）
+    final rect = _calculateImageRectInStack();
     if (rect == null) return;
 
-    // 全局坐标 → 图片像素坐标
+    // localPos → 图片像素坐标
     final imageX =
-        ((globalPosition.dx - rect.left) / rect.width * _sessionImgW).round();
+        ((localPos.dx - rect.left) / rect.width * _sessionImgW).round();
     final imageY =
-        ((globalPosition.dy - rect.top) / rect.height * _sessionImgH).round();
+        ((localPos.dy - rect.top) / rect.height * _sessionImgH).round();
 
     if (imageX < 0 ||
         imageX >= _sessionImgW ||
@@ -172,9 +217,9 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     }
 
     final result = session.pick(imageX, imageY);
-    // v3.2: 用 ValueNotifier 只重建放大镜/信息面板，不触发整页 setState
+    // 放大镜定位用 localPos（与取色 Stack 同参考系）→ 放大镜中心 = 手指位置
     _currentPickNotifier.value = result;
-    _loupePositionNotifier.value = localLoupe;
+    _loupePositionNotifier.value = localPos;
   }
 
   /// 进入取色模式时一次性解码全图（Isolate 内），完成后启用 session.pick
@@ -207,9 +252,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     } catch (_) {
       if (mounted) {
         setState(() => _pickerLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('取色模式初始化失败，请重试')),
-        );
+        _showTopNotice('取色模式初始化失败，请重试');
       }
     }
   }
@@ -284,10 +327,16 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               children: [
                 // 顶部毛玻璃工具栏（返回 + 文件名 + 删除 + 更多菜单）
                 _buildTopBar(photo.fileName),
-                // 图片区域
+                // 图片区域（含顶部通知浮层 + 取色放大镜等 overlays）
                 Expanded(
                   flex: 2,
-                  child: _buildImageViewer(photo),
+                  child: Stack(
+                    children: [
+                      _buildImageViewer(photo),
+                      // v6.1：顶部通知浮层（常驻树，opacity 控制淡入淡出，避开操作按钮热区）
+                      _buildTopNotice(),
+                    ],
+                  ),
                 ),
                 // 统一底部面板（高频工具行 + 展开 TabBarView）
                 // 始终保留工具行（取色模式需通过"取色"按钮退出，不能整块隐藏）
@@ -360,13 +409,23 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       );
     }
 
-    // 像素物理属性蒙层（clipping / sharpness）必须放在 InteractiveViewer 内部，
+    // 像素物理属性蒙层（clipping / sharpness / face bbox）必须放在 InteractiveViewer 内部，
     // 与 Image 共享缩放/平移变换，否则放大检查溢出/合焦时斑点会错位（gotcha #45）
     final clippingResult = clippingAsync?.asData?.value;
     final sharpnessAsync = _showFocusPeaking
         ? ref.watch(sharpnessProvider(widget.photoId))
         : null;
     final sharpnessMap = sharpnessAsync?.asData?.value;
+    // v6.1：人脸检测框（ML Kit），让用户看到肤色识别落到哪
+    final detectedFaceAsync = _showFaceBox
+        ? ref.watch(detectedFaceProvider(widget.photoId))
+        : null;
+    final detection = detectedFaceAsync?.asData?.value;
+    final detectedFace = detection?.face;
+    // 显示尺寸（EXIF 旋转后）—— 不能用 photo.width/height（存储尺寸未旋转），
+    // 否则竖拍照片 overlay letterbox 算错、bbox 错位
+    final displayW = detection?.displayWidth ?? photo.width;
+    final displayH = detection?.displayHeight ?? photo.height;
 
     final imageStackChildren = <Widget>[
       Center(child: imageWithFilters),
@@ -374,6 +433,16 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         IgnorePointer(child: ClippingOverlay(result: clippingResult)),
       if (_showFocusPeaking && sharpnessMap != null)
         IgnorePointer(child: SharpnessOverlay(map: sharpnessMap)),
+      // v6.1：取色模式/构图模式隐藏人脸框（避免视觉冲突）
+      if (_showFaceBox &&
+          !_colorPickMode &&
+          detectedFace != null &&
+          _compositionMode == CompositionMode.none)
+        FaceBBoxOverlay(
+          face: detectedFace,
+          imageWidth: displayW,
+          imageHeight: displayH,
+        ),
     ];
 
     // 取色点标记也放在 InteractiveViewer 内部（共享变换，位置始终正确）
@@ -404,30 +473,31 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       );
     }
 
-    // 取色模式：pins 标记和 Image 都放在 InteractiveViewer 内部的 Stack，
-    // 共享 InteractiveViewer 的缩放/平移变换。手势 GestureDetector 放外层（globalPosition 取色）。
+    // 取色模式：v6.1 重构坐标系，统一用 Stack-local 坐标（修复问题3 错位）：
+    // - InteractiveViewer 锁定 scale=1（取色无需缩放，坐标固定不漂移）
+    // - pins 放外层 Stack（与放大镜/localPosition 同参考系）
+    // - 放大镜位置 = localPosition → 中心对准手指
+    // - 像素查找 = localPosition → 图片像素（手指下像素）
+    // 三者必然对齐。
     final pinsAsync = ref.watch(colorPinsProvider(widget.photoId));
     return GestureDetector(
       onLongPressStart: _handleColorPickStart,
       onLongPressMoveUpdate: _handleColorPickUpdate,
       onLongPressEnd: _handleColorPickEnd,
+      behavior: HitTestBehavior.opaque,
       child: Stack(
+        key: _colorPickStackKey,
         children: [
+          // InteractiveViewer 锁定（取色期间禁止缩放/平移，保证坐标固定）
           InteractiveViewer(
-            minScale: 0.5,
-            maxScale: 4.0,
+            minScale: 1.0,
+            maxScale: 1.0,
+            panEnabled: false,
+            scaleEnabled: false,
             child: Stack(
               alignment: Alignment.center,
-              children: [
-                // 复用 imageStackChildren（含 Image + clipping + sharpness）
-                ...imageStackChildren,
-                // 取色点标记（局部坐标，与 Image 共享 InteractiveViewer 变换）
-                pinsAsync.when(
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
-                  data: (pins) => _buildPinMarkers(pins, photo),
-                ),
-              ],
+              // 复用 imageStackChildren（含 Image + clipping + sharpness）
+              children: imageStackChildren,
             ),
           ),
           // 构图参考线（v6.0：基于图片实际显示区域，letterbox 补偿）
@@ -439,6 +509,12 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                 imageHeight: photo.height,
               ),
             ),
+          // 取色点标记（Stack-local 坐标，与放大镜/localPosition 同参考系）
+          pinsAsync.when(
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
+            data: (pins) => _buildPinMarkers(pins, photo),
+          ),
           // v3.1: 取色会话解码中（首次进入取色模式的一次性解码）
           if (_pickerLoading)
             const Positioned.fill(
@@ -453,7 +529,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                 ),
               ),
             ),
-          // 放大镜（不随缩放，始终跟随手指）
+          // 放大镜（不随缩放，始终跟随手指；position = localPosition，Stack-local）
           // v3.2: 嵌套两层 ValueListenableBuilder，任一信号变化都重建放大镜，
           // 但仍只重建这一小块（Image/InteractiveViewer/pins 不受影响）。
           ValueListenableBuilder<ColorPickResult?>(
@@ -487,24 +563,92 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     );
   }
 
-  /// 构建取色点标记列表（局部坐标，基于 Image 的 RenderBox size）
-  /// pin 存的是像素坐标，渲染时按 photo.width/height 比例映射到 Image 显示区域
+  /// v6.1：顶部通知浮层（替代底部 SnackBar，问题2）
+  ///
+  /// 浮在顶栏下方，避开底部工具行的操作按钮。带淡入淡出动画 + 自动消失。
+  /// v6.1 review 修复：widget 常驻树，用 `_topNoticeVisible` 切 opacity 触发动画
+  /// （原 `if(_topNotice!=null)` 条件渲染导致淡出来不及播）。
+  Widget _buildTopNotice() {
+    // 无内容时不占空间（保留 widget 以便淡出动画，但视觉不可见）
+    final hasContent = _topNotice != null;
+    return Positioned(
+      top: 8,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: AnimatedOpacity(
+            opacity: _topNoticeVisible ? 1.0 : 0.0,
+            duration: const Duration(milliseconds: 200),
+            // 无内容时缩小到 0 高度，避免占位阻挡
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              height: hasContent ? null : 0,
+              child: hasContent
+                  ? Container(
+                      constraints: const BoxConstraints(maxWidth: 320),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: AppColors.darkAccent,
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.4),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.check_circle,
+                              size: 16, color: AppColors.darkBgBase),
+                          const SizedBox(width: 8),
+                          Flexible(
+                            child: Text(
+                              _topNotice ?? '',
+                              style: const TextStyle(
+                                color: AppColors.darkBgBase,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  : const SizedBox.shrink(),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 构建取色点标记列表（Stack-local 坐标）
+  ///
+  /// pin 存的是【原图像素坐标】，渲染时映射到【图片在取色 Stack 内的实际矩形】
+  /// （Stack-local，与放大镜/localPosition 同参考系）。
   ///
   /// v6.0：pin 可点击 → 弹出菜单（设为肤色基准 / 删除）。当前选为肤色基准的 pin
   /// 用 accent 描边高亮（与 [manualSkinSelectionProvider] 联动）。
+  ///
+  /// v6.1：改用 _calculateImageRectInStack（Stack-local），与放大镜/像素查找
+  /// 同参考系 → pin 落点 = 取色时的放大镜中心（修复问题3 三者错位）。
   Widget _buildPinMarkers(List<ColorPin> pins, Photo photo) {
-    final ctx = _imageKey.currentContext;
-    if (ctx == null) return const SizedBox.shrink();
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return const SizedBox.shrink();
+    final rect = _calculateImageRectInStack();
+    if (rect == null) return const SizedBox.shrink();
 
     final manual = ref.read(manualSkinSelectionProvider);
     final isCurrentSkin = manual != null && manual.photoId == widget.photoId;
 
     return Stack(
       children: pins.map((pin) {
-        final px = pin.x / photo.width * box.size.width;
-        final py = pin.y / photo.height * box.size.height;
+        // pin 原图像素坐标 → Stack-local 坐标（图片矩形内）
+        final px = rect.left + pin.x / photo.width * rect.width;
+        final py = rect.top + pin.y / photo.height * rect.height;
         // 命中当前肤色基准（RGB 三通道一致）→ accent 描边高亮
         // isCurrentSkin 为 true 时 manual 必非空（类型提升），无需 `!`
         final selected = isCurrentSkin &&
@@ -603,11 +747,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       pin.g,
                       pin.b,
                     );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('已设为肤色基准，肤色卡片已更新'),
-                      duration: Duration(seconds: 2)),
-                );
+                _showTopNotice('已设为肤色基准，肤色卡片已更新',
+                    duration: const Duration(seconds: 2));
               },
             ),
             ListTile(
@@ -658,14 +799,27 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     ];
   }
 
-  /// 计算图片在 InteractiveViewer 中的实际显示区域
-  /// 使用 GlobalKey 获取图片渲染框的真实尺寸和位置
-  Rect? _calculateImageDisplayRect() {
-    final ctx = _imageKey.currentContext;
-    if (ctx == null) return null;
-    final box = ctx.findRenderObject() as RenderBox?;
-    if (box == null || !box.hasSize) return null;
-    return box.localToGlobal(Offset.zero) & box.size;
+  /// 计算图片在取色 Stack 内的实际显示矩形（local 坐标系）
+  ///
+  /// v6.1 修复问题3：原 _calculateImageDisplayRect 用 global 坐标，但放大镜/pin 用
+  /// local 坐标，两者参考系不一致 → 取色位置反直觉。现统一用 local 坐标：
+  /// 把图片 RenderBox 的 global 位置，转换到取色 Stack（外层 GestureDetector 的 child）
+  /// 的 local 坐标系，与 localPosition/localLoupe/pin 同参考系。
+  ///
+  /// 取色模式 InteractiveViewer 锁定 scale=1（见 _buildImageViewer 取色分支），
+  /// rect 在取色期间固定不变，无需每次重算。
+  Rect? _calculateImageRectInStack() {
+    final imgCtx = _imageKey.currentContext;
+    final stackCtx = _colorPickStackKey.currentContext;
+    if (imgCtx == null || stackCtx == null) return null;
+    final imgBox = imgCtx.findRenderObject() as RenderBox?;
+    final stackBox = stackCtx.findRenderObject() as RenderBox?;
+    if (imgBox == null || !imgBox.hasSize) return null;
+    if (stackBox == null || !stackBox.hasSize) return null;
+    // 图片左上角的 global 坐标 → 转 stack local
+    final imgTopLeftGlobal = imgBox.localToGlobal(Offset.zero);
+    final imgTopLeftInStack = stackBox.globalToLocal(imgTopLeftGlobal);
+    return imgTopLeftInStack & imgBox.size;
   }
 
   /// 弹出底部列表选择第二张照片进行对比
@@ -675,9 +829,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     // 排除当前照片，只列其余
     final candidates = photos.where((p) => p.id != widget.photoId).toList();
     if (candidates.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('至少需要 2 张照片才能对比')),
-      );
+      _showTopNotice('至少需要 2 张照片才能对比');
       return;
     }
     final selected = await showModalBottomSheet<String>(
@@ -845,9 +997,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     final albums = await db.albumDao.getAllAlbums();
     if (!mounted) return;
     if (albums.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('还没有相册，请先在相册 Tab 创建')),
-      );
+      _showTopNotice('还没有相册，请先在相册 Tab 创建');
       return;
     }
     final selected = await showModalBottomSheet<String>(
@@ -880,9 +1030,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     if (selected != null) {
       await db.albumDao.addPhotoToAlbum(selected, widget.photoId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已加入相册')),
-        );
+        _showTopNotice('已加入相册');
       }
     }
   }

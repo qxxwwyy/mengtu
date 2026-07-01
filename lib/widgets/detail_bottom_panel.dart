@@ -90,34 +90,33 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedSize(
+    // v6.1：用固定 height 约束（原 maxHeight:380 留余量 → Column(min) 居中 →
+    // 工具行与卡片之间出现暗色空隙，用户看成「顶部大黑框」，问题4）。
+    // 收起态 72（工具行），展开态 = 工具行(60) + GradingPanel(308) = 368。
+    final height = _effectiveExpanded ? 368.0 : 72.0;
+    return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeInOutCubic,
-      alignment: Alignment.bottomCenter,
-      child: Container(
-        decoration: const BoxDecoration(
-          color: DetailColors.panelSurface,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-          border: Border(
-            top: BorderSide(color: DetailColors.divider, width: 0.5),
-          ),
+      height: height,
+      decoration: const BoxDecoration(
+        color: DetailColors.panelSurface,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        border: Border(
+          top: BorderSide(color: DetailColors.divider, width: 0.5),
         ),
-        constraints: BoxConstraints(
-          maxHeight: _effectiveExpanded ? 380 : 72,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // 常驻工具行（始终可见，取色模式也保留以供退出）
-            _buildToolRow(),
-            // 展开内容（取色模式 forceCollapsed 时不显示）
-            if (_effectiveExpanded)
-              SizedBox(
-                height: 308,
-                child: GradingPanel(photoId: widget.photoId),
-              ),
-          ],
-        ),
+      ),
+      clipBehavior: Clip.hardEdge,
+      child: Column(
+        children: [
+          // 常驻工具行（始终可见，取色模式也保留以供退出）
+          _buildToolRow(),
+          // 展开内容（取色模式 forceCollapsed 时不显示）—— Expanded 填满剩余高度
+          // 紧贴工具行下方，无间隙
+          if (_effectiveExpanded)
+            Expanded(
+              child: GradingPanel(photoId: widget.photoId),
+            ),
+        ],
       ),
     );
   }

@@ -126,6 +126,10 @@ class _FaceAnalysisArgs {
   final String meshModelPath; // v3.5: face_mesh 模型文件路径（已解压）
   final bool isP3ColorSpace; // 是否需要 Display P3 → sRGB 补偿
   final List<double>? manualSkinRgb; // 手动覆盖：取色点 RGB [r,g,b] 0-255
+  // v6.1: ML Kit 预检测的主脸 bbox（归一化 0~1）。非空时跳过 BlazeFace 检测。
+  // ML Kit 比 BlazeFace short_range 召回更好（大头照/小脸场景），作为主检测链。
+  // 为 null 时回退到 short→full BlazeFace（platform channel 不可用 / ML Kit 失败）。
+  final DetectedFace? primaryFace;
 
   const _FaceAnalysisArgs(
     this.imagePath,
@@ -134,6 +138,7 @@ class _FaceAnalysisArgs {
     this.meshModelPath,
     this.isP3ColorSpace,
     this.manualSkinRgb,
+    this.primaryFace,
   );
 }
 
@@ -164,11 +169,15 @@ const _kMeshModelAssetKey = 'assets/models/face_mesh.tflite'; // v3.5 新增
 /// [imagePath] 照片绝对路径；[shortModelPath]/[fullModelPath]/[meshModelPath]
 /// 为已解压到临时目录的 .tflite 路径（由 [ensureModelsExtracted] 提供，
 /// Isolate 无法读 asset，必须先解压）。
-/// 三段式检测链：short（主）→ full（远景回退）→ mesh（landmark 精修 + STI/FLC）。
+///
+/// 检测链优先级（v6.1）：
+/// 1. [primaryFace]（ML Kit 预检测的 bbox）非空 → 直接用，跳过 BlazeFace
+/// 2. 否则 BlazeFace short（主）→ full（远景回退）
+/// 3. mesh（landmark 精修 + STI/FLC）
 /// [isP3ColorSpace] 为 true 时对像素做 P3→sRGB 补偿。
 ///
 /// **手动覆盖模式**：当 [manualSkinRgb] 非空时，跳过人脸检测，直接用该 RGB
-/// （取色点）计算色相偏差和饱和度，作为 BlazeFace 失败时的备用通路。
+/// （取色点）计算色相偏差和饱和度，作为检测失败时的备用通路。
 Future<SkinAnalysis> analyzeSkinTone(
   String imagePath, {
   String? shortModelPath,
@@ -176,6 +185,7 @@ Future<SkinAnalysis> analyzeSkinTone(
   String? meshModelPath, // v3.5 新增
   bool isP3ColorSpace = false,
   List<double>? manualSkinRgb,
+  DetectedFace? primaryFace, // v6.1: ML Kit 预检测的主脸 bbox
 }) async {
   return compute(
     _analyzeSkinIsolate,
@@ -186,11 +196,12 @@ Future<SkinAnalysis> analyzeSkinTone(
       meshModelPath ?? '',
       isP3ColorSpace,
       manualSkinRgb,
+      primaryFace,
     ),
   );
 }
 
-/// Isolate 入口（v3.5 三段式：short → full → mesh）
+/// Isolate 入口（v6.1：ML Kit bbox 优先 → BlazeFace 回退 → mesh）
 Future<SkinAnalysis> _analyzeSkinIsolate(_FaceAnalysisArgs args) async {
   final bytes = File(args.imagePath).readAsBytesSync();
   final decoded = img.decodeImage(bytes);
@@ -206,17 +217,19 @@ Future<SkinAnalysis> _analyzeSkinIsolate(_FaceAnalysisArgs args) async {
     return _computeManualSkinStats(decoded, r, g, b, args.isP3ColorSpace);
   }
 
-  // 自动模式：三段式检测
-  // 1) short_range（自拍近距）→ 主脸 bbox
-  DetectedFace? face;
-  if (args.shortModelPath.isNotEmpty) {
-    face = await _detectPrimaryFace(decoded, args.shortModelPath,
-        inputSize: _shortModelInputSize);
-  }
-  // 2) short 未命中 → full_range（远处/全身/小脸场景召回更好）
-  if (face == null && args.fullModelPath.isNotEmpty) {
-    face = await _detectPrimaryFace(decoded, args.fullModelPath,
-        inputSize: _fullModelInputSize);
+  // 自动模式：v6.1 优先用 ML Kit 预检测的 bbox，否则 BlazeFace 回退
+  DetectedFace? face = args.primaryFace;
+  // 1) BlazeFace 回退：ML Kit 未提供 bbox（platform channel 不可用 / 失败）时
+  if (face == null) {
+    if (args.shortModelPath.isNotEmpty) {
+      face = await _detectPrimaryFace(decoded, args.shortModelPath,
+          inputSize: _shortModelInputSize);
+    }
+    // 2) short 未命中 → full_range（远处/全身/小脸场景召回更好）
+    if (face == null && args.fullModelPath.isNotEmpty) {
+      face = await _detectPrimaryFace(decoded, args.fullModelPath,
+          inputSize: _fullModelInputSize);
+    }
   }
   if (face == null) {
     return const SkinAnalysis(); // 无脸 → 空结果，UI 提示手动校准

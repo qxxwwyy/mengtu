@@ -57,6 +57,7 @@
 - ✅ v3.5 复核修复（BLOCKER: 内置档案 scalar_means 改 RAW 单位 + 补 hist_means；MAJOR: advancedMetricsProvider cache-hit 提前 return 跳过 ref.watch[gotcha #33] + ReplicationHintsService 魔数文档化；MINOR: PhotoFingerprint 标量单位标注与实现一致）
 - ✅ v3.5 二轮复核修复（P1: precomputeAnalysisForPhotos 补 advanced 含 Face Mesh，让 STI/FLC 进入档案匹配 + tone_service 提取 computeAdvancedMetrics 纯函数共享；P3: computeSimilarity exp 衰减 2.0→4.0 宽容理论档案 + 内置档案相似度补 confidenceHint 文案；P4: _SimilarityTile 颜色跟随 similarityText 分层[isBuiltin/<5/≥5]；P5: AGENTS.md 同步 schemaVersion/版本/gotcha #46-50/项目结构）
 - ✅ v6.0 八大问题修复（①BlazeFace 解码三大 bug[sigmoid+inputSize 归一化]让人脸检测真正生效；②取色后台预解码[maxDim 1200]零等待；③构图线 letterbox 补偿基于图片不溢出；④取色 Pin 弹菜单+设为肤色基准[manualSkinSelectionProvider 接 UI]；⑤放大镜 130px+中心格高亮+HSV 标签；⑥锐度蒙层恢复[SharpnessOverlay BlendMode 发光+数据卡]；⑦GradingPanel 顶部黑框消除+FingerprintRadar AspectRatio 居中+补全 polygon；⑧SkinRadar 肤色合理性雷达[5 维/中心=理想肤色]嵌入阶②色彩卡片）
+- ✅ v6.1 二轮手动测试修复（①BlazeFace→ML Kit 人脸检测迁移[google_mlkit_face_detection bundled/minFaceSize 0.15 抓大头照]+FaceBBoxOverlay 检测框可视化[建立用户信任]+Face Mesh 保留算 STI/FLC；②顶部通知替代底部 SnackBar[避开工具行操作热区]；③取色坐标系统一 Stack-local[放大镜/像素/pin 三者对齐]+InteractiveViewer 取色锁定 scale=1；④DetailBottomPanel 固定高度 368/72+Expanded 填充消除黑框；⑤作品库多选栏重构[隐藏 FAB+Material 底栏+取消 IconButton 醒目]）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -107,7 +108,8 @@ flutter test
 | crypto | ^3.0.7 | SHA256 哈希 |
 | reorderable_grid_view | ^2.2.8 | 相册照片拖拽排序 |
 | shared_preferences | ^2.5.5 | 主题模式持久化 |
-| tflite_flutter | ^0.11.0 | v3.0 离线人脸检测（BlazeFace TFLite 推理，FFI 插件）|
+| tflite_flutter | ^0.11.0 | v3.0 离线人脸检测（BlazeFace TFLite 推理，FFI 插件；v6.1 起降级为 ML Kit 不可用时的回退）|
+| google_mlkit_face_detection | ^0.13.1 | v6.1 人脸检测主链（Google ML Kit bundled，minFaceSize 0.15 抓大头照，不依赖 GMS）|
 
 dev_dependencies: drift_dev, riverpod_generator, build_runner, flutter_lints
 
@@ -437,6 +439,12 @@ CI 流程（`.github/workflows/build.yml`）：
 53. **取色 session 后台预解码** — 进入详情页时 fire-and-forget 预解码 `ColorPickerSession.begin(maxDim:1200)`，用户点「取色」时命中缓存零等待（v3.1 的同步 `setState(loading=true)` 阻塞 UI 几秒）。用 `_photoFilePath` guard 幂等（同一张照片只触发一次）。预解码失败静默兜底，按下取色按钮再走正常 `_enterColorPickMode`。maxDim 1600→1200 降 30% 内存（取色精度 1200 长边仍足够单像素）
 54. **取色 Pin 弹菜单 + 设为肤色基准** — `ColorPinMarker` 的 `onTap` 接到 `_showPinMenu`：色值预览/「设为肤色基准」(`manualSkinSelectionProvider.select`)/删除。当前选中的 pin 用 accent 描边 + face 图标高亮（与 manualSkinSelectionProvider 联动，RGB 三通道匹配）。删的若是当前基准必须清 manualSkinSelection 避免悬空引用。手动校准优先于 BlazeFace（skinProvider 已支持，见 gotcha #39 skin 容错策略）
 55. **肤色雷达图（5 维合理性可视化）** — `SkinRadar` 把肤色 5 维（ΔH/饱和/明度/STI/SLS）归一化到 [0,1] 画雷达多边形，中心=理想肤色（达芬奇线 H=17/S=25/Y=65），越饱满越健康。区别于「指纹雷达」FingerprintRadar（9 维物理量，档案匹配用）。归一化阈值与 ToneGuideCard/stage_color_card 解读阈值对齐（ΔH ±30°、饱和 40±30、明度 65±25、STI 0.85、SLS 20）。嵌入阶②色彩卡片顶部，无肤色时显示空雷达占位 + 手动校准引导
+56. **ML Kit 替代 BlazeFace 作主检测链（v6.1）** — BlazeFace short_range（128 输入）对大头照/小脸召回不足（用户反馈「明显大头照检不出，露出一点皮肤反而检出」）。改用 `google_mlkit_face_detection`（bundled 不依赖 GMS）作主链：`FaceDetectorMode.accurate` + `minFaceSize:0.15` 稳定抓大头照。**关键**：(a) ML Kit 走 platform channel，**不能在 Isolate 内用**，在主线程跑返回 bbox；(b) `InputImage.fromFilePath` 的 `metadata` **恒为 null**（google_mlkit_commons 0.11.1 源码确认，只存文件路径），不能拿旋转后尺寸；(c) ML Kit 原生侧**应用 EXIF 旋转**，bbox 在【旋转后图像像素】空间，但 image 包 `decodeImage` 给【存储尺寸未旋转】——**必须读 EXIF Orientation，对 90°/270° 旋转的照片宽高互换后再归一化**（否则竖拍照片 bbox 整体扭曲）；(d) `detectedFaceProvider` 返回 `FaceDetection`（bbox + displayWidth/Height），overlay 必须用显示尺寸算 letterbox，**不能用 `photo.width/height`（存储尺寸）**；(e) `FaceDetectorMode` 不是 `PerformanceMode`（指南写错）；(f) 必须 `close()` 释放（单例 `_singletonDetector`，main.dart `_AppLifecycleObserver` detached 时 `disposeMlKitDetector`）。ML Kit 失败/不可用 → `skinProvider` 回退 BlazeFace Isolate
+57. **取色坐标系统一为 Stack-local（v6.1 问题3）** — 原放大镜用 `localPosition`、像素查找用 `globalPosition`、pin 用 `_imageKey` box 局部坐标，三者参考系不一致 → 取色位置/放大镜中心/pin 落点错位。修复：全部统一为【取色 Stack 的 local 坐标系】——(a) 取色模式 `InteractiveViewer` 锁定 scale=1 + 禁用 pan/scale（坐标固定不漂移）；(b) 像素查找 `_pickColorAtSync(localPos)` 用 `_calculateImageRectInStack()`（图片 global 坐标→Stack local via `globalToLocal`）；(c) pin 渲染用同一 `_calculateImageRectInStack` 映射。放大镜 position=localPos → 中心对准手指；像素=手指下像素；pin=取色时的放大镜中心，三者必然对齐
+58. **DetailBottomPanel 固定高度而非 maxHeight（v6.1 问题4）** — 原用 `maxHeight:380` + `Column(mainAxisSize.min)`，当内容（工具行+GradingPanel）高度 < 380 时，Column 居中导致上下留暗色空隙，展开后顶部出现「大黑框」。改为 `AnimatedContainer(height: 368/72)`（精确高度 = 工具行 60 + GradingPanel 308）+ `Column` 内 `Expanded(GradingPanel)` 紧贴工具行填满剩余空间 + `clipBehavior: hardEdge` 裁剪溢出。消除所有暗色空隙
+59. **顶部通知替代底部 SnackBar（v6.1 问题2）** — 详情页底部 SnackBar 正好挡住工具行操作按钮（黑白/构图/取色等）。改用 `_showTopNotice` 在顶栏下方浮出胶囊通知（accent 色 + check 图标），3 秒自动消失，避开操作热区。详情页所有 `ScaffoldMessenger.showSnackBar` 统一替换为 `_showTopNotice`
+60. **作品库多选模式重构（v6.1 问题5）** — 原操作栏 `Row(spaceAround)` 的「取消」按钮被导入 FAB 遮挡。修复：(a) 多选模式隐藏 FAB（`floatingActionButton: _selectMode ? null : FAB`）；(b) 操作栏改 Material elevation 底栏，左侧「取消」IconButton 醒目（绝不被遮挡）+ 已选数量 chip + 右侧「加入相册/删除」主操作按钮
+61. **AnimatedOpacity 不能配条件渲染（v6.1 review 修复）** — `AnimatedOpacity` 是 `ImplicitlyAnimatedWidget`，opacity **值变化**才触发动画，且 widget **首次挂载时不动画**（直接以当前 opacity 渲染）。反模式：`if (visible) AnimatedOpacity(opacity: visible?1:0)` —— widget 存在时 visible 必为 true（opacity 恒 1），移除时直接消失来不及播淡出，**淡入淡出都不触发（死代码）**。正确做法：widget **常驻树**，用独立的 `_visible` bool 切 opacity（先挂载 opacity:0，再 setState opacity:1 触发淡入；onTimeout 先 setState opacity:0 播淡出，动画结束再清内容）。`_buildTopNotice` 已按此重构
 
 ## v3.5 已知限制（非阻塞，待后续优化）
 

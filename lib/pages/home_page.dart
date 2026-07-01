@@ -457,58 +457,93 @@ class _HomePageState extends ConsumerState<HomePage> {
                         },
                       ),
                     ),
-                    // 多选模式底部操作栏
-                    if (_selectMode)
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          border: Border(
-                            top: BorderSide(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withValues(alpha: 0.1),
-                            ),
-                          ),
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
-                          children: [
-                            TextButton.icon(
-                              icon: const Icon(Icons.photo_album_outlined, size: 20),
-                              label: Text('加入相册 (${_selectedIds.length})'),
-                              onPressed: _selectedIds.isEmpty
-                                  ? null
-                                  : () => _batchAddToAlbum(),
-                            ),
-                            TextButton.icon(
-                              icon: const Icon(Icons.delete_outline,
-                                  size: 20, color: Colors.red),
-                              label: const Text('删除',
-                                  style: TextStyle(color: Colors.red)),
-                              onPressed: _selectedIds.isEmpty
-                                  ? null
-                                  : () => _batchDelete(),
-                            ),
-                            TextButton(
-                              onPressed: () => setState(() {
-                                _selectMode = false;
-                                _selectedIds.clear();
-                              }),
-                              child: const Text('取消'),
-                            ),
-                          ],
-                        ),
-                      ),
+                    // 多选模式底部操作栏（v6.1 重构：Material 底栏，避开 FAB）
+                    if (_selectMode) _buildSelectionBar(),
                   ],
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _pickAndImport,
-        child: const Icon(Icons.add_photo_alternate),
+      // v6.1：多选模式下隐藏导入 FAB（避免遮挡底部操作栏的「取消」按钮，问题5）
+      floatingActionButton: _selectMode
+          ? null
+          : FloatingActionButton(
+              onPressed: _pickAndImport,
+              child: const Icon(Icons.add_photo_alternate),
+            ),
+    );
+  }
+
+  /// v6.1：多选模式底部操作栏
+  ///
+  /// 问题5：原操作栏用 Row + spaceAround，按钮被导入 FAB 遮挡（尤其「取消」
+  /// 在最右被盖住）。重构为：
+  /// - 多选时隐藏 FAB（上方已处理），操作栏占满底部安全区
+  /// - 左侧「取消」用 IconButton 醒目，右侧「加入相册」「删除」用主操作按钮
+  /// - 显示已选数量 chip，操作完自动退出多选
+  Widget _buildSelectionBar() {
+    final theme = Theme.of(context);
+    final count = _selectedIds.length;
+    return Material(
+      color: theme.colorScheme.surface,
+      elevation: 8,
+      child: SafeArea(
+        top: false,
+        child: Container(
+          decoration: BoxDecoration(
+            border: Border(
+              top: BorderSide(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
+              ),
+            ),
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+          child: Row(
+            children: [
+              // 取消（左侧，醒目，绝不被遮挡）
+              IconButton(
+                onPressed: () => setState(() {
+                  _selectMode = false;
+                  _selectedIds.clear();
+                }),
+                icon: const Icon(Icons.close),
+                tooltip: '取消多选',
+              ),
+              // 已选数量
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '已选 $count',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+              const Spacer(),
+              // 加入相册
+              TextButton.icon(
+                icon: const Icon(Icons.photo_album_outlined, size: 20),
+                label: const Text('加入相册'),
+                onPressed: count == 0 ? null : _batchAddToAlbum,
+              ),
+              const SizedBox(width: 4),
+              // 删除
+              TextButton.icon(
+                icon: Icon(Icons.delete_outline,
+                    size: 20, color: theme.colorScheme.error),
+                label: Text('删除',
+                    style: TextStyle(color: theme.colorScheme.error)),
+                onPressed: count == 0 ? null : _batchDelete,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

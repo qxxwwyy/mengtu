@@ -8,6 +8,7 @@ import 'pages/main_shell.dart';
 import 'providers/database_provider.dart';
 import 'providers/theme_provider.dart';
 import 'services/builtin_profiles.dart';
+import 'services/mlkit_face_service.dart' show disposeMlKitDetector;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -58,6 +59,11 @@ void main() async {
     return true; // true = 已处理，不向上重新抛出
   };
 
+  // v6.1：app 退出时释放 ML Kit 检测器单例（避免内存泄漏，指南§十一问题7）
+  // detached = app 完全退出，此时 close FaceDetector platform channel
+  final binding = WidgetsBinding.instance;
+  binding.addObserver(_AppLifecycleObserver());
+
   // v3.5 PR5：启动时插入内置理论档案（幂等，已存在不重复插入）
   // 失败不阻塞启动（DB 初始化失败等极端情况降级，档案管理页为空）
   try {
@@ -70,6 +76,16 @@ void main() async {
   }
 
   runApp(const ProviderScope(child: MengtuApp()));
+}
+
+/// v6.1：监听 app 生命周期，detached 时释放 ML Kit 检测器单例
+class _AppLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.detached) {
+      disposeMlKitDetector();
+    }
+  }
 }
 
 class MengtuApp extends ConsumerWidget {

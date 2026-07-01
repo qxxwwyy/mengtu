@@ -64,49 +64,11 @@ class StageCard extends StatelessWidget {
             alignment: Alignment.topCenter,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 // 标题行（折叠/展开态都显示）
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
-                  child: Row(
-                    children: [
-                      _IndexBadge(index: index),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(title,
-                                style: const TextStyle(
-                                  color: DetailColors.textPrimary,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w600,
-                                )),
-                            if (summary.isNotEmpty)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 2),
-                                child: Text(summary,
-                                    style: const TextStyle(
-                                      color: DetailColors.textMuted,
-                                      fontSize: 11,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis),
-                              ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        expanded ? Icons.expand_less : Icons.expand_more,
-                        color: DetailColors.textSecondary,
-                        size: 20,
-                      ),
-                    ],
-                  ),
-                ),
-                // 详情（仅展开态显示）
+                _buildHeader(),
+                // 详情（仅展开态显示，紧贴标题行，无间隙）
                 if (expanded)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -119,6 +81,49 @@ class StageCard extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// 标题行（折叠/展开态都显示）
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: Row(
+        children: [
+          _IndexBadge(index: index),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(title,
+                    style: const TextStyle(
+                      color: DetailColors.textPrimary,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    )),
+                if (summary.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(summary,
+                        style: const TextStyle(
+                          color: DetailColors.textMuted,
+                          fontSize: 11,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ),
+              ],
+            ),
+          ),
+          Icon(
+            expanded ? Icons.expand_less : Icons.expand_more,
+            color: DetailColors.textSecondary,
+            size: 20,
+          ),
+        ],
       ),
     );
   }

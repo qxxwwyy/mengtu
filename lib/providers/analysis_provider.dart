@@ -5,6 +5,7 @@ import '../services/histogram_service.dart';
 import '../services/palette_service.dart';
 import '../services/tone_service.dart';
 import '../services/face_service.dart';
+import '../services/mlkit_face_service.dart' show detectPrimaryFaceWithMlKit, FaceDetection;
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
 import '../models/advanced_portrait_metrics.dart';
@@ -144,6 +145,21 @@ class ManualSkinSelectionNotifier
   void clear() => state = null;
 }
 
+/// v6.1：主脸检测 bbox（归一化 0~1）—— 详情页可视化用
+///
+/// 用 Google ML Kit 检测主脸（主线程 platform channel），返回 bbox + 显示尺寸
+/// 让用户直观看到「肤色识别落到脸部哪个区域」（解决问题1「不知识别到哪」+ 不信任）。
+/// 无脸返回 null；ML Kit 不可用（国产 ROM 缺依赖）返回 null。
+///
+/// 此 provider 与 skinProvider 共享检测结果：skinProvider 优先复用本 provider
+/// 的 bbox（避免重复检测），未命中再回退 BlazeFace。
+final detectedFaceProvider =
+    FutureProvider.family<FaceDetection?, String>((ref, photoId) async {
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
+  if (photo == null) return null;
+  return detectPrimaryFaceWithMlKit(photo.filePath);
+});
+
 /// v3.0：人脸肤色分析（BlazeFace ROI 提取）
 ///
 /// 独立于 [toneProvider]，避免阻塞直方图/影调 Tab 的快速渲染。
@@ -156,6 +172,9 @@ class ManualSkinSelectionNotifier
 /// v3.5：三段式检测链 short→full→mesh。Face Mesh 命中时额外产出 STI/FLC
 /// （叠加到 bbox ROI 的 ΔH/饱和/SLS/SCS 上）。mesh 失败/未配置 → STI/FLC null，
 /// 其余指标照常返回。
+///
+/// v6.1：优先复用 [detectedFaceProvider]（ML Kit）的 bbox，BlazeFace 仅作回退
+/// （platform channel 不可用 / ML Kit 失败）。
 ///
 /// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
 /// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
@@ -174,16 +193,25 @@ final skinProvider =
     );
   }
 
-  // 自动检测：short（主）→ full（回退）→ mesh（STI/FLC）
+  // v6.1：优先复用 ML Kit 预检测的 bbox（与 detectedFaceProvider 共享）
+  final detection = await ref.watch(detectedFaceProvider(photoId).future);
+  final primaryFace = detection?.face;
+
+  // BlazeFace 回退路径（mesh + ROI 肤色统计在 Isolate 内）
   final modelPath = await ref.watch(modelPathProvider.future);
   final fullModelPath = await ref.watch(fullModelPathProvider.future);
   final meshModelPath = await ref.watch(meshModelPathProvider.future);
-  if (modelPath == null) return const SkinAnalysis();
+
+  // ML Kit 已提供 bbox → 直接进 mesh，跳过 BlazeFace
+  // ML Kit 无 bbox 且 BlazeFace 模型不可用 → 无脸空结果
+  if (primaryFace == null && modelPath == null) return const SkinAnalysis();
+
   return analyzeSkinTone(
     photo.filePath,
     shortModelPath: modelPath,
     fullModelPath: fullModelPath,
     meshModelPath: meshModelPath, // v3.5：null 时降级（STI/FLC null）
+    primaryFace: primaryFace, // v6.1：ML Kit bbox，非空时跳过 BlazeFace
   );
 });
 

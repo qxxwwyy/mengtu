@@ -44,7 +44,15 @@ dependencies:
   shared_preferences: ^2.5.5
 
   # v3.0: 离线人脸检测（BlazeFace TFLite 模型）—— 人像肤色 ROI 提取
+  # v6.1: 主检测链改为 Google ML Kit（更准、bundled 不依赖 GMS），
+  #   BlazeFace 仅作 Isolate 兜底（platform channel 不可用时）。
   tflite_flutter: ^0.11.0
+
+  # v6.1: Google ML Kit 人脸检测（主检测链，替代 BlazeFace short/full）
+  #   - minFaceSize 0.15 能稳定检出大头照（BlazeFace short_range 召回不足）
+  #   - bundled 模型打包进 APK，不依赖 Google Play Services
+  #   - 提供 boundingBox + landmarks（眼/鼻/嘴/耳/颊），用于肤色 ROI + 详情页可视化
+  google_mlkit_face_detection: ^0.13.1
 
 dev_dependencies:
   flutter_test:

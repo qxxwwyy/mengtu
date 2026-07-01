@@ -23,6 +23,16 @@
 -dontwarn com.google.android.gms.tflite.**
 
 # ==============================================================================
+# 3b. Google ML Kit 人脸检测混淆保留（v6.1）
+#     release isMinifyEnabled=true 会剥离 ML Kit 类导致检测失败，
+#     参考 Google_MLKit_FaceDetection_Flutter_部署指南 §四 步骤三
+# ==============================================================================
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_face.** { *; }
+-keep class com.google.android.gms.vision.face.** { *; }
+-dontwarn com.google.mlkit.**
+
+# ==============================================================================
 # 4. Glide (图片加载框架，由 photo_manager/wechat_assets_picker 依赖) 混淆保留
 #    若不保留，Release 包在获取/显示缩略图时会因找不到 GeneratedAppGlideModuleImpl 而崩溃
 # ==============================================================================

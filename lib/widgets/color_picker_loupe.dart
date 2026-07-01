@@ -249,11 +249,14 @@ class PixelInfoPanel extends StatelessWidget {
 /// v6.0（问题4）：
 /// - [onTap] 弹出菜单（设为肤色基准 / 删除）
 /// - [selected] 为 true 时用 accent 描边高亮（当前肤色基准）
+///
+/// v6.1：[position] 是【取色 Stack 的 local 坐标】（显示空间，非像素，也非
+/// Image-box 局部）—— 与放大镜/localPosition 同参考系（修复问题3 三者错位）。
 class ColorPinMarker extends StatelessWidget {
   final int r;
   final int g;
   final int b;
-  final Offset position; // 相对 Image RenderBox 的局部坐标（像素）
+  final Offset position; // 相对取色 Stack 的局部坐标（显示空间）
   final VoidCallback? onTap;
   final bool selected;
 
