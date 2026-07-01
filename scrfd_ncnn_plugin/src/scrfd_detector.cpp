@@ -12,7 +12,8 @@
 #include "scrfd_detector.h"
 
 #include <android/log.h>
-#include <ncnn/ncnn.h> // NOLINT(build/include_subdir)
+#include <ncnn/net.h>
+#include <ncnn/mat.h>
 
 #include <algorithm>
 #include <cmath>

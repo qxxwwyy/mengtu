@@ -58,6 +58,10 @@ PRD.md
 
 # æ•æ„Ÿæ–‡ä»¶ï¼ˆç­¾åç”± CI ç¯å¢ƒå˜é‡æä¾›ï¼‰
 debug.keystore
+
+# NCNN native binaries & SCRFD models (downloaded by scripts/fetch-native.sh)
+scrfd_ncnn_plugin/android/src/main/jni/ncnn/
+scrfd_ncnn_plugin/assets/
   
-# ZCode ¹¤¾ßÄ¿Â¼£¨¼¼ÄÜ»º´æ¡¢ÁÙÊ±²úÎï£© 
+# ZCode ï¿½ï¿½ï¿½ï¿½Ä¿Â¼ï¿½ï¿½ï¿½ï¿½ï¿½Ü»ï¿½ï¿½æ¡¢ï¿½ï¿½Ê±ï¿½ï¿½ï¿½ï£© 
 .zcode/  

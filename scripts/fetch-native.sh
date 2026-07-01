@@ -14,11 +14,25 @@ curl -L -o ncnn.zip https://github.com/Tencent/ncnn/releases/download/20250428/n
 
 echo "[fetch-native] Extracting NCNN headers and library..."
 unzip -q ncnn.zip -d ncnn_temp
-for d in ncnn_temp/*/arm64-v8a; do
-  cp -r "$d"/include/ncnn scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/
-  cp "$d"/include/ncnn.h scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/ncnn/
-  cp "$d"/lib/libncnn.a scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a/
-done
+
+# NCNN prebuilt structure: ncnn-20250428-android-vulkan/arm64-v8a/
+#   include/ncnn/*.h  (net.h, mat.h, ... — no umbrella ncnn.h)
+#   include/glslang/*.h
+#   lib/libncnn.a
+NCNN_ROOT="$(ls -d ncnn_temp/ncnn-*-android-vulkan 2>/dev/null | head -1)"
+if [ -z "$NCNN_ROOT" ]; then
+    echo "[fetch-native] ERROR: NCNN root directory not found"
+    exit 1
+fi
+echo "[fetch-native] NCNN root: $NCNN_ROOT"
+
+# Copy entire include/ (contains ncnn/ and glslang/ subdirs) and libncnn.a
+cp -r "$NCNN_ROOT/arm64-v8a/include/"* scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/
+cp "$NCNN_ROOT/arm64-v8a/lib/libncnn.a" scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a/
+
+echo "[fetch-native] Verifying headers..."
+ls scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/ncnn/net.h
+ls scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a/libncnn.a
 
 echo "[fetch-native] Downloading SCRFD models..."
 curl -L -o scrfd_ncnn_plugin/assets/scrfd_2.5g_kps-opt2.param \
