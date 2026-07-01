@@ -9,24 +9,25 @@ mkdir -p scrfd_ncnn_plugin/android/src/main/jni/ncnn/include
 mkdir -p scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a
 mkdir -p scrfd_ncnn_plugin/assets
 
-echo "[fetch-native] Downloading NCNN prebuilt binary..."
-curl -L -o ncnn.zip https://github.com/Tencent/ncnn/releases/download/20250428/ncnn-20250428-android-vulkan.zip
+echo "[fetch-native] Downloading NCNN prebuilt binary (non-Vulkan, CPU-only)..."
+# 使用非 Vulkan 版本：代码中 use_vulkan_compute=false，Vulkan 版会引入 glslang
+# 和 OpenMP 依赖导致链接错误。CPU-only 版只需 libncnn.a，无额外依赖。
+curl -L -o ncnn.zip https://github.com/Tencent/ncnn/releases/download/20250428/ncnn-20250428-android.zip
 
 echo "[fetch-native] Extracting NCNN headers and library..."
 unzip -q ncnn.zip -d ncnn_temp
 
-# NCNN prebuilt structure: ncnn-20250428-android-vulkan/arm64-v8a/
+# NCNN prebuilt structure: ncnn-20250428-android/arm64-v8a/
 #   include/ncnn/*.h  (net.h, mat.h, ... — no umbrella ncnn.h)
-#   include/glslang/*.h
 #   lib/libncnn.a
-NCNN_ROOT="$(ls -d ncnn_temp/ncnn-*-android-vulkan 2>/dev/null | head -1)"
+NCNN_ROOT="$(ls -d ncnn_temp/ncnn-*-android 2>/dev/null | head -1)"
 if [ -z "$NCNN_ROOT" ]; then
     echo "[fetch-native] ERROR: NCNN root directory not found"
     exit 1
 fi
 echo "[fetch-native] NCNN root: $NCNN_ROOT"
 
-# Copy entire include/ (contains ncnn/ and glslang/ subdirs) and libncnn.a
+# Copy entire include/ and libncnn.a
 cp -r "$NCNN_ROOT/arm64-v8a/include/"* scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/
 cp "$NCNN_ROOT/arm64-v8a/lib/libncnn.a" scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a/
 
