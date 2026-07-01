@@ -18,6 +18,14 @@ add_library(scrfd_ncnn SHARED
     scrfd_detector.cpp
 )
 
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(scrfd_ncnn OpenMP::OpenMP_CXX)
+else()
+    # Fallback: NDK libomp (always available in NDK 21+)
+    target_link_libraries(scrfd_ncnn omp)
+endif()
+
 # 链接 NCNN 静态库（Android ABI 自动选 arm64-v8a 等）
 target_link_libraries(scrfd_ncnn
     ${NCNN_DIR}/lib/android/${ANDROID_ABI}/libncnn.a
