@@ -14,7 +14,8 @@ curl -L -o ncnn.zip https://github.com/Tencent/ncnn/releases/download/20250428/n
 
 echo "[fetch-native] Extracting NCNN headers and library..."
 unzip -q ncnn.zip -d ncnn_temp
-
+echo "[fetch-native] Listing extracted files:"
+find ncnn_temp -maxdepth 4
 cp -r ncnn_temp/*/arm64-v8a/include/ncnn scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/
 cp ncnn_temp/*/arm64-v8a/include/ncnn.h scrfd_ncnn_plugin/android/src/main/jni/ncnn/include/ncnn/
 cp ncnn_temp/*/arm64-v8a/lib/libncnn.a scrfd_ncnn_plugin/android/src/main/jni/ncnn/lib/android/arm64-v8a/
