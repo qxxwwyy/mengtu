@@ -558,9 +558,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
           onTap: () {
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => DetailPage(photoId: photo.id),
-              ),
+              detailPageRoute(DetailPage(photoId: photo.id)),
             );
           },
           onLongPress: () => _showPhotoOptions(photo),
