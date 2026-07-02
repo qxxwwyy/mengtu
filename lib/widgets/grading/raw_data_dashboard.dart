@@ -16,6 +16,7 @@ import '../../providers/analysis_provider.dart';
 import '../../providers/exif_provider.dart';
 import '../../services/palette_service.dart';
 import '../../theme/app_theme.dart';
+import '../charts/histogram_chart.dart';
 import '../color_card.dart';
 import '../harmony_card.dart';
 import '../histogram_painter.dart';
@@ -162,10 +163,7 @@ class _TonalReadingsSection extends ConsumerWidget {
               color: DetailColors.cardSurface,
               borderRadius: Radii.legacy8Border,
             ),
-            child: CustomPaint(
-              painter: HistogramPainter(data: hist, mode: HistogramMode.rgbLum),
-              child: Container(),
-            ),
+            child: HistogramChart(data: hist, mode: HistogramMode.rgbLum),
           ),
         ),
         const SizedBox(height: 8),
