@@ -12,6 +12,7 @@
 //
 // 黑白控制统一为此处一个入口。取色模式由 forceCollapsed 控制（保留工具行可见）。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
@@ -278,7 +279,10 @@ class _ToolButton extends StatelessWidget {
   Widget build(BuildContext context) {
     const accent = AppColors.accent;
     return InkWell(
-      onTap: onTap,
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
       borderRadius: Radii.legacy12Border,
       child: Container(
         decoration: isActive

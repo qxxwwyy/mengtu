@@ -8,6 +8,7 @@ import '../providers/tag_provider.dart';
 import '../providers/album_provider.dart';
 import '../utils/app_info.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/animated_number.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -122,8 +123,8 @@ class _StatCard extends StatelessWidget {
           children: [
             Icon(icon, color: AppColors.accent, size: 20),
             SizedBox(height: Spacing.sm),
-            Text(
-              value == null ? '—' : '$value',
+            AnimatedNumber(
+              value: value ?? 0,
               style: AppTypography.dataXl,
             ),
             SizedBox(height: 2),

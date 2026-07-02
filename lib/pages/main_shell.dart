@@ -2,6 +2,7 @@
 // 4 Tab：作品库 / 相册 / 策划 / 我的，用 NavigationBar + IndexedStack
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../theme/app_theme.dart';
 import 'home_page.dart';
@@ -131,7 +132,10 @@ class _BlurNavigationBar extends StatelessWidget {
                     _NavTile(
                       item: items[i],
                       isSelected: i == selectedIndex,
-                      onTap: () => onDestinationSelected(i),
+                      onTap: () {
+                HapticFeedback.selectionClick();
+                onDestinationSelected(i);
+              },
                       primaryColor: primaryColor,
                       mutedColor: onSurfaceColor.withValues(alpha: 0.5),
                     ),
