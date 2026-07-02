@@ -6,6 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../providers/database_provider.dart';
 import '../services/database/daos/plan_dao.dart';
 import '../services/database/app_database.dart';
+import '../theme/app_theme.dart';
 
 class PlanEditPage extends ConsumerStatefulWidget {
   final String? planId; // 编辑模式传入，创建模式为 null
@@ -167,7 +168,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             const DropdownMenuItem<String?>(
               value: null,
               child: Text('不关联相册',
-                  style: TextStyle(color: Colors.grey)),
+                  style: TextStyle(color: AppColors.textMuted)),
             ),
             ..._albums.map((album) => DropdownMenuItem<String?>(
                   value: album.id,
@@ -347,7 +348,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: Radii.legacy12Border),
                   ),
                   child: const Text('保存策划',
                       style:

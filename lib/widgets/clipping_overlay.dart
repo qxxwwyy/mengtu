@@ -3,6 +3,7 @@
 // 在图片上高亮显示死黑（蓝色）和过曝（红色）区域
 import 'package:flutter/material.dart';
 import '../services/clipping_service.dart';
+import '../theme/app_theme.dart';
 
 /// Clipping 警告叠加层
 class ClippingOverlay extends StatelessWidget {
@@ -29,12 +30,12 @@ class _ClippingPainter extends CustomPainter {
 
   // 暗部 clipping 颜色（蓝色半透明）
   static final _darkPaint = Paint()
-    ..color = Colors.blue.withValues(alpha: 0.4)
+    ..color = DetailColors.accent.withValues(alpha: 0.4)
     ..style = PaintingStyle.fill;
 
   // 亮部 clipping 颜色（红色半透明）
   static final _brightPaint = Paint()
-    ..color = Colors.red.withValues(alpha: 0.4)
+    ..color = DetailColors.warning.withValues(alpha: 0.4)
     ..style = PaintingStyle.fill;
 
   _ClippingPainter({required this.result});
@@ -110,8 +111,8 @@ class ClippingStatusBar extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(4),
+        color: DetailColors.scrim,
+        borderRadius: Radii.xsBorder,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -121,7 +122,7 @@ class ClippingStatusBar extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: Colors.blue.withValues(alpha: 0.6),
+                color: DetailColors.accent.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
               ),
             ),
@@ -141,7 +142,7 @@ class ClippingStatusBar extends StatelessWidget {
               width: 8,
               height: 8,
               decoration: BoxDecoration(
-                color: Colors.red.withValues(alpha: 0.6),
+                color: DetailColors.warning.withValues(alpha: 0.6),
                 shape: BoxShape.circle,
               ),
             ),

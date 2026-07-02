@@ -46,9 +46,9 @@ class SharpnessGuideCard extends StatelessWidget {
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: DetailColors.cardSurface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: Radii.mdBorder,
         border: Border.all(
-            color: AppColors.darkAccent.withValues(alpha: 0.25), width: 0.5),
+            color: AppColors.accent.withValues(alpha: 0.25), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -56,12 +56,12 @@ class SharpnessGuideCard extends StatelessWidget {
           Row(
             children: [
               const Icon(Icons.center_focus_strong,
-                  size: 14, color: AppColors.darkAccent),
+                  size: 14, color: AppColors.accent),
               const SizedBox(width: 6),
               const Text(
                 '合焦读数',
                 style: TextStyle(
-                  color: AppColors.darkAccent,
+                  color: AppColors.accent,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   letterSpacing: 0.5,
@@ -167,14 +167,14 @@ class _SharpnessGuide {
   /// >150 高（合焦清晰）/ 50~150 中等 / <50 低（可能跑焦）
   static _SharpnessGuide classifyForeground(double v) {
     if (v < 50) {
-      return const _SharpnessGuide(Color(0xFFEF5350),
+      return const _SharpnessGuide(StatusColors.error,
           '主体模糊，可能跑焦。检查对焦点是否落在人脸/眼睛，必要时放大查看锐度。');
     }
     if (v > 150) {
-      return const _SharpnessGuide(Color(0xFF4CAF50),
+      return const _SharpnessGuide(StatusColors.success,
           '主体清晰合焦，细节锐利。注意女性/儿童柔和人像可略降清晰度避免毛孔过显。');
     }
-    return const _SharpnessGuide(Color(0xFFFF9800),
+    return const _SharpnessGuide(StatusColors.warning,
         '主体锐度适中。若需更"刀锐奶滑"效果，可对主体做局部锐化。');
   }
 
@@ -182,14 +182,14 @@ class _SharpnessGuide {
   /// <30 低（虚化强，人像理想）/ 30~80 中 / >80 高（背景清晰，干扰主体）
   static _SharpnessGuide classifyBackground(double v) {
     if (v < 30) {
-      return const _SharpnessGuide(Color(0xFF4CAF50),
+      return const _SharpnessGuide(StatusColors.success,
           '背景虚化纯净，主体剥离感强，典型大光圈人像效果。');
     }
     if (v > 80) {
-      return const _SharpnessGuide(Color(0xFFFF9800),
+      return const _SharpnessGuide(StatusColors.warning,
           '背景清晰、细节繁杂，易喧宾夺主。建议后期压暗背景或冷调化以突出主体。');
     }
-    return const _SharpnessGuide(AppColors.darkAccent,
+    return const _SharpnessGuide(AppColors.accent,
         '背景虚化适中，层次自然。');
   }
 
@@ -197,14 +197,14 @@ class _SharpnessGuide {
   /// >80 强隔离（理想糖水人像）/ 0~80 一般 / <0 反转（背景比主体清晰 → 跑焦）
   static _SharpnessGuide classifySeparation(double v) {
     if (v < 0) {
-      return const _SharpnessGuide(Color(0xFFEF5350),
+      return const _SharpnessGuide(StatusColors.error,
           '背景比主体更清晰——主体严重跑焦，或对焦点落在背景上。请重新对焦。');
     }
     if (v > 80) {
-      return const _SharpnessGuide(Color(0xFF4CAF50),
+      return const _SharpnessGuide(StatusColors.success,
           '主体突出、背景虚化强烈，糖水人像典型特征，焦点汇聚到位。');
     }
-    return const _SharpnessGuide(AppColors.darkAccent,
+    return const _SharpnessGuide(AppColors.accent,
         '主体与背景锐度接近，画面整体清晰（风光/纪实适用）。人像可考虑增大光圈或拉近距离增强虚化。');
   }
 }

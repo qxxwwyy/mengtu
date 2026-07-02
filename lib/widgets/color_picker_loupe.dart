@@ -46,10 +46,10 @@ class ColorPickerLoupe extends StatelessWidget {
             height: loupeSize,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              border: Border.all(color: Colors.white, width: 2),
+              border: Border.all(color: DetailColors.textPrimary, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.5),
+                  color: DetailColors.scrim,
                   blurRadius: 10,
                 ),
               ],
@@ -69,8 +69,8 @@ class ColorPickerLoupe extends StatelessWidget {
             margin: const EdgeInsets.only(top: 6),
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.75),
-              borderRadius: BorderRadius.circular(6),
+              color: AppColors.onPhotoScrim,
+              borderRadius: Radii.smBorder,
               border: Border.all(color: Colors.white24),
             ),
             child: Row(
@@ -81,15 +81,15 @@ class ColorPickerLoupe extends StatelessWidget {
                   height: 14,
                   decoration: BoxDecoration(
                     color: color,
-                    border: Border.all(color: Colors.white, width: 1),
-                    borderRadius: BorderRadius.circular(2),
+                    border: Border.all(color: DetailColors.textPrimary, width: 1),
+                    borderRadius: Radii.xsBorder,
                   ),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   pixel.hex,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: DetailColors.textPrimary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                     fontFamily: 'monospace',
@@ -150,14 +150,14 @@ class _LoupePainter extends CustomPainter {
       cellSize,
     );
     final highlightPaint = Paint()
-      ..color = AppColors.darkAccent
+      ..color = AppColors.accent
       ..strokeWidth = 2
       ..style = PaintingStyle.stroke;
     canvas.drawRect(centerRect, highlightPaint);
 
     // 中心十字准星
     final crossPaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.85)
+      ..color = DetailColors.textPrimary.withValues(alpha: 0.85)
       ..strokeWidth = 1
       ..style = PaintingStyle.stroke;
 
@@ -196,8 +196,8 @@ class PixelInfoPanel extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.7),
-        borderRadius: BorderRadius.circular(8),
+        color: DetailColors.scrim,
+        borderRadius: Radii.legacy8Border,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -209,7 +209,7 @@ class PixelInfoPanel extends StatelessWidget {
             decoration: BoxDecoration(
               color: Color.fromARGB(0xFF, pixel.r, pixel.g, pixel.b),
               border: Border.all(color: Colors.white38),
-              borderRadius: BorderRadius.circular(4),
+              borderRadius: Radii.xsBorder,
             ),
           ),
           const SizedBox(width: 8),
@@ -221,7 +221,7 @@ class PixelInfoPanel extends StatelessWidget {
               Text(
                 pixel.hex,
                 style: const TextStyle(
-                  color: Colors.white,
+                  color: DetailColors.textPrimary,
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                 ),
@@ -285,24 +285,24 @@ class ColorPinMarker extends StatelessWidget {
             shape: BoxShape.circle,
             color: Color.fromARGB(0xFF, r, g, b),
             border: Border.all(
-              color: selected ? AppColors.darkAccent : Colors.white,
+              color: selected ? AppColors.accent : DetailColors.textPrimary,
               width: selected ? 2.5 : 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.5),
+                color: DetailColors.scrim,
                 blurRadius: 4,
               ),
               if (selected)
                 BoxShadow(
-                  color: AppColors.darkAccent.withValues(alpha: 0.6),
+                  color: AppColors.accent.withValues(alpha: 0.6),
                   blurRadius: 8,
                   spreadRadius: 1,
                 ),
             ],
           ),
           child: selected
-              ? const Icon(Icons.face, size: 11, color: Colors.white)
+              ? const Icon(Icons.face, size: 11, color: DetailColors.textPrimary)
               : null,
         ),
       ),

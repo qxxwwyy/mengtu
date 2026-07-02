@@ -76,7 +76,7 @@ class _FaceBBoxPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final rect = _imageRectInContainer(size, imageAspect);
-    final color = highlight ? AppColors.darkAccent : const Color(0xAAFFFFFF);
+    final color = highlight ? AppColors.accent : DetailColors.faceBoxNormal;
 
     // bbox 归一化 0~1 → 图片矩形内像素坐标
     final bbox = Rect.fromLTWH(
@@ -122,7 +122,7 @@ class _FaceBBoxPainter extends CustomPainter {
       ..text = TextSpan(
         text: '肤色采样区',
         style: TextStyle(
-          color: AppColors.darkBgBase,
+          color: AppColors.bgBase,
           fontSize: 10,
           fontWeight: FontWeight.w600,
         ),
@@ -138,7 +138,7 @@ class _FaceBBoxPainter extends CustomPainter {
     );
     canvas.drawRRect(
       RRect.fromRectAndRadius(labelRect, const Radius.circular(3)),
-      Paint()..color = AppColors.darkAccent,
+      Paint()..color = AppColors.accent,
     );
     tp.paint(canvas, Offset(labelRect.left + 5, labelRect.top + 2));
   }

@@ -14,19 +14,19 @@ class InterpretationStatus {
   InterpretationStatus._();
 
   /// 好（绿）—— 指标落在理想区间
-  static const Color good = Color(0xFF4CAF50);
+  static const Color good = StatusColors.success;
 
   /// 注意（橙）—— 指标偏离，需关注
-  static const Color warn = Color(0xFFFF9800);
+  static const Color warn = StatusColors.warning;
 
   /// 低/平（蓝）—— 指标偏低，效果平淡
-  static const Color low = Color(0xFF42A5F5);
+  static const Color low = StatusColors.info;
 
   /// 差（红）—— 指标明显异常
-  static const Color bad = Color(0xFFEF5350);
+  static const Color bad = StatusColors.error;
 
   /// 中性（accent）—— 无好坏之分的客观描述
-  static const Color neutral = AppColors.darkAccent;
+  static const Color neutral = AppColors.accent;
 }
 
 /// 解读行：图标 + 标签 + 单色等宽值 + 解读文字

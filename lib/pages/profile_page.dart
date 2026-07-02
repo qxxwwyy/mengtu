@@ -7,6 +7,7 @@ import '../providers/photo_provider.dart';
 import '../providers/tag_provider.dart';
 import '../providers/album_provider.dart';
 import '../utils/app_info.dart';
+import '../theme/app_theme.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
@@ -39,7 +40,7 @@ class ProfilePage extends ConsumerWidget {
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: Radii.legacy12Border,
             ),
             child: photoCount == null && tagCount == null && albumCount == null
                 ? const Center(child: CircularProgressIndicator())

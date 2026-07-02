@@ -88,18 +88,18 @@ class _VectorscopePainter extends CustomPainter {
   // 示波器色相环刻度颜色（按色相环的色块标识）
   // 与达芬奇示波器一致：在圆周上标注主要色相方位
   static final _gridPaint = Paint()
-    ..color = const Color(0x33FFFFFF)
+    ..color = ChartColors.gridLight
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
   static final _axisPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.15)
+    ..color = ChartColors.gridFaint
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
   // 肤色参考线（达芬奇肤色线，11 点钟方向）
   static final _skinLinePaint = Paint()
-    ..color = const Color(0xFFFFD54F) // 暖黄，区别于数据光点
+    ..color = ChartColors.skinToneLine // 暖黄，区别于数据光点
     ..strokeWidth = 1.2
     ..style = PaintingStyle.stroke;
 
@@ -141,26 +141,26 @@ class _VectorscopePainter extends CustomPainter {
 
       // 外层光晕（柔和）
       final glow = Paint()
-        ..color = const Color(0xFFFF7043).withValues(alpha: 0.25)
+        ..color = ChartColors.skinToneHalo.withValues(alpha: 0.25)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 9, glow);
 
       // 内层光点
       final dot = Paint()
-        ..color = const Color(0xFFFF8A65) // 暖橙肤色点
+        ..color = ChartColors.skinTonePoint // 暖橙肤色点
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 4, dot);
 
       // 白色描边让光点在任何背景上可见
       final ring = Paint()
-        ..color = Colors.white.withValues(alpha: 0.9)
+        ..color = DetailColors.textPrimary
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
       canvas.drawCircle(Offset(px, py), 4, ring);
     }
 
     // ===== 5. 中心点 =====
-    final centerPaint = Paint()..color = Colors.white.withValues(alpha: 0.3);
+    final centerPaint = Paint()..color = ChartColors.gridLight;
     canvas.drawCircle(Offset(cx, cy), 1.5, centerPaint);
 
     // ===== 6. 肤色参考线标签（11 点方向标「肤色」）=====
@@ -192,7 +192,7 @@ class _VectorscopePainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: const TextStyle(
-          color: Color(0xFFFFD54F),
+          color: ChartColors.skinToneLine,
           fontSize: 9,
           fontWeight: FontWeight.w600,
         ),

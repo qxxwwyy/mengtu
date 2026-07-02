@@ -49,14 +49,14 @@ class StageCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: DetailColors.cardSurface,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: Radii.mdBorder,
         border: Border.all(
-            color: AppColors.darkAccent.withValues(alpha: 0.25), width: 0.5),
+            color: AppColors.accent.withValues(alpha: 0.25), width: 0.5),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: Radii.mdBorder,
           onTap: onTap,
           child: AnimatedSize(
             duration: const Duration(milliseconds: 220),
@@ -141,16 +141,16 @@ class _IndexBadge extends StatelessWidget {
       width: 20,
       height: 20,
       decoration: BoxDecoration(
-        color: AppColors.darkAccent.withValues(alpha: 0.18),
+        color: AppColors.accent.withValues(alpha: 0.18),
         shape: BoxShape.circle,
         border: Border.all(
-            color: AppColors.darkAccent.withValues(alpha: 0.5), width: 1),
+            color: AppColors.accent.withValues(alpha: 0.5), width: 1),
       ),
       alignment: Alignment.center,
       child: Text(
         '$index',
         style: const TextStyle(
-          color: AppColors.darkAccent,
+          color: AppColors.accent,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),

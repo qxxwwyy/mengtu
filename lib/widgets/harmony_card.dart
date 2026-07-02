@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/harmony_service.dart';
 import '../models/palette_result.dart';
 import 'color_wheel.dart';
+import '../theme/app_theme.dart';
 
 /// 和谐度分析卡片
 class HarmonyCard extends ConsumerWidget {
@@ -28,7 +29,7 @@ class HarmonyCard extends ConsumerWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
               color: colorScheme.primary.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
+              borderRadius: Radii.lgBorder,
               border: Border.all(
                 color: colorScheme.primary.withValues(alpha: 0.4),
               ),
@@ -63,7 +64,7 @@ class HarmonyCard extends ConsumerWidget {
                     valueColor:
                         AlwaysStoppedAnimation<Color>(colorScheme.primary),
                     minHeight: 4,
-                    borderRadius: BorderRadius.circular(2),
+                    borderRadius: Radii.xsBorder,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -85,7 +86,7 @@ class HarmonyCard extends ConsumerWidget {
             decoration: BoxDecoration(
               color: colorScheme.surfaceContainerHighest
                   .withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: Radii.legacy8Border,
             ),
             child: Text(
               result.description,
@@ -121,7 +122,7 @@ class HarmonyCard extends ConsumerWidget {
                         color: color,
                         shape: BoxShape.circle,
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.3),
+                          color: ChartColors.gridLight,
                           width: 0.5,
                         ),
                       ),

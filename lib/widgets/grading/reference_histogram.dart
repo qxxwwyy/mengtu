@@ -72,15 +72,15 @@ class _ReferenceHistogramPainter extends CustomPainter {
 
   // 性能优化：Paint 对象 static final
   static final _referencePaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.15)
+    ..color = ChartColors.gridLight
     ..style = PaintingStyle.fill;
 
   static final _currentPaint = Paint()
-    ..color = AppColors.darkAccent
+    ..color = AppColors.accent
     ..style = PaintingStyle.fill;
 
   static final _axisPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.1)
+    ..color = ChartColors.gridFaint
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 

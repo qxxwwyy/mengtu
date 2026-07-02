@@ -294,7 +294,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               ref.invalidate(photoByIdProvider(widget.photoId));
               if (mounted) Navigator.pop(context);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: StatusColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -528,7 +528,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           if (_pickerLoading)
             const Positioned.fill(
               child: ColoredBox(
-                color: Color(0x88000000),
+                color: AppColors.overlayScrim,
                 child: Center(
                   child: SizedBox(
                     width: 24,
@@ -599,11 +599,11 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 16, vertical: 10),
                       decoration: BoxDecoration(
-                        color: AppColors.darkAccent,
-                        borderRadius: BorderRadius.circular(24),
+                        color: AppColors.accent,
+                        borderRadius: Radii.xlBorder,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.4),
+                            color: AppColors.overlayScrim,
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -613,13 +613,13 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           const Icon(Icons.check_circle,
-                              size: 16, color: AppColors.darkBgBase),
+                              size: 16, color: AppColors.bgBase),
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
                               _topNotice ?? '',
                               style: const TextStyle(
-                                color: AppColors.darkBgBase,
+                                color: AppColors.bgBase,
                                 fontSize: 12,
                                 fontWeight: FontWeight.w600,
                               ),
@@ -707,7 +707,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     height: 40,
                     decoration: BoxDecoration(
                       color: color,
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: Radii.legacy8Border,
                       border: Border.all(color: Colors.white24),
                     ),
                   ),
@@ -738,7 +738,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                 isCurrentSkin
                     ? Icons.check_circle
                     : Icons.face_retouching_natural,
-                color: AppColors.darkAccent,
+                color: AppColors.accent,
               ),
               title: Text(isCurrentSkin ? '当前肤色基准' : '设为肤色基准',
                   style: const TextStyle(color: DetailColors.textPrimary)),
@@ -862,7 +862,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     final p = candidates[i];
                     return ListTile(
                       leading: ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
+                        borderRadius: Radii.xsBorder,
                         child: Image.file(File(p.thumbnailPath.isEmpty
                             ? p.filePath
                             : p.thumbnailPath),
@@ -913,8 +913,8 @@ class _DetailPageState extends ConsumerState<DetailPage> {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.black.withValues(alpha: 0.5),
-                Colors.black.withValues(alpha: 0.0),
+                AppColors.overlayScrimStrong,
+                Colors.transparent,
               ],
             ),
           ),

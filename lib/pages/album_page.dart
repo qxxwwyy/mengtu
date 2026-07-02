@@ -15,6 +15,7 @@ import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../services/database/daos/album_dao.dart' show AlbumWithTags;
 import 'album_detail_page.dart';
+import '../theme/app_theme.dart';
 
 class AlbumPage extends ConsumerStatefulWidget {
   const AlbumPage({super.key});
@@ -276,7 +277,7 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
               await db.albumDao.deleteAlbum(album.id);
               if (ctx.mounted) Navigator.pop(ctx);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: StatusColors.error),
             child: const Text('删除'),
           ),
         ],
@@ -383,8 +384,8 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.delete, color: Colors.red),
-              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              leading: const Icon(Icons.delete, color: StatusColors.error),
+              title: const Text('删除', style: TextStyle(color: StatusColors.error)),
               onTap: () {
                 Navigator.pop(ctx);
                 widget.onDelete(widget.item.album);
@@ -413,7 +414,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.legacy12Border,
           child: Container(
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest,
@@ -436,7 +437,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withValues(alpha: 0.75),
+                          AppColors.onPhotoScrim,
                         ],
                       ),
                     ),
@@ -447,7 +448,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
                         Text(
                           album.name,
                           style: const TextStyle(
-                            color: Colors.white,
+                            color: AppColors.onPhotoText,
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                           ),
@@ -526,7 +527,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
         '$count 张',
         style: TextStyle(
           fontSize: 11,
-          color: Colors.white.withValues(alpha: 0.7),
+          color: AppColors.onPhotoText,
         ),
       );
 
@@ -545,12 +546,12 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(6),
+                color: AppColors.onPhotoTextDim,
+                borderRadius: Radii.smBorder,
               ),
               child: Text(
                 t.name,
-                style: const TextStyle(fontSize: 10, color: Colors.white),
+                style: const TextStyle(fontSize: 10, color: AppColors.onPhotoText),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -560,12 +561,12 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
             padding:
                 const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(6),
+              color: AppColors.onPhotoTextDim,
+              borderRadius: Radii.smBorder,
             ),
             child: Text(
               '+$extra',
-              style: const TextStyle(fontSize: 10, color: Colors.white),
+              style: const TextStyle(fontSize: 10, color: AppColors.onPhotoText),
             ),
           ),
       ],

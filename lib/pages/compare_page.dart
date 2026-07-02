@@ -9,6 +9,7 @@ import '../providers/analysis_provider.dart';
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
 import '../services/palette_service.dart';
+import '../theme/app_theme.dart';
 
 class ComparePage extends ConsumerWidget {
   final String photoId1;
@@ -166,9 +167,9 @@ class _HistogramCompare extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              _legend(context, Colors.red.withValues(alpha: 0.6), '左图'),
+              _legend(context, ChartColors.channelR.withValues(alpha: 0.6), '左图'),
               const SizedBox(width: 16),
-              _legend(context, Colors.blue.withValues(alpha: 0.6), '右图'),
+              _legend(context, ChartColors.channelB.withValues(alpha: 0.6), '右图'),
             ],
           ),
           const SizedBox(height: 8),
@@ -220,10 +221,10 @@ class _CompareHistogramPainter extends CustomPainter {
 
     // 左图亮度（红色）
     _drawHist(canvas, lum1, barWidth, h, maxVal,
-        Colors.red.withValues(alpha: 0.5));
+        ChartColors.channelR.withValues(alpha: 0.5));
     // 右图亮度（蓝色）
     _drawHist(canvas, lum2, barWidth, h, maxVal,
-        Colors.blue.withValues(alpha: 0.5));
+        ChartColors.channelB.withValues(alpha: 0.5));
 
     // 边框
     canvas.drawRect(
@@ -317,7 +318,7 @@ class _PaletteCompare extends ConsumerWidget {
                             child: Text(
                               '${c.ratio.toStringAsFixed(0)}%',
                               style: const TextStyle(
-                                color: Colors.white,
+                                color: DetailColors.textPrimary,
                                 fontSize: 9,
                               ),
                             ),
@@ -418,7 +419,7 @@ class _ToneCompare extends ConsumerWidget {
         ),
         const SizedBox(height: 2),
         ClipRRect(
-          borderRadius: BorderRadius.circular(2),
+          borderRadius: Radii.xsBorder,
           child: LinearProgressIndicator(
             value: percent / 100,
             minHeight: 6,

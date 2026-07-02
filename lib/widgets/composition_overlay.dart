@@ -9,6 +9,7 @@
 // （与 ClippingOverlay 同款 letterbox 逻辑），只在图片矩形内画线。
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../theme/app_theme.dart';
 
 /// 构图模式
 enum CompositionMode {
@@ -73,16 +74,16 @@ class _CompositionPainter extends CustomPainter {
   final double imageAspect;
 
   static final _linePaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.45)
+    ..color = DetailColors.textSecondary
     ..strokeWidth = 0.8
     ..style = PaintingStyle.stroke;
 
   static final _pointPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.6)
+    ..color = DetailColors.textPrimary
     ..style = PaintingStyle.fill;
 
   static final _spiralPaint = Paint()
-    ..color = Colors.amber.withValues(alpha: 0.4)
+    ..color = AppColors.accent.withValues(alpha: 0.4)
     ..strokeWidth = 1.0
     ..style = PaintingStyle.stroke;
 

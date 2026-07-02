@@ -2,6 +2,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/database/app_database.dart';
+import '../theme/app_theme.dart';
 
 /// 照片卡片（瀑布流用）
 ///
@@ -63,7 +64,7 @@ class _PhotoCardState extends State<PhotoCard> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.legacy12Border,
           child: AspectRatio(
             aspectRatio: ratio,
             child: Stack(
@@ -139,7 +140,7 @@ class _PhotoCardState extends State<PhotoCard> {
                       size: 24,
                       color: widget.isSelected
                           ? Theme.of(context).colorScheme.primary
-                          : Colors.white.withValues(alpha: 0.7),
+                          : AppColors.onPhotoText,
                     ),
                   ),
                 ],

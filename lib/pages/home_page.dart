@@ -13,6 +13,7 @@ import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
 import 'detail_page.dart';
+import '../theme/app_theme.dart';
 
 class HomePage extends ConsumerStatefulWidget {
   const HomePage({super.key});
@@ -45,7 +46,7 @@ class _HomePageState extends ConsumerState<HomePage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
           TextButton(onPressed: () => Navigator.pop(ctx, true),
-              child: const Text('删除', style: TextStyle(color: Colors.red))),
+              child: const Text('删除', style: TextStyle(color: StatusColors.error))),
         ],
       ),
     );
@@ -514,7 +515,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: Radii.legacy12Border,
                 ),
                 child: Text(
                   '已选 $count',
@@ -557,7 +558,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       crossAxisSpacing: 6,
       children: List.generate(6, (i) {
         return ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: Radii.legacy12Border,
           child: Container(
             color: Theme.of(context).colorScheme.surfaceContainerHighest
                 .withValues(alpha: 0.15),
@@ -643,7 +644,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 backgroundColor: theme.colorScheme.primary,
                 padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: Radii.xlBorder,
                 ),
                 elevation: 4,
                 shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),

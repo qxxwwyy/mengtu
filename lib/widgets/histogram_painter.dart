@@ -5,6 +5,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../models/tone_result.dart';
+import '../theme/app_theme.dart';
 
 /// 直方图显示模式
 enum HistogramMode { rgb, luminance, r, g, b, hue, rgbLum }
@@ -17,25 +18,25 @@ class HistogramPainter extends CustomPainter {
 
   // 性能优化：Paint 对象声明为 static final
   static final _redPaint = Paint()
-    ..color = Colors.red.withValues(alpha: 0.5)
+    ..color = ChartColors.channelR.withValues(alpha: 0.5)
     ..style = PaintingStyle.fill;
   static final _greenPaint = Paint()
-    ..color = Colors.green.withValues(alpha: 0.5)
+    ..color = ChartColors.channelG.withValues(alpha: 0.5)
     ..style = PaintingStyle.fill;
   static final _bluePaint = Paint()
-    ..color = Colors.blue.withValues(alpha: 0.5)
+    ..color = ChartColors.channelB.withValues(alpha: 0.5)
     ..style = PaintingStyle.fill;
   static final _lumPaint = Paint()
-    ..color = Color(0xFF3A3A3A)
+    ..color = AppColors.divider
     ..style = PaintingStyle.fill;
   static final _solidRedPaint = Paint()
-    ..color = Colors.red
+    ..color = ChartColors.channelR
     ..style = PaintingStyle.fill;
   static final _solidGreenPaint = Paint()
-    ..color = Colors.green
+    ..color = ChartColors.channelG
     ..style = PaintingStyle.fill;
   static final _solidBluePaint = Paint()
-    ..color = Colors.blue
+    ..color = ChartColors.channelB
     ..style = PaintingStyle.fill;
   static final _borderPaint = Paint()
     ..color = Colors.white24
@@ -44,16 +45,16 @@ class HistogramPainter extends CustomPainter {
 
   // 五段分界线 Paint
   static final _dividerPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.2)
+    ..color = ChartColors.gridLight
     ..strokeWidth = 0.5
     ..style = PaintingStyle.stroke;
 
   // 溢出三角 Paint
   static final _overflowNormalPaint = Paint()
-    ..color = Colors.white.withValues(alpha: 0.3)
+    ..color = ChartColors.gridLight
     ..style = PaintingStyle.fill;
   static final _overflowWarningPaint = Paint()
-    ..color = Colors.red.withValues(alpha: 0.8)
+    ..color = ChartColors.channelR.withValues(alpha: 0.8)
     ..style = PaintingStyle.fill;
 
   // v3.2 性能优化：色相直方图 360 个 bin 的颜色 Paint 预生成。
@@ -175,7 +176,7 @@ class HistogramPainter extends CustomPainter {
     canvas.drawPath(
       path,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.3)
+        ..color = ChartColors.gridLight
         ..style = PaintingStyle.fill,
     );
   }

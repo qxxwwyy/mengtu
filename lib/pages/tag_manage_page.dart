@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
+import '../theme/app_theme.dart';
 
 class TagManagePage extends ConsumerStatefulWidget {
   const TagManagePage({super.key});
@@ -56,7 +57,7 @@ class _TagManagePageState extends ConsumerState<TagManagePage> {
               ref.read(tagActionsProvider.notifier).deleteTag(id);
               Navigator.pop(ctx);
             },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            style: TextButton.styleFrom(foregroundColor: StatusColors.error),
             child: const Text('删除'),
           ),
         ],

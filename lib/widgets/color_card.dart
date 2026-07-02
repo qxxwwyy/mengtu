@@ -8,6 +8,7 @@ import '../models/palette_result.dart';
 import '../utils/color_utils.dart';
 import '../services/palette_service.dart';
 import '../providers/analysis_provider.dart';
+import '../theme/app_theme.dart';
 
 /// 色卡组件：横向色块条 + 算法切换 + 数量调节 + 点击查看色值 + 长按复制
 class ColorCard extends ConsumerStatefulWidget {
@@ -135,7 +136,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
 
   Widget _buildColorBar(PaletteResult palette) {
     return ClipRRect(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: Radii.legacy8Border,
       child: SizedBox(
         height: 56,
         child: Row(
@@ -183,7 +184,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
                   height: 48,
                   decoration: BoxDecoration(
                     color: Color(argb),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: Radii.legacy8Border,
                     border: Border.all(color: Theme.of(context).colorScheme.outline),
                   ),
                 ),
@@ -251,7 +252,7 @@ class _ColorBlock extends StatelessWidget {
         decoration: BoxDecoration(
           color: color,
           border: Border.all(
-            color: isSelected ? Colors.white : Colors.transparent,
+            color: isSelected ? DetailColors.textPrimary : Colors.transparent,
             width: 3,
             strokeAlign: BorderSide.strokeAlignOutside,
           ),

@@ -70,11 +70,11 @@ class _SectionHeader extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Icon(icon, size: 14, color: AppColors.darkAccent),
+          Icon(icon, size: 14, color: AppColors.accent),
           const SizedBox(width: 6),
           Text(title,
               style: const TextStyle(
-                color: AppColors.darkAccent,
+                color: AppColors.accent,
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 letterSpacing: 0.5,
@@ -99,7 +99,7 @@ class _ReadingTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: DetailColors.cardSurface,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: Radii.legacy8Border,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -160,7 +160,7 @@ class _TonalReadingsSection extends ConsumerWidget {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: DetailColors.cardSurface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: Radii.legacy8Border,
             ),
             child: CustomPaint(
               painter: HistogramPainter(data: hist, mode: HistogramMode.rgbLum),
@@ -261,7 +261,7 @@ class _ColorReadingsSection extends ConsumerWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: DetailColors.cardSurface,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: Radii.legacy8Border,
                 ),
                 child: const Text('未检出肤色',
                     style:
@@ -344,7 +344,7 @@ class _IsolationReadingsSection extends ConsumerWidget {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: DetailColors.cardSurface,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: Radii.legacy8Border,
         ),
         child: const Text('未检出主体（无脸或侧脸），隔离度指标不可用',
             style: TextStyle(color: DetailColors.textMuted, fontSize: 11, height: 1.4)),
@@ -384,7 +384,7 @@ class _ExifReadingsSection extends ConsumerWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: DetailColors.cardSurface,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: Radii.legacy8Border,
             ),
             child: const Text('本照片无拍摄参数',
                 style:
@@ -395,7 +395,7 @@ class _ExifReadingsSection extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: DetailColors.cardSurface,
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: Radii.legacy8Border,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

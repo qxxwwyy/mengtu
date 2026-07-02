@@ -98,22 +98,22 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: AppColors.darkAccent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                color: AppColors.accent.withValues(alpha: 0.12),
+                borderRadius: Radii.legacy8Border,
                 border: Border.all(
-                  color: AppColors.darkAccent.withValues(alpha: 0.3),
+                  color: AppColors.accent.withValues(alpha: 0.3),
                   width: 0.5,
                 ),
               ),
               child: Row(
                 children: [
                   Icon(Icons.auto_awesome,
-                      size: 14, color: AppColors.darkAccent),
+                      size: 14, color: AppColors.accent),
                   const SizedBox(width: 6),
                   Text(
                     '整体风格：${insight.styleLabel}',
                     style: TextStyle(
-                      color: AppColors.darkAccent,
+                      color: AppColors.accent,
                       fontSize: 13,
                       fontWeight: FontWeight.w600,
                     ),
@@ -144,7 +144,7 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 10),
               child: Divider(
-                color: Color(0x22FFFFFF),
+                color: ChartColors.gridFaint,
                 height: 0.5,
               ),
             ),
@@ -152,13 +152,13 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Icon(Icons.lightbulb_outline,
-                    size: 14, color: AppColors.darkAccent.withValues(alpha: 0.8)),
+                    size: 14, color: AppColors.accent.withValues(alpha: 0.8)),
                 const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     insight.summary,
                     style: TextStyle(
-                      color: AppColors.darkAccent.withValues(alpha: 0.9),
+                      color: AppColors.accent.withValues(alpha: 0.9),
                       fontSize: 12,
                       height: 1.5,
                     ),

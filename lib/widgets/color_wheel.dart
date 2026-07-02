@@ -4,6 +4,7 @@
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../services/harmony_service.dart';
+import '../theme/app_theme.dart';
 
 /// 色轮 + 主色标注组件
 class ColorWheel extends StatelessWidget {
@@ -60,7 +61,7 @@ class _ColorWheelPainter extends CustomPainter {
       center,
       radius * 0.35,
       Paint()
-        ..color = const Color(0xFF1A1A1A)
+        ..color = AppColors.bgSurface
         ..style = PaintingStyle.fill,
     );
 
@@ -91,7 +92,7 @@ class _ColorWheelPainter extends CustomPainter {
         point,
         6,
         Paint()
-          ..color = Colors.white.withValues(alpha: 0.8)
+          ..color = DetailColors.textPrimary
           ..strokeWidth = 1.5
           ..style = PaintingStyle.stroke,
       );
@@ -104,7 +105,7 @@ class _ColorWheelPainter extends CustomPainter {
           points[i],
           points[i + 1],
           Paint()
-            ..color = Colors.white.withValues(alpha: 0.4)
+            ..color = DetailColors.textMuted
             ..strokeWidth = 1
             ..style = PaintingStyle.stroke,
         );

@@ -1,6 +1,7 @@
 // tone_info_card.dart — 影调信息组件（五区域占比 + 基调标签 + 统计指标）
 import 'package:flutter/material.dart';
 import '../models/tone_result.dart';
+import '../theme/app_theme.dart';
 
 /// 影调信息展示
 class ToneInfoCard extends StatelessWidget {
@@ -32,7 +33,7 @@ class ToneInfoCard extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: Radii.lgBorder,
         border: Border.all(color: accent.withValues(alpha: 0.3)),
       ),
       child: Row(
@@ -73,9 +74,8 @@ class ToneInfoCard extends StatelessWidget {
   Widget _buildZoneBars(BuildContext context) {
     final labelColor =
         Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    // 黑色条在深色主题下提亮，避免与背景 (#121212) 对比度过低不可见
-    final blackColor = isDark ? const Color(0xFF42424F) : const Color(0xFF1A1A1A);
+    // 影调五区域色用 ChartColors 统一定义
+    final blackColor = ChartColors.toneBlacks;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -87,19 +87,19 @@ class ToneInfoCard extends StatelessWidget {
             label: '黑色', ratio: tone.blacks, color: blackColor),
         const SizedBox(height: 6),
         _ZoneBar(
-            label: '阴影', ratio: tone.shadows, color: const Color(0xFF37474F)),
+            label: '阴影', ratio: tone.shadows, color: ChartColors.toneShadows),
         const SizedBox(height: 6),
         _ZoneBar(
-            label: '中间调', ratio: tone.midtones, color: const Color(0xFF78909C)),
+            label: '中间调', ratio: tone.midtones, color: ChartColors.toneMidtones),
         const SizedBox(height: 6),
         _ZoneBar(
-            label: '高光', ratio: tone.highlights, color: const Color(0xFFB0BEC5)),
+            label: '高光', ratio: tone.highlights, color: ChartColors.toneHighlights),
         const SizedBox(height: 6),
         _ZoneBar(
             label: '白色',
             ratio: tone.whites,
-            color: const Color(0xFFECEFF1),
-            textColor: isDark ? Colors.black54 : Colors.black87),
+            color: ChartColors.toneWhites,
+            textColor: AppColors.lightTextPrimary),
       ],
     );
   }
@@ -162,7 +162,7 @@ class _ZoneBar extends StatelessWidget {
         ),
         Expanded(
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: Radii.xsBorder,
             child: LinearProgressIndicator(
               value: (ratio / 100).clamp(0.0, 1.0),
               minHeight: 16,
@@ -201,7 +201,7 @@ class _StatCell extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerHighest
             .withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: Radii.smBorder,
       ),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,

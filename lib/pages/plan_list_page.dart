@@ -5,6 +5,7 @@ import '../providers/plan_provider.dart';
 import '../services/database/app_database.dart';
 import 'plan_edit_page.dart';
 import 'plan_detail_page.dart';
+import '../theme/app_theme.dart';
 
 class PlanListPage extends ConsumerWidget {
   const PlanListPage({super.key});
@@ -153,7 +154,7 @@ class _PlanCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: Radii.legacy12Border,
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -175,7 +176,7 @@ class _PlanCard extends StatelessWidget {
                         const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
                       color: statusInfo.$2.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: Radii.legacy8Border,
                     ),
                     child: Text(
                       statusInfo.$1,
@@ -241,11 +242,11 @@ class _PlanCard extends StatelessWidget {
 
   (String, Color) _statusInfo(String status) {
     return switch (status) {
-      'planning' => ('策划中', const Color(0xFFE8A838)),
-      'shooting' => ('拍摄中', const Color(0xFF4CAF50)),
-      'completed' => ('已完成', const Color(0xFF9E9E9E)),
-      'archived' => ('已归档', const Color(0xFF607D8B)),
-      _ => ('未知', const Color(0xFF9E9E9E)),
+      'planning' => ('策划中', AppColors.accent),
+      'shooting' => ('拍摄中', StatusColors.success),
+      'completed' => ('已完成', StatusColors.neutral),
+      'archived' => ('已归档', StatusColors.neutralCool),
+      _ => ('未知', StatusColors.neutral),
     };
   }
 }

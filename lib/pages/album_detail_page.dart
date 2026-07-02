@@ -14,6 +14,7 @@ import '../providers/tag_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
 import 'detail_page.dart';
+import '../theme/app_theme.dart';
 
 class AlbumDetailPage extends ConsumerStatefulWidget {
   final String albumId;
@@ -180,8 +181,8 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.remove_circle, color: Colors.red),
-              title: const Text('从相册移除', style: TextStyle(color: Colors.red)),
+              leading: const Icon(Icons.remove_circle, color: StatusColors.error),
+              title: const Text('从相册移除', style: TextStyle(color: StatusColors.error)),
               onTap: () {
                 Navigator.pop(ctx);
                 _removePhoto(photo.id);
@@ -714,7 +715,7 @@ class _PhotoSelectionPageState extends State<PhotoSelectionPage> {
                             ),
                             padding: const EdgeInsets.all(3),
                             child: const Icon(Icons.check,
-                                size: 16, color: Colors.white),
+                                size: 16, color: AppColors.onPhotoText),
                           ),
                         ),
                     ],

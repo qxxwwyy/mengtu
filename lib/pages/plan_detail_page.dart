@@ -9,6 +9,7 @@ import '../services/database/daos/plan_dao.dart';
 import '../services/database/app_database.dart';
 import 'plan_edit_page.dart';
 import 'album_detail_page.dart';
+import '../theme/app_theme.dart';
 
 class PlanDetailPage extends ConsumerStatefulWidget {
   final String planId;
@@ -202,7 +203,7 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                     ),
                     itemCount: photos.length,
                     itemBuilder: (_, i) => ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
+                      borderRadius: Radii.legacy8Border,
                       child: Image.file(
                         File(photos[i].thumbnailPath.isEmpty
                             ? photos[i].filePath
@@ -286,7 +287,7 @@ class _AssociatedAlbumCard extends ConsumerWidget {
       elevation: 0,
       color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: Radii.legacy12Border,
         onTap: () {
           Navigator.push(
             context,
@@ -337,7 +338,7 @@ class _AssociatedAlbumCard extends ConsumerWidget {
                         const Text('关联样片相册',
                             style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.grey,
+                                color: AppColors.textMuted,
                                 letterSpacing: 0.5)),
                         Text(album.name,
                             style: const TextStyle(
@@ -346,7 +347,7 @@ class _AssociatedAlbumCard extends ConsumerWidget {
                     ),
                   ),
                   const Icon(Icons.chevron_right,
-                      color: Colors.grey, size: 20),
+                      color: AppColors.textMuted, size: 20),
                 ],
               );
             },
