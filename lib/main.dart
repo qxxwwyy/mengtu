@@ -5,9 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'theme/app_theme.dart';
 import 'pages/main_shell.dart';
 
-import 'providers/database_provider.dart';
 import 'providers/theme_provider.dart';
-import 'services/builtin_profiles.dart';
 import 'services/scrfd_service.dart' show disposeScrfdDetector;
 
 void main() async {
@@ -64,16 +62,7 @@ void main() async {
   final binding = WidgetsBinding.instance;
   binding.addObserver(_AppLifecycleObserver());
 
-  // v3.5 PR5：启动时插入内置理论档案（幂等，已存在不重复插入）
-  // 失败不阻塞启动（DB 初始化失败等极端情况降级，档案管理页为空）
   final container = ProviderContainer();
-  try {
-    final db = container.read(appDatabaseProvider);
-    await BuiltinProfiles.ensureSeeded(db);
-  } catch (e) {
-    debugPrint('内置档案初始化失败（不阻塞启动）: $e');
-  }
-
   runApp(UncontrolledProviderScope(container: container, child: const MengtuApp()));
 }
 

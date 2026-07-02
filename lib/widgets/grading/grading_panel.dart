@@ -14,8 +14,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers/analysis_provider.dart';
-import 'stage_archive_match_card.dart';
 import 'stage_color_card.dart';
+import 'stage_insight_card.dart';
 import 'stage_isolation_card.dart';
 import 'stage_tonal_card.dart';
 
@@ -41,15 +41,8 @@ class GradingPanel extends ConsumerWidget {
         const SizedBox(height: 8),
         StageIsolationCard(photoId: photoId),
         const SizedBox(height: 8),
-        // 阶④需要 tone + advanced 供 PR5 复刻参数生成
-        Builder(builder: (context) {
-          final toneAsync = ref.watch(toneProvider(photoId));
-          return StageArchiveMatchCard(
-            photoId: photoId,
-            tone: toneAsync,
-            advanced: advanced,
-          );
-        }),
+        // 阶④洞察卡片（v8.0：替代已删除的档案比对）
+        StageInsightCard(photoId: photoId),
       ],
     );
   }

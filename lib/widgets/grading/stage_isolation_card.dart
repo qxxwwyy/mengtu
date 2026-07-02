@@ -85,9 +85,7 @@ class _StageIsolationCardState extends ConsumerState<StageIsolationCard> {
                 icon: Icons.brightness_6_outlined,
                 label: '明度隔离 SLS',
                 value: '${s.luminanceSeparation!.toStringAsFixed(0)}%',
-                statusColor: s.luminanceSeparation!.abs() > 15
-                    ? InterpretationStatus.good
-                    : InterpretationStatus.neutral,
+                statusColor: InterpretationStatus.neutral,
                 interpretation: s.luminanceSeparation! > 15
                     ? '样片手法：主体明度比背景高 ${s.luminanceSeparation!.toStringAsFixed(0)}%，'
                         '视觉焦点稳稳汇聚在面部 —— 经典提亮主体手法。'
@@ -105,9 +103,7 @@ class _StageIsolationCardState extends ConsumerState<StageIsolationCard> {
                 icon: Icons.color_lens_outlined,
                 label: '色彩隔离 SCS',
                 value: '${s.colorSeparation!.toStringAsFixed(0)}°',
-                statusColor: s.colorSeparation! > 60
-                    ? InterpretationStatus.good
-                    : InterpretationStatus.neutral,
+                statusColor: InterpretationStatus.neutral,
                 interpretation: s.colorSeparation! > 60
                     ? '样片手法：肤色与背景色相距 ${s.colorSeparation!.toStringAsFixed(0)}°，'
                         '色彩反差大 —— 主体从环境中鲜明脱离。'
@@ -136,9 +132,7 @@ class _StageIsolationCardState extends ConsumerState<StageIsolationCard> {
           label: '合焦分离',
           value:
               '${map.foregroundScore.toStringAsFixed(0)}/${map.backgroundScore.toStringAsFixed(0)}',
-          statusColor: map.foregroundScore > map.backgroundScore * 1.5
-              ? InterpretationStatus.good
-              : InterpretationStatus.neutral,
+          statusColor: InterpretationStatus.neutral,
           interpretation: map.foregroundScore > map.backgroundScore * 1.5
               ? '样片手法：前景锐度（${map.foregroundScore.toStringAsFixed(0)}）'
                   '远高于背景（${map.backgroundScore.toStringAsFixed(0)}），'

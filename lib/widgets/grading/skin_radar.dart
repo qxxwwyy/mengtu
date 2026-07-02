@@ -248,15 +248,13 @@ class _Legend extends StatelessWidget {
 
     final dh = skin.hueOffset!.abs();
     final sat = skin.saturation!;
-    // 偏离判定：|ΔH| < 10° 对齐良好；< 25° 可接受；否则偏色
-    final aligned = dh < 10;
-    final ok = dh < 25;
-    final color = aligned
-        ? InterpretationStatus.good
-        : (ok ? InterpretationStatus.neutral : InterpretationStatus.warn);
-    final verdict = aligned
-        ? '对齐肤色线'
-        : (ok ? '轻微偏离' : '肤色偏色');
+    // 描述性标签（非诊断）：贴近肤色线 / 偏暖 / 偏冷
+    final verdict = dh < 10
+        ? '贴近肤色线'
+        : (skin.hueOffset! > 0
+            ? '暖偏移（黄金时段/港风常见）'
+            : '冷偏移（日系/阴影环境常见）');
+    final color = InterpretationStatus.neutral;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -274,15 +272,9 @@ class _Legend extends StatelessWidget {
         const SizedBox(height: 8),
         _metric('色相偏差', '${skin.hueOffset!.toStringAsFixed(0)}°', color),
         const SizedBox(height: 3),
-        _metric('饱和度', '${sat.toStringAsFixed(0)}%', _satColor(sat)),
+        _metric('饱和度', '${sat.toStringAsFixed(0)}%', InterpretationStatus.neutral),
       ],
     );
-  }
-
-  Color _satColor(double sat) {
-    if (sat > 70) return InterpretationStatus.warn;
-    if (sat < 20) return InterpretationStatus.low;
-    return InterpretationStatus.good;
   }
 
   Widget _metric(String label, String value, Color color) {

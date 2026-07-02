@@ -6,7 +6,7 @@
 // 大字号数值 + 迷你可视化，像 CT 报告。
 //
 // 复用现有组件不重写算法：HistogramPainter / ColorCard / HarmonyCard /
-// ToneInfoCard / ToneGuideCard。只读展示（EXIF 重读功能仍在详情页信息流保留）。
+// ToneInfoCard。只读展示（EXIF 重读功能仍在详情页信息流保留）。
 //
 // gotcha #26：本页作为详情页的子页，继承暗色（DetailColors token）。
 import 'package:flutter/material.dart';
@@ -19,7 +19,6 @@ import '../../theme/app_theme.dart';
 import '../color_card.dart';
 import '../harmony_card.dart';
 import '../histogram_painter.dart';
-import '../tone_guide_card.dart';
 import '../tone_info_card.dart';
 
 /// 数据仪表盘：分类展示所有原始读数
@@ -245,7 +244,6 @@ class _ColorReadingsSection extends ConsumerWidget {
     final paletteAsync = ref.watch(paletteProvider(
       (photoId: photoId, algorithm: PaletteAlgorithm.celebi, desired: 5),
     ));
-    final toneAsync = ref.watch(toneProvider(photoId));
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -296,17 +294,6 @@ class _ColorReadingsSection extends ConsumerWidget {
               ],
             );
           },
-        ),
-        const SizedBox(height: 8),
-        // 调色指引（ToneGuideCard 含肤色解读）
-        toneAsync.when(
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-          data: (tone) => ToneGuideCard(
-            tone: tone,
-            skin: skinAsync.asData?.value,
-            showSkin: true,
-          ),
         ),
         // 和谐度（依赖色卡）
         const SizedBox(height: 8),

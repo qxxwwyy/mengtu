@@ -199,7 +199,6 @@ class ImportService {
       await _db.colorPinDao.deletePinsByPhotoId(photoId);
       await _db.albumDao.removePhotoFromAllAlbums(photoId);
       await _db.planDao.removePhotoFromAllPlans(photoId);
-      await _db.styleProfileDao.removePhotoFromAllProfiles(photoId);
       await _db.photoDao.deletePhoto(photoId);
     });
 

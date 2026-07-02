@@ -100,14 +100,12 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
                   icon: Icons.brightness_low,
                   label: '黑点偏移',
                   value: a.blackPointOffset.toStringAsFixed(1),
-                  statusColor: a.blackPointOffset < 4
-                      ? InterpretationStatus.warn
-                      : InterpretationStatus.good,
+                  statusColor: InterpretationStatus.neutral,
                   interpretation: a.blackPointOffset < 4
                       ? '样片手法：黑点触底，用暗部死黑换对比度冲击'
-                          '—— 电影调/港风的标志特征。复刻日系则相反，需提至 4% 灰阶。'
+                          '—— 电影调/港风的标志特征。'
                       : '样片手法：黑点上提 ${a.blackPointOffset.toStringAsFixed(1)}，'
-                          '保留暗部层次 —— 常见于日系/中式柔和影调。',
+                          '保留暗部层次 —— 日系/中式柔和影调常见。',
                 ),
           orElse: () => const SizedBox.shrink(),
         ),
@@ -120,12 +118,9 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
                   icon: Icons.brightness_high,
                   label: '白点压缩',
                   value: a.whitePointCompression.toStringAsFixed(1),
-                  statusColor: a.whitePointCompression > 252
-                      ? InterpretationStatus.warn
-                      : InterpretationStatus.good,
+                  statusColor: InterpretationStatus.neutral,
                   interpretation: a.whitePointCompression > 252
-                      ? '样片手法：白点触顶，高光溢出 —— 高反差/硬光风格。'
-                          '若要柔和需压回 250 以内保留细节。'
+                      ? '样片手法：白点触顶，高光溢出 —— 高反差/硬光风格特征。'
                       : '样片手法：白点压缩至 ${a.whitePointCompression.toStringAsFixed(1)}，'
                           '保留高光细节 —— 柔和过渡的标志。',
                 ),
@@ -138,14 +133,10 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
             icon: Icons.contrast,
             label: 'RMS 对比度',
             value: t.rmsContrast.toStringAsFixed(1),
-            statusColor: t.rmsContrast > 60
-                ? InterpretationStatus.good
-                : (t.rmsContrast < 30
-                    ? InterpretationStatus.low
-                    : InterpretationStatus.neutral),
+            statusColor: InterpretationStatus.neutral,
             interpretation: t.rmsContrast > 60
                 ? '样片手法：高对比（RMS ${t.rmsContrast.toStringAsFixed(0)}），'
-                    '明暗反差强烈 —— 立体感强，适合电影调/港风。'
+                    '明暗反差强烈 —— 立体感强，电影调/港风常见。'
                 : (t.rmsContrast < 30
                     ? '样片手法：低对比（RMS ${t.rmsContrast.toStringAsFixed(0)}），'
                         '画面柔和 —— 日系/低饱和风格的典型特征。'

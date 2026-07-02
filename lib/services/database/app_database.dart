@@ -10,7 +10,6 @@ import 'daos/tag_dao.dart';
 import 'daos/color_pin_dao.dart';
 import 'daos/album_dao.dart';
 import 'daos/plan_dao.dart';
-import 'daos/style_profile_dao.dart';
 
 part 'app_database.g.dart';
 
@@ -18,9 +17,8 @@ part 'app_database.g.dart';
   tables: [
     Photos, Tags, ColorPins, Albums, AlbumPhotos, AlbumTags,
     ShootingPlans, PlanPhotos, PlanTemplates,
-    StyleProfiles, StyleProfilePhotos, // v3.5 新增
   ],
-  daos: [PhotoDao, TagDao, ColorPinDao, AlbumDao, PlanDao, StyleProfileDao],
+  daos: [PhotoDao, TagDao, ColorPinDao, AlbumDao, PlanDao],
 )
 class AppDatabase extends _$AppDatabase {
   AppDatabase() : super(_open());
@@ -28,7 +26,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 11;
+  int get schemaVersion => 12;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -106,15 +104,10 @@ class AppDatabase extends _$AppDatabase {
             // 新增列为 nullable，对已存在的旧策划行无影响（默认 NULL）
             await m.addColumn(shootingPlans, shootingPlans.associatedAlbumId);
           }
-          if (from < 11) {
-            // v3.5: 用户自定义风格档案 + 内置理论档案
-            // 增量字段（black_point_offset/white_point_compression/ten_tonal_type/
-            // skin_sti/face_lighting_contrast）内嵌在 toneJson 的 'advanced' 键，
-            // 不改 Photos 表结构。
-            // 旧 toneJson 缺 'advanced' 键 → AdvancedPortraitMetrics.fromJsonString
-            // 返回 null → provider 自动重算（纯直方图可算部分）+ 按需补算（Face Mesh 部分）。
-            await m.createTable(styleProfiles);
-            await m.createTable(styleProfilePhotos);
+          if (from < 12) {
+            // v8.0: 移除风格档案系统（伪精确匹配下线）
+            await m.deleteTable('style_profile_photos');
+            await m.deleteTable('style_profiles');
           }
         },
       );

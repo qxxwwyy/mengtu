@@ -1,6 +1,6 @@
 // interpretation_row.dart — 解读行（共享组件，v3.5 PR3）
 //
-// 抽取自 tone_guide_card.dart 的私有 _GuideRow，供四阶解构卡片复用。
+// 抽取自原 tone_guide_card 的私有 _GuideRow，供四阶解构卡片复用。
 // 布局：[图标(状态色)] [Expanded: 标签 + 单色等宽值(状态色) / 解读文字(弱化色)]
 //
 // 解读措辞约定（spec §3.5/3.7）：用「样片手法：…」式，描述样片为什么这样布阶调/色彩，
@@ -9,7 +9,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
 
-/// 解读行的状态色（与 tone_guide_card 阈值分类器对齐）
+/// 解读行的状态色（四阶卡片通用）
 class InterpretationStatus {
   InterpretationStatus._();
 

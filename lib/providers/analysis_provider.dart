@@ -183,7 +183,7 @@ final detectedFaceProvider =
 /// 采样像素统计 ΔH/饱和/SLS/SCS/skinLuminance/bgLuminance（face_service.Isolate）。
 /// SCRFD 只给 5 点，无法计算 STI/FLC（已移除）。
 ///
-/// 调用方：[DetailBottomPanel] 的 ToneGuideCard，按 hasSkin 动态展示。
+/// 调用方：肤色示波器 + 主体手法卡片 + 洞察卡片，按 hasSkin 动态展示。
 /// 注意：此 provider **不写回 toneJson 缓存**，因为肤色数据依赖
 /// 用户是否打开了详情页（非全量预计算），缓存策略见 import_service。
 final skinProvider =
