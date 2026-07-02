@@ -73,11 +73,12 @@ static void generate_proposals(const ncnn::Mat& score_blob,
                 float ax = (x + 0.5f) * stride;
                 float ay = (y + 0.5f) * stride;
 
-                // BBox: channel-based access, NO stride multiplication for opt2 models
-                float dx = bbox_blob.channel(0 + q * 4)[idx];
-                float dy = bbox_blob.channel(1 + q * 4)[idx];
-                float dw = bbox_blob.channel(2 + q * 4)[idx];
-                float dh = bbox_blob.channel(3 + q * 4)[idx];
+                // BBox: channel-based access — model outputs in stride-space,
+                // must multiply by stride to get pixel-space distances
+                float dx = bbox_blob.channel(0 + q * 4)[idx] * stride;
+                float dy = bbox_blob.channel(1 + q * 4)[idx] * stride;
+                float dw = bbox_blob.channel(2 + q * 4)[idx] * stride;
+                float dh = bbox_blob.channel(3 + q * 4)[idx] * stride;
 
                 FaceResult fr;
                 fr.x = ax - dx;
