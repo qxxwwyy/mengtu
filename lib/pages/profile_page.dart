@@ -34,33 +34,34 @@ class ProfilePage extends ConsumerWidget {
       ),
       body: ListView(
         children: [
-          // 数据统计卡片
-          Container(
-            margin: const EdgeInsets.all(12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surface,
-              borderRadius: Radii.legacy12Border,
-            ),
+          // 数据统计卡片网格（4 个统计卡片）
+          Padding(
+            padding: Spacing.all(Spacing.md),
             child: photoCount == null && tagCount == null && albumCount == null
                 ? const Center(child: CircularProgressIndicator())
                 : Row(
                     children: [
-                      _StatItem(
-                          icon: Icons.photo_library,
-                          label: '照片',
-                          value: photoCount),
-                      _StatItem(
-                          icon: Icons.local_offer,
-                          label: '标签',
-                          value: tagCount),
-                      _StatItem(
-                          icon: Icons.photo_album,
-                          label: '相册',
-                          value: albumCount),
+                      _StatCard(
+                        icon: Icons.photo_library,
+                        label: '照片',
+                        value: photoCount,
+                      ),
+                      SizedBox(width: Spacing.sm),
+                      _StatCard(
+                        icon: Icons.local_offer,
+                        label: '标签',
+                        value: tagCount,
+                      ),
+                      SizedBox(width: Spacing.sm),
+                      _StatCard(
+                        icon: Icons.photo_album,
+                        label: '相册',
+                        value: albumCount,
+                      ),
                     ],
                   ),
           ),
+          SizedBox(height: Spacing.sm),
           // 功能入口
           _MenuItem(
             icon: Icons.local_offer_outlined,
@@ -76,11 +77,9 @@ class ProfilePage extends ConsumerWidget {
             onTap: () => Navigator.push(context,
                 MaterialPageRoute(builder: (_) => const SettingsPage())),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: Spacing.xl),
           Center(
-            child: Text(appVersionLabel,
-                style: TextStyle(
-                    fontSize: 12, color: theme.colorScheme.onSurface.withValues(alpha: 0.3))),
+            child: Text(appVersionLabel, style: AppTypography.captionMuted),
           ),
         ],
       ),
@@ -88,33 +87,49 @@ class ProfilePage extends ConsumerWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
+class _StatCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final int? value; // null 表示加载中
+  final int? value;
 
-  const _StatItem(
-      {required this.icon, required this.label, required this.value});
+  const _StatCard({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     return Expanded(
-      child: Column(
-        children: [
-          Icon(icon, color: theme.colorScheme.primary, size: 24),
-          const SizedBox(height: 8),
-          Text(value == null ? '—' : '$value',
-              style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface)),
-          const SizedBox(height: 2),
-          Text(label,
-              style: TextStyle(
-                  fontSize: 12,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
-        ],
+      child: Container(
+        padding: Spacing.all(Spacing.md),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Theme.of(context).colorScheme.surface,
+              Theme.of(context).colorScheme.surface.withValues(alpha: 0.6),
+            ],
+          ),
+          borderRadius: Radii.lgBorder,
+          border: Border.all(
+            color: AppColors.accent.withValues(alpha: 0.15),
+            width: 0.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: AppColors.accent, size: 20),
+            SizedBox(height: Spacing.sm),
+            Text(
+              value == null ? '—' : '$value',
+              style: AppTypography.dataXl,
+            ),
+            SizedBox(height: 2),
+            Text(label, style: AppTypography.captionMuted),
+          ],
+        ),
       ),
     );
   }

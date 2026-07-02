@@ -13,6 +13,7 @@ import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
 import '../widgets/common/page_transitions.dart';
+import '../widgets/common/empty_state.dart';
 import 'detail_page.dart';
 import '../theme/app_theme.dart';
 
@@ -570,90 +571,12 @@ class _HomePageState extends ConsumerState<HomePage> {
   }
 
   Widget _buildEmptyState() {
-    final theme = Theme.of(context);
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            // Glowing camera container
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [
-                    theme.colorScheme.primary.withValues(alpha: 0.15),
-                    theme.colorScheme.primary.withValues(alpha: 0.03),
-                  ],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                    blurRadius: 24,
-                    spreadRadius: 4,
-                  ),
-                ],
-                border: Border.all(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
-                  width: 1.5,
-                ),
-              ),
-              child: Center(
-                child: Icon(
-                  Icons.camera_alt_outlined,
-                  size: 48,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            Text(
-              '还没有照片',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 0.5,
-                color: theme.colorScheme.onSurface,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                '开始你的摄影美学之旅吧！导入作品进行影调分析与直方图调色参考',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  height: 1.5,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-            // Premium CTA Button
-            ElevatedButton.icon(
-              onPressed: _pickAndImport,
-              icon: const Icon(Icons.add_photo_alternate_outlined, size: 20),
-              label: const Text('导入作品', style: TextStyle(fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                foregroundColor: theme.colorScheme.onPrimary,
-                backgroundColor: theme.colorScheme.primary,
-                padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: Radii.xlBorder,
-                ),
-                elevation: 4,
-                shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
-              ),
-            ),
-          ],
-        ),
-      ),
+    return EmptyState(
+      icon: Icons.camera_alt_outlined,
+      title: '还没有照片',
+      subtitle: '导入作品进行影调分析与直方图调色参考',
+      actionLabel: '导入作品',
+      onAction: _pickAndImport,
     );
   }
 }
