@@ -164,9 +164,9 @@ class _ColorWheelPainter extends CustomPainter {
       center: Alignment.center,
       radius: 1.0,
       colors: [
-        Colors.white.withValues(alpha: 0.0),
-        Colors.white.withValues(alpha: 0.0),
-        Colors.white.withValues(alpha: 0.4),
+        DetailColors.textPrimary.withValues(alpha: 0.0),
+        DetailColors.textPrimary.withValues(alpha: 0.0),
+        DetailColors.textPrimary.withValues(alpha: 0.4),
       ],
       stops: const [0.0, 0.3, 1.0],
     );
