@@ -93,14 +93,14 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
     // v6.1：用固定 height 约束（原 maxHeight:380 留余量 → Column(min) 居中 →
     // 工具行与卡片之间出现暗色空隙，用户看成「顶部大黑框」，问题4）。
     // 收起态 72（工具行），展开态 = 工具行(60) + GradingPanel(308) = 368。
-    final height = _effectiveExpanded ? 368.0 : 72.0;
+    final height = _effectiveExpanded ? 368.0 : 80.0;
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeInOutCubic,
+      duration: AppAnimations.expandDuration,
+      curve: AppAnimations.expandCurve,
       height: height,
       decoration: const BoxDecoration(
         color: DetailColors.panelSurface,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(Radii.lg)),
         border: Border(
           top: BorderSide(color: DetailColors.divider, width: 0.5),
         ),
@@ -108,6 +108,8 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
       clipBehavior: Clip.hardEdge,
       child: Column(
         children: [
+          // grab handle 拖拽指示器（非取色模式显示）
+          if (!widget.forceCollapsed) _buildGrabHandle(),
           // 常驻工具行（始终可见，取色模式也保留以供退出）
           _buildToolRow(),
           // 展开内容（取色模式 forceCollapsed 时不显示）—— Expanded 填满剩余高度
@@ -117,6 +119,31 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
               child: GradingPanel(photoId: widget.photoId),
             ),
         ],
+      ),
+    );
+  }
+
+  // ============ Grab Handle ============
+
+  Widget _buildGrabHandle() {
+    return GestureDetector(
+      onTap: _toggleExpand,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.only(top: 6, bottom: 2),
+        alignment: Alignment.center,
+        child: AnimatedContainer(
+          duration: AppAnimations.expandDuration,
+          width: _effectiveExpanded ? 28 : 36,
+          height: 4,
+          decoration: BoxDecoration(
+            color: _effectiveExpanded
+                ? AppColors.accent.withValues(alpha: 0.6)
+                : DetailColors.textMuted,
+            borderRadius: Radii.pillBorder,
+          ),
+        ),
       ),
     );
   }
@@ -253,7 +280,20 @@ class _ToolButton extends StatelessWidget {
     return InkWell(
       onTap: onTap,
       borderRadius: Radii.legacy12Border,
-      child: Padding(
+      child: Container(
+        decoration: isActive
+            ? BoxDecoration(
+                color: accent.withValues(alpha: 0.12),
+                borderRadius: Radii.legacy12Border,
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.2),
+                    blurRadius: 8,
+                    spreadRadius: 0,
+                  ),
+                ],
+              )
+            : null,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,

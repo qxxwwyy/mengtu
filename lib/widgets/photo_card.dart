@@ -77,7 +77,12 @@ class _PhotoCardState extends State<PhotoCard> {
                         .withValues(alpha: 0.3),
                   ),
                 // 缩略图（或原图兜底；原图用 cacheWidth 限制解码尺寸防 OOM）
-                Image.file(
+                // Hero 共享元素转场（仅非多选模式包裹）
+                Hero(
+                  tag: widget.selectMode
+                      ? 'noop_${widget.photo.id}'
+                      : 'photo_${widget.photo.id}',
+                  child: Image.file(
                   imageFile,
                   fit: BoxFit.cover,
                   gaplessPlayback: true,
@@ -122,7 +127,8 @@ class _PhotoCardState extends State<PhotoCard> {
                       ],
                     ),
                   ),
-                ),
+                  ),
+                ), // Hero 闭合
                 // 右下角快速加标签按钮已在 v2.1 移除（标签迁移到相册）
                 // 多选模式：选中蒙层 + 左上角勾
                 if (widget.selectMode) ...[

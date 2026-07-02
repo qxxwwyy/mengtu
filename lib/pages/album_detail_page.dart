@@ -13,6 +13,7 @@ import '../providers/album_provider.dart';
 import '../providers/tag_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
+import '../widgets/common/page_transitions.dart';
 import 'detail_page.dart';
 import '../theme/app_theme.dart';
 
@@ -516,9 +517,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
             onTap: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                  builder: (_) => DetailPage(photoId: photo.id),
-                ),
+                detailPageRoute(DetailPage(photoId: photo.id)),
               );
             },
             onLongPress: () => _showPhotoOptions(photo),

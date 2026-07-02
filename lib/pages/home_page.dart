@@ -12,6 +12,7 @@ import '../providers/photo_provider.dart';
 import '../providers/database_provider.dart';
 import '../services/database/app_database.dart';
 import '../widgets/photo_card.dart';
+import '../widgets/common/page_transitions.dart';
 import 'detail_page.dart';
 import '../theme/app_theme.dart';
 
@@ -320,7 +321,7 @@ class _HomePageState extends ConsumerState<HomePage> {
   void _navigateToDetail(String photoId) {
     Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => DetailPage(photoId: photoId)),
+      detailPageRoute(DetailPage(photoId: photoId)),
     );
   }
 

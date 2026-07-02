@@ -46,12 +46,29 @@ class StageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    return AnimatedContainer(
+      duration: AppAnimations.expandDuration,
+      curve: AppAnimations.expandCurve,
+      transform: expanded
+          ? Matrix4.translationValues(0, -2, 0)
+          : Matrix4.identity(),
       decoration: BoxDecoration(
         color: DetailColors.cardSurface,
         borderRadius: Radii.mdBorder,
         border: Border.all(
-            color: AppColors.accent.withValues(alpha: 0.25), width: 0.5),
+            color: expanded
+                ? AppColors.accent.withValues(alpha: 0.5)
+                : AppColors.accent.withValues(alpha: 0.25),
+            width: 0.5),
+        boxShadow: expanded
+            ? [
+                BoxShadow(
+                  color: AppColors.accent.withValues(alpha: 0.08),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : null,
       ),
       child: Material(
         color: Colors.transparent,
@@ -59,16 +76,14 @@ class StageCard extends StatelessWidget {
           borderRadius: Radii.mdBorder,
           onTap: onTap,
           child: AnimatedSize(
-            duration: const Duration(milliseconds: 220),
-            curve: Curves.easeInOutCubic,
+            duration: AppAnimations.expandDuration,
+            curve: AppAnimations.expandCurve,
             alignment: Alignment.topCenter,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 标题行（折叠/展开态都显示）
                 _buildHeader(),
-                // 详情（仅展开态显示，紧贴标题行，无间隙）
                 if (expanded)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
@@ -129,7 +144,7 @@ class StageCard extends StatelessWidget {
   }
 }
 
-/// 序号圆标（1/2/3/4）
+/// 序号圆标（1/2/3/4）— 渐变填充
 class _IndexBadge extends StatelessWidget {
   final int index;
 
@@ -138,19 +153,31 @@ class _IndexBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 20,
-      height: 20,
+      width: 22,
+      height: 22,
       decoration: BoxDecoration(
-        color: AppColors.accent.withValues(alpha: 0.18),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            AppColors.accent,
+            AppColors.accent.withValues(alpha: 0.6),
+          ],
+        ),
         shape: BoxShape.circle,
-        border: Border.all(
-            color: AppColors.accent.withValues(alpha: 0.5), width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.accent.withValues(alpha: 0.3),
+            blurRadius: 4,
+            spreadRadius: 0,
+          ),
+        ],
       ),
       alignment: Alignment.center,
       child: Text(
         '$index',
         style: const TextStyle(
-          color: AppColors.accent,
+          color: AppColors.bgBase,
           fontSize: 11,
           fontWeight: FontWeight.w700,
         ),

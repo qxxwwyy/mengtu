@@ -415,6 +415,12 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       );
     }
 
+    // Hero 共享元素转场（从瀑布流缩略图放大）
+    imageWithFilters = Hero(
+      tag: 'photo_${widget.photoId}',
+      child: imageWithFilters,
+    );
+
     // 像素物理属性蒙层（clipping / sharpness / face bbox）必须放在 InteractiveViewer 内部，
     // 与 Image 共享缩放/平移变换，否则放大检查溢出/合焦时斑点会错位（gotcha #45）
     final clippingResult = clippingAsync?.asData?.value;
