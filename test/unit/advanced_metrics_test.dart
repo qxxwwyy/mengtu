@@ -5,13 +5,12 @@
 // 2. calculateWhitePointCompression：对称测试
 // 3. classifyTenTonalType：toneKey×toneRange 组合 + full 特殊处理
 // 4. AdvancedPortraitMetrics 序列化：强制重算（缺字段抛错）+ 容错（skin/flc 缺返回 null）
-// 5. PhotoFingerprint 序列化往返
+// 5. advancedMetrics 序列化往返
 // 6. 小图稳定性（滑动平均生效）
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mengtu/models/advanced_portrait_metrics.dart';
-import 'package:mengtu/models/photo_fingerprint.dart';
 import 'package:mengtu/services/tone_service.dart';
 
 void main() {
@@ -269,46 +268,4 @@ void main() {
     });
   });
 
-  group('PhotoFingerprint 序列化', () {
-    test('toJson + fromJson 往返保持一致', () {
-      final original = PhotoFingerprint(
-        histogramFeatures: List.generate(96, (i) => i / 96),
-        scalarFeatures: const [0.5, 1.2, 0.04, 0.98, 0.5, 0.3, 0.2],
-      );
-      final json = original.toJson();
-      final restored = PhotoFingerprint.fromJson(json);
-
-      expect(restored.histogramFeatures.length, 96);
-      expect(restored.scalarFeatures.length, 7);
-      for (var i = 0; i < 96; i++) {
-        expect(restored.histogramFeatures[i], closeTo(original.histogramFeatures[i], 1e-9));
-      }
-      for (var i = 0; i < 7; i++) {
-        expect(restored.scalarFeatures[i], closeTo(original.scalarFeatures[i], 1e-9));
-      }
-    });
-
-    test('toJson 包含 schema 版本 v=1', () {
-      const fp = PhotoFingerprint(
-        histogramFeatures: [],
-        scalarFeatures: [],
-      );
-      final json = fp.toJson();
-      expect(json['v'], 1);
-      expect(json.containsKey('hist'), isTrue);
-      expect(json.containsKey('scalar'), isTrue);
-    });
-
-    test('scalarLabels 长度 = 7，与 scalarFeatures 维度一致', () {
-      expect(PhotoFingerprint.scalarLabels.length, 7);
-      expect(PhotoFingerprint.scalarLabels, [
-        'rms_contrast', 'warm_cold_ratio', 'black_point', 'white_point',
-        'entropy', 'scs', 'sls',
-      ]);
-    });
-
-    test('missing 占位值 = -1.0', () {
-      expect(PhotoFingerprint.missing, -1.0);
-    });
-  });
 }
