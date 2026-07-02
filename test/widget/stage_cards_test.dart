@@ -98,7 +98,7 @@ void main() {
       expect(find.text('影调手法'), findsOneWidget);
       expect(find.text('色彩手法'), findsOneWidget);
       expect(find.text('主体手法'), findsOneWidget);
-      expect(find.text('档案比对'), findsOneWidget);
+      expect(find.text('洞察'), findsOneWidget);
 
       // 4 个序号圆标
       expect(find.text('1'), findsOneWidget);
