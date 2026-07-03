@@ -27,8 +27,9 @@ class ToneInfoCard extends StatelessWidget {
   }
 
   Widget _buildToneKeyBadge(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    final secondary = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    // 用 AppColors.accent 而非 Theme.of，保持详情页一致
+    const accent = AppColors.accent;
+    final secondary = DetailColors.textSecondary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
@@ -72,8 +73,8 @@ class ToneInfoCard extends StatelessWidget {
   }
 
   Widget _buildZoneBars(BuildContext context) {
-    final labelColor =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
+    // 用 DetailColors token 而非 Theme.of，保持详情页一致
+    final labelColor = DetailColors.textMuted;
     // 影调五区域色用 ChartColors 统一定义
     final blackColor = ChartColors.toneBlacks;
     return Column(
@@ -105,9 +106,9 @@ class ToneInfoCard extends StatelessWidget {
   }
 
   Widget _buildStatsGrid(BuildContext context) {
-    final labelColor =
-        Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5);
-    final accent = Theme.of(context).colorScheme.primary;
+    // 用 DetailColors token 而非 Theme.of，保持详情页一致
+    final labelColor = DetailColors.textMuted;
+    const accent = AppColors.accent;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -152,8 +153,9 @@ class _ZoneBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 用 DetailColors token 而非 Theme.of，保持详情页一致
     final labelColor =
-        textColor ?? Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
+        textColor ?? DetailColors.textSecondary;
     return Row(
       children: [
         SizedBox(
@@ -199,8 +201,8 @@ class _StatCell extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 6),
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surfaceContainerHighest
-            .withValues(alpha: 0.4),
+        // 用 DetailColors.cardSurface 而非 Theme.of，保持详情页一致
+        color: DetailColors.cardSurface,
         borderRadius: Radii.smBorder,
       ),
       child: Column(
@@ -209,7 +211,7 @@ class _StatCell extends StatelessWidget {
           Text(label,
               style: TextStyle(
                   fontSize: 10,
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4))),
+                  color: DetailColors.textMuted)),
           Text(value,
               style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.bold, color: accent)),

@@ -71,8 +71,9 @@ class _ReferenceHistogramPainter extends CustomPainter {
   _ReferenceHistogramPainter({required this.current, required this.reference});
 
   // 性能优化：Paint 对象 static final
+  // 参照用白 50% alpha——在 DetailColors.cardSurface 上保证可见
   static final _referencePaint = Paint()
-    ..color = ChartColors.gridLight
+    ..color = const Color(0x80FFFFFF)
     ..style = PaintingStyle.fill;
 
   static final _currentPaint = Paint()
