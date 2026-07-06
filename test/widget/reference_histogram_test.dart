@@ -144,6 +144,41 @@ void main() {
       // 此测试验证非空场景稳定，空 List 场景由调用方保证
     });
   });
+
+  // gotcha #64 回归测试：ReferenceHistogram 必须在无宽度约束的父级里
+  // 也能渲染出非 0 宽度。真实使用场景是 stage_card 展开内容的
+  // Column(crossAxisAlignment: start)，没有 SizedBox(width:) 包裹。
+  // 若组件内部不主动撑满宽度，CustomPaint 会塌缩成 0 宽 → 黑框 bug。
+  group('无宽度约束场景（gotcha #64 回归）', () {
+    testWidgets('在 Column(start) 里渲染宽度 > 0（复现 stage_card 场景）',
+        (tester) async {
+      await tester.pumpWidget(const MaterialApp(
+        home: Scaffold(
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ReferenceHistogram(currentToneKey: 'full'),
+            ],
+          ),
+        ),
+      ));
+      await tester.pumpAndSettle();
+
+      // 关键断言：ReferenceHistogram 内部的 CustomPaint 渲染宽度必须 > 0
+      // （修复前因 SizedBox 缺 width 会被 Column 压成 0 宽 → 黑框）
+      // 用 find.descendant 精确定位 ReferenceHistogram 内的 CustomPaint，
+      // 避开 MaterialApp/Scaffold 自带的多个 CustomPaint。
+      final histFinder = find.descendant(
+        of: find.byType(ReferenceHistogram),
+        matching: find.byType(CustomPaint),
+      );
+      expect(histFinder, findsOneWidget);
+      final customPaintSize = tester.getSize(histFinder);
+      expect(customPaintSize.width, greaterThan(0),
+          reason: 'ReferenceHistogram 在无宽度约束父级里宽度不应为 0（gotcha #64 黑框 bug）');
+      expect(customPaintSize.height, equals(80));
+    });
+  });
 }
 
 /// 可切换 toneKey 的测试 widget（验证 shouldRepaint）

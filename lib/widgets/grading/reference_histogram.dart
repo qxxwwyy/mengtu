@@ -30,7 +30,14 @@ class ReferenceHistogram extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final reference = _getReferenceHistogram(currentToneKey);
+    // width: double.infinity 强制撑满父级宽度。
+    // 根因（gotcha #64）：CustomPaint 无 child 时 intrinsic 宽度 = 0，
+    // 若父级是 Column(crossAxisAlignment: start)（如 stage_card 展开内容）
+    // 不给交叉轴紧约束，整条链会把 SizedBox 压成 0 宽度 → painter 拿到
+    // size.width=0 → barWidth=0 → 所有点塌缩到 x=0 → 视觉上 0 像素（黑框）。
+    // 显式 width: double.infinity 让 SizedBox 在水平方向请求父级最大宽度。
     return SizedBox(
+      width: double.infinity,
       height: 80,
       child: CustomPaint(
         painter: _ReferenceHistogramPainter(
@@ -87,13 +94,15 @@ class _ReferenceHistogramPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    // 防御性守卫：尺寸非正时跳过绘制（gotcha #64：父级无宽度约束时 size 可能退化）
+    if (size.width <= 0 || size.height <= 0) return;
     final width = size.width;
     final height = size.height;
     final barWidth = width / 256;
 
     // 底部基线
-    canvas.drawLine(Offset(0, height - 0.5), Offset(width, height - 0.5),
-        _axisPaint);
+    canvas.drawLine(
+        Offset(0, height - 0.5), Offset(width, height - 0.5), _axisPaint);
 
     // 1) 参照分布（半透明灰背景）
     _drawHistogram(canvas, size, reference, _referencePaint, barWidth);
@@ -114,12 +123,10 @@ class _ReferenceHistogramPainter extends CustomPainter {
       final h = (hist[i] / maxVal) * height;
       path.lineTo(i * barWidth, height - h);
     }
-    path.lineTo(width(size), height);
+    path.lineTo(size.width, height);
     path.close();
     canvas.drawPath(path, paint);
   }
-
-  double width(Size size) => size.width;
 
   @override
   bool shouldRepaint(covariant _ReferenceHistogramPainter old) =>

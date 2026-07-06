@@ -145,8 +145,12 @@ class _TonalReadingsSection extends ConsumerWidget {
     final toneAsync = ref.watch(toneProvider(photoId));
     final advancedAsync = ref.watch(advancedMetricsProvider(photoId));
 
+    // crossAxisAlignment: stretch（gotcha #64）：直方图 Container 内的
+    // CustomPaint 无 child，intrinsic 宽度=0。若用 start，整条 Column 会把
+    // 直方图 Container 压成 0 宽 → painter size.width=0 → 黑框。
+    // stretch 让所有子项（含直方图）拿到父级（ListView）全宽。
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 直方图
         histAsync.when(
@@ -245,8 +249,10 @@ class _ColorReadingsSection extends ConsumerWidget {
       (photoId: photoId, algorithm: PaletteAlgorithm.celebi, desired: 5),
     ));
 
+    // stretch：与 _TonalReadingsSection 一致，确保「未检出肤色」Container
+    // 等无 intrinsic 宽度的子项撑满（gotcha #64）
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         // 色卡（ColorCard 内部自行 watch paletteProvider，无需外层包）
         ColorCard(photoId: photoId),

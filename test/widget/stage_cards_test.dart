@@ -22,6 +22,7 @@ import 'package:mengtu/models/advanced_portrait_metrics.dart';
 import 'package:mengtu/models/tone_result.dart';
 import 'package:mengtu/providers/analysis_provider.dart';
 import 'package:mengtu/widgets/grading/grading_panel.dart';
+import 'package:mengtu/widgets/grading/reference_histogram.dart';
 import 'package:mengtu/widgets/grading/stage_card.dart';
 
 void main() {
@@ -130,6 +131,19 @@ void main() {
       expect(find.text('白点压缩'), findsOneWidget);
       // 十大影调标签
       expect(find.textContaining('十大影调'), findsOneWidget);
+
+      // gotcha #64 回归：展开后参照直方图的 CustomPaint 宽度必须 > 0。
+      // 真实 stage_card 展开内容是 Column(crossAxisAlignment: start)，
+      // 若 ReferenceHistogram 内部不撑满宽度，CustomPaint 会被压成 0 宽 → 黑框。
+      final histFinder = find.descendant(
+        of: find.byType(ReferenceHistogram),
+        matching: find.byType(CustomPaint),
+      );
+      expect(histFinder, findsOneWidget);
+      final histSize = tester.getSize(histFinder);
+      expect(histSize.width, greaterThan(0),
+          reason: '阶①参照直方图渲染宽度不应为 0（gotcha #64 黑框 bug）');
+      expect(histSize.height, equals(80));
     });
 
     testWidgets('阶①摘要显示「高调 · 长跨度」格式（toneKeyLabel · toneRangeLabel）',
