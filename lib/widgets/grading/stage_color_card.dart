@@ -91,6 +91,7 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
               const SizedBox(height: 8),
               SkinRadar(
                 skin: const SkinAnalysis(),
+                photoId: widget.photoId,
               ),
             ],
           );
@@ -102,6 +103,7 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
             // 固定肤色参考线。光点越靠近线 → 肤色越正。替代旧版 5 维雷达。
             SkinRadar(
               skin: s,
+              photoId: widget.photoId,
             ),
             const SizedBox(height: 10),
             // v7.0：STI 行已移除（依赖 Face Mesh，SCRFD 只给 5 点无法计算）。

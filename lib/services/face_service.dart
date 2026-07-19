@@ -135,6 +135,10 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
   double sumLum = 0;
   int skinCount = 0;
 
+  // 肤色像素 hue×sat 2D 直方图（48×8=384 bins），用于矢量示波器像素云渲染。
+  // 在同一遍历循环内累加，几乎零额外成本（只有一次数组自增）。
+  final hueSatBins = List<int>.filled(SkinAnalysis.hueBinCount * SkinAnalysis.satBinCount, 0);
+
   // 背景累加器（全图排除 ROI）
   double bgSumLum = 0;
   int bgLumCount = 0;
@@ -200,6 +204,10 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
         sumSat += s;
         sumLum += l;
         skinCount++;
+        // hue×sat 2D bin 累加（hue 已归一到 0~360，sat 0~1）
+        final hb = (h / (360.0 / SkinAnalysis.hueBinCount)).floor().clamp(0, SkinAnalysis.hueBinCount - 1);
+        final sb = (s / (1.0 / SkinAnalysis.satBinCount)).floor().clamp(0, SkinAnalysis.satBinCount - 1);
+        hueSatBins[hb * SkinAnalysis.satBinCount + sb]++;
       }
     }
   }
@@ -236,6 +244,7 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
     colorSeparation: scs,
     skinLuminance: avgLum,
     bgLuminance: bgAvgLum,
+    hueSatBins: hueSatBins,
   );
 }
 

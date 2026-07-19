@@ -211,9 +211,9 @@ class ChartColors {
   static const toneHighlights = Color(0xFFB0BEC5);
   static const toneWhites = Color(0xFFECEFF1);
 
-  // ── 肤色示波器 ──
-  /// 肤色参考线（暖黄）
-  static const skinToneLine = Color(0xFFFFD54F);
+  // ── 肤色示波器（达芬奇矢量示波器风格）──
+  /// 肤色参考线（白色，达芬奇标准）
+  static const skinToneLine = Color(0xFFE0E0E0);
 
   /// 肤色光点（暖橙）
   static const skinTonePoint = Color(0xFFFF8A65);
@@ -221,7 +221,21 @@ class ChartColors {
   /// 肤色光点外晕
   static const skinToneHalo = Color(0xFFFF7043);
 
+  /// 75% 目标方框（白色，达芬奇彩条目标）
+  static const vectorscopeTarget = Color(0xFFFFFFFF);
+
+  /// 六色方位标签色
+  static const labelR = Color(0xFFFF5252); // 红
+  static const labelY = Color(0xFFFFEB3B); // 黄
+  static const labelG = Color(0xFF69F0AE); // 绿
+  static const labelC = Color(0xFF40C4FF); // 青
+  static const labelB = Color(0xFF536DFE); // 蓝
+  static const labelM = Color(0xFFE040FB); // 品红
+
   // ── 网格/辅助线 ──
+  /// 75% 参考圆（高亮）
+  static const grid75 = Color(0x52FFFFFF);
+
   /// 浅网格线（白色 15%）
   static const gridLight = Color(0x26FFFFFF);
 

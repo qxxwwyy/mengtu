@@ -71,6 +71,10 @@ void main() {
 
   const emptySkin = SkinAnalysis(); // 空 → 各卡片显示「未检出」
 
+  /// v7.1：imageScopeProvider 的空 bins override（避免测试读文件）
+  final emptyScopeBins = List<int>.filled(
+      SkinAnalysis.hueBinCount * SkinAnalysis.satBinCount, 0);
+
   /// 构建带 provider override 的测试 harness
   ///
   /// override styleProfilesProvider 为空流 → 阶④显示空状态引导（不触发
@@ -81,6 +85,7 @@ void main() {
         histogramProvider('p1').overrideWith((ref) async => buildSampleHistogram()),
         toneProvider('p1').overrideWith((ref) async => buildTone()),
         skinProvider('p1').overrideWith((ref) async => emptySkin),
+        imageScopeProvider('p1').overrideWith((ref, arg) async => emptyScopeBins),
         advancedMetricsProvider('p1')
             .overrideWith((ref) async => sampleAdvanced),
       ],

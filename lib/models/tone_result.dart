@@ -88,6 +88,19 @@ class SkinAnalysis {
   /// 背景平均明度（百分比 0~100）
   final double? bgLuminance;
 
+  /// 肤色像素分布 2D 直方图（hue×sat bins），用于矢量示波器像素云渲染。
+  ///
+  /// 扁平化一维数组：hueBins × satBins = 48 × 8 = 384 个 int。
+  /// 索引 = hueBin * 8 + satBin，每 bin 存采样像素计数。
+  /// null = 手动校准模式或旧缓存，示波器回退到单点渲染。
+  final List<int>? hueSatBins;
+
+  /// hueSatBins 的 hue 分 bin 数
+  static const int hueBinCount = 48;
+
+  /// hueSatBins 的 sat 分 bin 数
+  static const int satBinCount = 8;
+
   const SkinAnalysis({
     this.hueOffset,
     this.saturation,
@@ -95,6 +108,7 @@ class SkinAnalysis {
     this.colorSeparation,
     this.skinLuminance,
     this.bgLuminance,
+    this.hueSatBins,
   });
 
   bool get isEmpty =>
@@ -111,12 +125,18 @@ class SkinAnalysis {
         if (colorSeparation != null) 'colorSeparation': colorSeparation,
         if (skinLuminance != null) 'skinLuminance': skinLuminance,
         if (bgLuminance != null) 'bgLuminance': bgLuminance,
+        if (hueSatBins != null) 'hueSatBins': hueSatBins,
       };
 
   factory SkinAnalysis.fromJson(Map<String, dynamic>? j) {
     if (j == null) return const SkinAnalysis();
     double? numOrNull(Object? v) =>
         v == null ? null : (v is num ? v.toDouble() : double.tryParse('$v'));
+    List<int>? intListOrNull(Object? v) {
+      if (v == null) return null;
+      if (v is List) return v.map((e) => (e as num).toInt()).toList();
+      return null;
+    }
     return SkinAnalysis(
       hueOffset: numOrNull(j['hueOffset']),
       saturation: numOrNull(j['saturation']),
@@ -124,7 +144,8 @@ class SkinAnalysis {
       colorSeparation: numOrNull(j['colorSeparation']),
       skinLuminance: numOrNull(j['skinLuminance']),
       bgLuminance: numOrNull(j['bgLuminance']),
-      // v7.0：sti/flc 键已废弃，旧缓存含则忽略（向前兼容，不抛错）
+      hueSatBins: intListOrNull(j['hueSatBins']),
+      // v7.0：sti/flc 键已废弃，旧缓存含则忽略（向前兼容）
     );
   }
 }

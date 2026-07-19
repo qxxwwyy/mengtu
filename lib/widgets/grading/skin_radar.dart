@@ -1,42 +1,46 @@
-// skin_radar.dart — 达芬奇式肤色示波器（v6.2 重写）
+// skin_radar.dart — 达芬奇式矢量示波器（v7.1 双模式重写）
 //
-// 旧版是 5 维雷达图（ΔH/饱和/明度/STI/SLS），用户反馈「看不懂是什么意思」。
-// v6.2 改为业界标准的**肤色矢量示波器（skin tone vectorscope）**，参考
-// DaVinci Resolve / darktable 的实现原理：
+// 参考达芬奇 Resolve / darktable 的矢量示波器：
+//   - 极坐标：角度 = 色相，半径 = 饱和度
+//   - 像素云：每个采样像素按 hue+sat 铺成有密度梯度的云团
+//   - 六色目标方框（R/Yl/G/Cy/B/Mg）位于 75% 电平
+//   - 白色肤色线（17°）作为参考
 //
-//   - 极坐标：角度 = 色相（hue），半径 = 饱和度（saturation）
-//   - 肤色线（skin tone line）：所有肤色不论种族都落在同一条色相线上
-//     （「血透过皮肤」原理 —— 黑色素/血红蛋白决定色相，种族只改明度/饱和）
-//   - 标准肤色色相 ≈ 20°（达芬奇线 H=17° 附近，HSV 暖橙区间），示波器上
-//     固定画一条径向参考线（11 点钟方向）
-//   - 当前照片的肤色画成一个光点，离参考线越近 = 肤色越「正」
+// 双模式：
+//   1. 肤色 ROI 模式：只看人脸 bbox 内的肤色像素分布
+//   2. 全图模式：看整张图的色彩分布（darktable 风格）
 //
-// 数据来源：skinProvider（hueOffset 相对 17° 的偏差 + saturation%）。
-// advanced（STI）不再进示波器，但仍在下方文字解读行展示（见 stage_color_card）。
+// 用户通过右上角切换按钮在两种模式间切换。
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/tone_result.dart';
 import '../../theme/app_theme.dart';
+import '../../providers/analysis_provider.dart';
 import 'interpretation_row.dart';
 
 double _cos(double x) => math.cos(x);
 double _sin(double x) => math.sin(x);
 
-/// 肤色矢量示波器（达芬奇式）
-///
-/// 把肤色画在极坐标上：角度=色相，半径=饱和度，固定一条 11 点钟方向的
-/// 肤色参考线。当前照片肤色光点越靠近参考线 → 肤色越正。
-class SkinRadar extends StatelessWidget {
+/// 矢量示波器（支持肤色 ROI / 全图双模式）
+class SkinRadar extends ConsumerWidget {
   /// 肤色分析（hueOffset / saturation），空时显示占位
   final SkinAnalysis skin;
 
-  const SkinRadar({super.key, required this.skin});
+  /// 照片 ID（用于全图模式拉取 imageScopeProvider）
+  final String photoId;
+
+  const SkinRadar({super.key, required this.skin, required this.photoId});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final mode = ref.watch(scopeModeProvider);
     final hasSkin = skin.hueOffset != null && skin.saturation != null;
+
+    // 全图模式：watch imageScopeProvider 拿到 bins
+    final imageBinsAsync = ref.watch(imageScopeProvider(photoId));
 
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 4),
@@ -48,12 +52,25 @@ class SkinRadar extends StatelessWidget {
             flex: 3,
             child: AspectRatio(
               aspectRatio: 1,
-              child: CustomPaint(
-                painter: _VectorscopePainter(
-                  // hueOffset 相对 17° 的偏差；还原绝对色相
-                  hueDeg: hasSkin ? _normalizeHue(17 + skin.hueOffset!) : null,
-                  satPercent: hasSkin ? skin.saturation! : null,
-                ),
+              child: Stack(
+                children: [
+                  CustomPaint(
+                    painter: _VectorscopePainter(
+                      hueDeg: hasSkin ? _normalizeHue(17 + skin.hueOffset!) : null,
+                      satPercent: hasSkin ? skin.saturation! : null,
+                      hueSatBins: mode == ScopeMode.skinRoi
+                          ? skin.hueSatBins
+                          : imageBinsAsync.asData?.value,
+                      mode: mode,
+                    ),
+                  ),
+                  // 右上角模式切换按钮
+                  Positioned(
+                    top: 0,
+                    right: 0,
+                    child: _ModeToggle(mode: mode),
+                  ),
+                ],
               ),
             ),
           ),
@@ -61,97 +78,188 @@ class SkinRadar extends StatelessWidget {
           // 右侧解读
           Expanded(
             flex: 2,
-            child: _Legend(skin: skin, hasSkin: hasSkin),
+            child: _Legend(skin: skin, hasSkin: hasSkin, mode: mode),
           ),
         ],
       ),
     );
   }
 
-  /// 色相归一化到 [0, 360)
   double _normalizeHue(double h) {
     final m = h % 360;
     return m < 0 ? m + 360 : m;
   }
 }
 
+/// 模式切换按钮
+class _ModeToggle extends StatelessWidget {
+  final ScopeMode mode;
+  const _ModeToggle({required this.mode});
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer(builder: (context, ref, _) {
+      return GestureDetector(
+        onTap: () =>
+            ref.read(scopeModeProvider.notifier).toggle(),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.4),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: ChartColors.gridLight, width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                mode == ScopeMode.skinRoi ? Icons.face : Icons.image,
+                size: 10,
+                color: ChartColors.skinToneLine,
+              ),
+              const SizedBox(width: 3),
+              Text(
+                mode == ScopeMode.skinRoi ? '肤色' : '全图',
+                style: TextStyle(
+                  color: ChartColors.skinToneLine,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    });
+  }
+}
+
+/// 达芬奇六色方位
+class _ColorTarget {
+  final double hueDeg;
+  final String label;
+  final Color color;
+  const _ColorTarget(this.hueDeg, this.label, this.color);
+}
+
+const _targets = [
+  _ColorTarget(0, 'R', ChartColors.labelR),
+  _ColorTarget(60, 'Yl', ChartColors.labelY),
+  _ColorTarget(120, 'G', ChartColors.labelG),
+  _ColorTarget(180, 'Cy', ChartColors.labelC),
+  _ColorTarget(240, 'B', ChartColors.labelB),
+  _ColorTarget(300, 'Mg', ChartColors.labelM),
+];
+
 /// 示波器画笔
 class _VectorscopePainter extends CustomPainter {
-  /// 肤色色相（度，0~360），null = 无肤色（只画空示波器）
   final double? hueDeg;
-
-  /// 肤色饱和度（百分比 0~100），null = 无肤色
   final double? satPercent;
+  final List<int>? hueSatBins;
+  final ScopeMode mode;
 
-  _VectorscopePainter({this.hueDeg, this.satPercent});
-
-  // 示波器色相环刻度颜色（按色相环的色块标识）
-  // 与达芬奇示波器一致：在圆周上标注主要色相方位
-  static final _gridPaint = Paint()
-    ..color = ChartColors.gridLight
-    ..strokeWidth = 0.5
-    ..style = PaintingStyle.stroke;
-
-  static final _axisPaint = Paint()
-    ..color = ChartColors.gridFaint
-    ..strokeWidth = 0.5
-    ..style = PaintingStyle.stroke;
-
-  // 肤色参考线（达芬奇肤色线，11 点钟方向）
-  static final _skinLinePaint = Paint()
-    ..color = ChartColors.skinToneLine // 暖黄，区别于数据光点
-    ..strokeWidth = 1.2
-    ..style = PaintingStyle.stroke;
+  _VectorscopePainter({
+    this.hueDeg,
+    this.satPercent,
+    this.hueSatBins,
+    required this.mode,
+  });
 
   @override
   void paint(Canvas canvas, Size size) {
     final cx = size.width / 2;
     final cy = size.height / 2;
-    final radius = size.shortestSide / 2 - 14;
+    final radius = size.shortestSide / 2 - 16;
 
-    // ===== 1. 同心圆（饱和度刻度：25/50/75/100%）=====
-    for (final r in [0.25, 0.5, 0.75, 1.0]) {
-      canvas.drawCircle(Offset(cx, cy), radius * r, _gridPaint);
+    // ===== 1. 同心圆刻度（25/50/75/100%）=====
+    final gridPaint = Paint()
+      ..color = ChartColors.gridLight
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+
+    for (final r in [0.25, 0.5, 1.0]) {
+      canvas.drawCircle(Offset(cx, cy), radius * r, gridPaint);
+    }
+    // 75% 参考圆高亮
+    final grid75Paint = Paint()
+      ..color = ChartColors.grid75
+      ..strokeWidth = 0.8
+      ..style = PaintingStyle.stroke;
+    canvas.drawCircle(Offset(cx, cy), radius * 0.75, grid75Paint);
+
+    // ===== 2. 十字轴线 =====
+    final axisPaint = Paint()
+      ..color = ChartColors.gridFaint
+      ..strokeWidth = 0.5
+      ..style = PaintingStyle.stroke;
+    canvas.drawLine(Offset(cx - radius, cy), Offset(cx + radius, cy), axisPaint);
+    canvas.drawLine(Offset(cx, cy - radius), Offset(cx, cy + radius), axisPaint);
+
+    // ===== 3. 像素云 =====
+    if (hueSatBins != null && hueSatBins!.isNotEmpty) {
+      _drawPixelCloud(canvas, cx, cy, radius);
     }
 
-    // ===== 2. 十字轴线（水平/垂直 + 对角）=====
-    canvas.drawLine(Offset(cx - radius, cy), Offset(cx + radius, cy), _axisPaint);
-    canvas.drawLine(Offset(cx, cy - radius), Offset(cx, cy + radius), _axisPaint);
+    // ===== 4. 六色目标方框 =====
+    final targetPaint = Paint()
+      ..color = ChartColors.vectorscopeTarget
+      ..strokeWidth = 1.0
+      ..style = PaintingStyle.stroke;
+    const targetSize = 5.0;
+    for (final t in _targets) {
+      final angle = _hueToCanvasAngle(t.hueDeg);
+      final tx = cx + radius * 0.75 * _cos(angle);
+      final ty = cy + radius * 0.75 * _sin(angle);
+      canvas.drawRect(
+        Rect.fromCenter(center: Offset(tx, ty), width: targetSize * 2, height: targetSize * 2),
+        targetPaint,
+      );
 
-    // ===== 3. 肤色参考线（达芬奇线）=====
-    // 标准肤色色相 = 17°（达芬奇肤色线，HSV 暖橙）。skinProvider 的 hueOffset
-    // 即相对此 17° 的偏差，所以 hueOffset=0 时光点正好落在线上。
-    // 示波器坐标系：0° 指向右（3 点钟，红），90° 下（黄绿），180° 左（青），
-    // 270° 上（品红）—— 与达芬奇 R/Yl/G/Cy/B/Mg 六色方位一致。
-    const skinHueRef = 17.0; // 达芬奇肤色线标准色相（度）
-    final refAngle = _hueToCanvasAngle(skinHueRef);
-    final refEx = cx + radius * _cos(refAngle);
-    final refEy = cy + radius * _sin(refAngle);
-    final refSx = cx - radius * _cos(refAngle);
-    final refSy = cy - radius * _sin(refAngle);
-    canvas.drawLine(Offset(refSx, refSy), Offset(refEx, refEy), _skinLinePaint);
+      final labelDist = radius * 0.75 + 12;
+      final lx = cx + labelDist * _cos(angle);
+      final ly = cy + labelDist * _sin(angle);
+      _drawColorLabel(canvas, t.label, Offset(lx, ly), t.color,
+          align: _labelAlign(angle));
+    }
 
-    // ===== 4. 肤色光点（当前照片）=====
-    if (hueDeg != null && satPercent != null) {
+    // ===== 5. 肤色参考线（只在肤色模式显示）=====
+    if (mode == ScopeMode.skinRoi) {
+      const skinHueRef = 17.0;
+      final skinLinePaint = Paint()
+        ..color = ChartColors.skinToneLine
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      final refAngle = _hueToCanvasAngle(skinHueRef);
+      final refEndR = radius * 0.75;
+      final refEx = cx + refEndR * _cos(refAngle);
+      final refEy = cy + refEndR * _sin(refAngle);
+      canvas.drawLine(Offset(cx, cy), Offset(refEx, refEy), skinLinePaint);
+
+      // 肤色线标签
+      final refLabelDist = refEndR + 12;
+      final refLx = cx + refLabelDist * _cos(refAngle);
+      final refLy = cy + refLabelDist * _sin(refAngle);
+      _drawLabel(canvas, '肤色', Offset(refLx, refLy),
+          color: ChartColors.skinToneLine, align: _labelAlign(refAngle));
+    }
+
+    // ===== 6. 肤色光点（只在肤色模式叠加）=====
+    if (mode == ScopeMode.skinRoi && hueDeg != null && satPercent != null) {
       final angle = _hueToCanvasAngle(hueDeg!);
-      // 半径按饱和度（0~100 → 0~radius）
       final r = (satPercent! / 100).clamp(0.0, 1.0) * radius;
       final px = cx + r * _cos(angle);
       final py = cy + r * _sin(angle);
 
-      // 外层光晕（柔和）
       final glow = Paint()
         ..color = ChartColors.skinToneHalo.withValues(alpha: 0.25)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 9, glow);
 
-      // 内层光点
       final dot = Paint()
-        ..color = ChartColors.skinTonePoint // 暖橙肤色点
+        ..color = ChartColors.skinTonePoint
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 4, dot);
 
-      // 白色描边让光点在任何背景上可见
       final ring = Paint()
         ..color = DetailColors.textPrimary
         ..strokeWidth = 1.0
@@ -159,43 +267,87 @@ class _VectorscopePainter extends CustomPainter {
       canvas.drawCircle(Offset(px, py), 4, ring);
     }
 
-    // ===== 5. 中心点 =====
+    // ===== 7. 中心点 =====
     final centerPaint = Paint()..color = ChartColors.gridLight;
     canvas.drawCircle(Offset(cx, cy), 1.5, centerPaint);
-
-    // ===== 6. 肤色参考线标签（11 点方向标「肤色」）=====
-    _drawLabel(canvas, '肤色线', Offset(refEx, refEy),
-        align: _labelAlign(refAngle));
   }
 
-  /// HSV 色相（0~360，红=0 在 3 点钟数学角度方向）→ 画布角度
-  /// 示波器约定：0° 指向正上方（12 点），顺时针递增。
-  /// 即画布角度 = -90° + hue（数学坐标系，y 向下）。
-  /// 输入弧度，使 0 色相（红）在 3 点，90（黄绿）在 6 点，180（青）在 9 点，
-  /// 270（品红）在 12 点 —— 与达芬奇示波器 R/Yl/G/Cy/B/Mg 六色方位一致。
-  double _hueToCanvasAngle(double hueDeg) {
-    // 数学坐标系（y 向下）：0°→右(红), 90°→下(黄绿), 180°→左(青), 270°→上(品红)
-    // Flutter 的 sin/cos 与屏幕坐标系一致（y 向下），所以直接用弧度即可
-    return hueDeg * math.pi / 180;
+  /// 像素云绘制（参考 darktable：bin→色块，透明度=密度）
+  void _drawPixelCloud(Canvas canvas, double cx, double cy, double radius) {
+    final bins = hueSatBins!;
+    final hueBins = SkinAnalysis.hueBinCount;
+    final satBins = SkinAnalysis.satBinCount;
+
+    int maxCount = 1;
+    for (final c in bins) {
+      if (c > maxCount) maxCount = c;
+    }
+
+    final hueStep = 360.0 / hueBins;
+    final satStep = 1.0 / satBins;
+    final cloudDotRadius = (radius * satStep * 0.7).clamp(2.0, 6.0);
+
+    for (var hb = 0; hb < hueBins; hb++) {
+      for (var sb = 0; sb < satBins; sb++) {
+        final count = bins[hb * satBins + sb];
+        if (count == 0) continue;
+
+        final hue = hb * hueStep + hueStep / 2;
+        final sat = sb * satStep + satStep / 2;
+
+        final angle = _hueToCanvasAngle(hue);
+        final r = sat.clamp(0.0, 1.0) * radius;
+        final px = cx + r * _cos(angle);
+        final py = cy + r * _sin(angle);
+
+        final density = count / maxCount;
+        final alpha = (0.15 + density * 0.6).clamp(0.1, 0.75);
+
+        // 色块颜色 = 该色相真实颜色
+        final color = HSLColor.fromAHSL(1.0, hue, sat, 0.55).toColor()
+            .withValues(alpha: alpha);
+
+        final paint = Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
+        canvas.drawCircle(Offset(px, py), cloudDotRadius, paint);
+      }
+    }
   }
 
-  /// 标签对齐方向（根据光点所在象限决定文字 anchor）
+  double _hueToCanvasAngle(double hueDeg) => hueDeg * math.pi / 180;
+
   TextAlign _labelAlign(double angle) {
     final a = angle % (2 * math.pi);
-    // 左半圆 → 右对齐（文字在点左侧）；右半圆 → 左对齐
     if (a > math.pi / 2 && a < 3 * math.pi / 2) return TextAlign.right;
     return TextAlign.left;
   }
 
-  void _drawLabel(Canvas canvas, String text, Offset pos, {required TextAlign align}) {
+  void _drawColorLabel(Canvas canvas, String text, Offset pos, Color color,
+      {required TextAlign align}) {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(
-          color: ChartColors.skinToneLine,
-          fontSize: 9,
-          fontWeight: FontWeight.w600,
-        ),
+        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700),
+      ),
+      textAlign: align,
+      textDirection: TextDirection.ltr,
+    )..layout();
+    var dx = pos.dx;
+    if (align == TextAlign.right) {
+      dx -= tp.width;
+    } else if (align == TextAlign.left) {
+      dx += 2;
+    }
+    tp.paint(canvas, Offset(dx, pos.dy - tp.height / 2));
+  }
+
+  void _drawLabel(Canvas canvas, String text, Offset pos,
+      {required Color color, required TextAlign align}) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600),
       ),
       textAlign: align,
       textDirection: TextDirection.ltr,
@@ -211,34 +363,72 @@ class _VectorscopePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VectorscopePainter old) =>
-      old.hueDeg != hueDeg || old.satPercent != satPercent;
+      old.hueDeg != hueDeg ||
+      old.satPercent != satPercent ||
+      old.hueSatBins != hueSatBins ||
+      old.mode != mode;
 }
 
-/// 右侧解读：色相偏差 + 饱和度 + 判定
+/// 右侧解读面板（双模式）
 class _Legend extends StatelessWidget {
   final SkinAnalysis skin;
   final bool hasSkin;
+  final ScopeMode mode;
 
-  const _Legend({required this.skin, required this.hasSkin});
+  const _Legend({required this.skin, required this.hasSkin, required this.mode});
 
   @override
   Widget build(BuildContext context) {
+    if (mode == ScopeMode.fullImage) {
+      return _fullImageLegend();
+    }
+    return _skinRoiLegend();
+  }
+
+  Widget _fullImageLegend() {
+    return const Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text('矢量示波器',
+            style: TextStyle(
+                color: DetailColors.textPrimary,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+        SizedBox(height: 4),
+        Text('全图色彩分布',
+            style: TextStyle(
+                color: InterpretationStatus.neutral,
+                fontSize: 11,
+                fontWeight: FontWeight.w600)),
+        SizedBox(height: 8),
+        Text(
+            '每个色块 = 该色相+饱和度\n'
+            '组合的像素密度。\n'
+            '色块越亮 = 像素越多。',
+            style: TextStyle(
+                color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
+      ],
+    );
+  }
+
+  Widget _skinRoiLegend() {
     if (!hasSkin) {
-      return Column(
+      return const Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('肤色示波器',
+          Text('肤色示波器',
               style: TextStyle(
                   color: DetailColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          const Text('未检出肤色',
+          SizedBox(height: 4),
+          Text('未检出肤色',
               style: TextStyle(color: InterpretationStatus.low, fontSize: 11)),
-          const SizedBox(height: 6),
-          const Text(
-              '光点越靠近黄色「肤色线」→ 肤色越正。\n'
+          SizedBox(height: 6),
+          Text(
+              '光点越靠近白色「肤色线」→ 肤色越正。\n'
               '可长按图片皮肤区域手动校准。',
               style: TextStyle(
                   color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
@@ -248,7 +438,6 @@ class _Legend extends StatelessWidget {
 
     final dh = skin.hueOffset!.abs();
     final sat = skin.saturation!;
-    // 描述性标签（非诊断）：贴近肤色线 / 偏暖 / 偏冷
     final verdict = dh < 10
         ? '贴近肤色线'
         : (skin.hueOffset! > 0

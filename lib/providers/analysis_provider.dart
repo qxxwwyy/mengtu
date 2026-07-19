@@ -6,6 +6,7 @@ import '../services/histogram_service.dart';
 import '../services/palette_service.dart';
 import '../services/tone_service.dart';
 import '../services/face_service.dart';
+import '../services/image_scope_service.dart';
 import '../services/scrfd_service.dart' show detectPrimaryFaceWithScrfd, FaceDetection;
 import '../models/tone_result.dart';
 import '../models/palette_result.dart';
@@ -213,6 +214,39 @@ final skinProvider =
     primaryFace: primaryFace, // SCRFD bbox，null 时返回空 SkinAnalysis
   );
 });
+
+/// v7.1：全图像素色彩分布（用于全图矢量示波器模式）
+///
+/// 参考 darktable：从缩略图（低分辨率 preview）对整张图做 hue×sat 2D binning，
+/// 不过滤色相段。与 skinProvider 的 ROI-only 模式互补：
+///   - skinProvider = 人脸 ROI 肤色分布
+///   - imageScopeProvider = 全图色彩分布
+///
+/// 性能：Isolate 内 step=2 降采样，缩略图 ~60K 像素 → ~15K 次计算。
+final imageScopeProvider =
+    FutureProvider.family<List<int>, String>((ref, photoId) async {
+  final photo = await ref.watch(photoByIdProvider(photoId).future);
+  if (photo == null) throw Exception('Photo not found');
+
+  final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
+  final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
+  return sampleImageHueSat(targetPath);
+});
+
+/// v7.1：示波器显示模式（肤色 ROI / 全图）
+enum ScopeMode { skinRoi, fullImage }
+
+/// v7.1：示波器模式切换状态（会话级，不持久化）
+final scopeModeProvider =
+    NotifierProvider<ScopeModeNotifier, ScopeMode>(ScopeModeNotifier.new);
+
+class ScopeModeNotifier extends Notifier<ScopeMode> {
+  @override
+  ScopeMode build() => ScopeMode.skinRoi;
+
+  void toggle() =>
+      state = state == ScopeMode.skinRoi ? ScopeMode.fullImage : ScopeMode.skinRoi;
+}
 
 /// v3.5：聚合 advanced 指标（black_point/white_point/ten_tonal）
 ///
