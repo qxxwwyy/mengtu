@@ -16,7 +16,7 @@ void main() {
 
   Widget wrap(Widget child) => ProviderScope(
         overrides: [
-          imageScopeProvider.overrideWith((ref, arg) async => emptyBins),
+          imageScopeProvider.overrideWith((ref, arg) => Future.value(emptyBins)),
         ],
         child: MaterialApp(
           home: Scaffold(

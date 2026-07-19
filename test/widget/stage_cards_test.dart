@@ -85,7 +85,7 @@ void main() {
         histogramProvider('p1').overrideWith((ref) async => buildSampleHistogram()),
         toneProvider('p1').overrideWith((ref) async => buildTone()),
         skinProvider('p1').overrideWith((ref) async => emptySkin),
-        imageScopeProvider('p1').overrideWith((ref, arg) async => emptyScopeBins),
+        imageScopeProvider('p1').overrideWith((ref) async => emptyScopeBins),
         advancedMetricsProvider('p1')
             .overrideWith((ref) async => sampleAdvanced),
       ],
