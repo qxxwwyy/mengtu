@@ -1,19 +1,23 @@
-// image_scope_service.dart — 全图像素色彩分布采样（v7.1 新增）
+// image_scope_service.dart — 全图像素色彩分布采样（v7.2 Cb/Cr 平面）
 //
-// 参考 darktable 矢量示波器的数据采集策略：
+// 参考 darktable / 达芬奇 vectorscope 的数据采集策略：
 //   - 从缩略图（低分辨率 preview）采样，不从全分辨率原图
 //   - 2x2 像素块降采样（step=2）
 //   - 全图所有像素计入（不滤肤色色相段）
-//   - RGB→HSL 后 bin 到 hue×sat 2D 直方图
+//   - RGB→YCbCr(Rec.709) 后 bin 到 Cb/Cr 64×64 2D 直方图
 //
 // 性能：Isolate 内执行，缩略图 ~200×300=60K 像素，step=2 后 ~15K 次计算。
 // 与 face_service 的 ROI 采样不同，这里看的是整张图的色彩分布。
+//
+// v7.2：旧的 sampleImageHueSat（HSV hue×sat 48×8）已删除，统一用 Cb/Cr 平面，
+// 与示波器六色目标（BT.709 彩条）处于同一坐标系。
 import 'dart:io';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/tone_result.dart';
+import '../utils/color_utils.dart' show rgbToYCbCr;
 import 'tone_service.dart' show convertP3ToSrgb;
 
 /// 全图像素分布采样参数
@@ -23,41 +27,42 @@ class _ImageScopeArgs {
   const _ImageScopeArgs(this.imagePath, this.isP3ColorSpace);
 }
 
-/// 采样全图的 hue×sat 2D 直方图，用于全图矢量示波器渲染。
-///
-/// [imagePath] 通常是缩略图路径（低分辨率 preview）。
-/// [isP3ColorSpace] 为 true 时对像素做 P3→sRGB 补偿。
-///
-/// 返回扁平化一维数组：[SkinAnalysis.hueBinCount] × [SkinAnalysis.satBinCount]。
-Future<List<int>> sampleImageHueSat(
+// ============ v7.2：Cb/Cr 平面采样（达芬奇 broadcast vectorscope）============
+//
+// 把每个像素的 Cb/Cr（YCbCr Rec.709 full-range）bin 到 64×64 二维直方图。
+// Cb/Cr 各覆盖 -128~127，每 bin ≈4。与示波器六色目标（BT.709 彩条标准 Cb/Cr）
+// 处于同一坐标系。
+//
+// 过滤：chroma 幅度 sqrt(Cb²+Cr²) < 8 的无色像素跳过（减少灰云污染中心区）。
+Future<List<int>> sampleImageChroma(
   String imagePath, {
   bool isP3ColorSpace = false,
 }) {
   return compute(
-    _sampleImageHueSatIsolate,
+    _sampleImageChromaIsolate,
     _ImageScopeArgs(imagePath, isP3ColorSpace),
   );
 }
 
-/// Isolate 入口
-Future<List<int>> _sampleImageHueSatIsolate(_ImageScopeArgs args) async {
+/// sampleImageChroma 的 Isolate 入口
+Future<List<int>> _sampleImageChromaIsolate(_ImageScopeArgs args) async {
   final bytes = File(args.imagePath).readAsBytesSync();
   final decoded = img.decodeImage(bytes);
+  final cbBins = SkinAnalysis.cbBinCount;
+  final crBins = SkinAnalysis.crBinCount;
   if (decoded == null) {
-    return List<int>.filled(
-        SkinAnalysis.hueBinCount * SkinAnalysis.satBinCount, 0);
+    return List<int>.filled(cbBins * crBins, 0);
   }
 
   final imgW = decoded.width;
   final imgH = decoded.height;
 
-  final bins = List<int>.filled(
-      SkinAnalysis.hueBinCount * SkinAnalysis.satBinCount, 0);
+  final bins = List<int>.filled(cbBins * crBins, 0);
 
-  final hueStep = 360.0 / SkinAnalysis.hueBinCount;
-  final satStep = 1.0 / SkinAnalysis.satBinCount;
+  // Cb/Cr 各 -128~127，共 256 个单位 → 每 bin 宽 256/cbBins
+  final cbStep = 256.0 / cbBins;
+  final crStep = 256.0 / crBins;
 
-  // step=2：2x2 降采样（参考 darktable 的 2x2 策略）
   const step = 2;
   for (var y = 0; y < imgH; y += step) {
     for (var x = 0; x < imgW; x += step) {
@@ -71,43 +76,20 @@ Future<List<int>> _sampleImageHueSatIsolate(_ImageScopeArgs args) async {
         g = srgb[1];
         b = srgb[2];
       }
+      final ycbcr = rgbToYCbCr(r, g, b);
+      final cb = ycbcr.cb;
+      final cr = ycbcr.cr;
 
-      // 跳过低饱和度像素（接近灰色的不计入，减少噪点）
-      final hsl = _rgbToHsl(r, g, b);
-      final h = hsl[0];
-      final s = hsl[1];
-      if (s < 0.05) continue;
+      // 无色像素（接近原点）跳过，避免中心灰云过亮遮盖有色信号
+      final chroma = math.sqrt(cb * cb + cr * cr);
+      if (chroma < 8) continue;
 
-      final hb = (h / hueStep).floor().clamp(0, SkinAnalysis.hueBinCount - 1);
-      final sb = (s / satStep).floor().clamp(0, SkinAnalysis.satBinCount - 1);
-      bins[hb * SkinAnalysis.satBinCount + sb]++;
+      // Cb/Cr 从 [-128, 127] 映射到 [0, cbBins-1]
+      final cbBin = ((cb + 128) / cbStep).floor().clamp(0, cbBins - 1);
+      final crBin = ((cr + 128) / crStep).floor().clamp(0, crBins - 1);
+      bins[cbBin * crBins + crBin]++;
     }
   }
 
   return bins;
-}
-
-/// RGB → HSL（H: 0~360, S/L: 0~1）
-List<double> _rgbToHsl(int r, int g, int b) {
-  final rN = r / 255.0;
-  final gN = g / 255.0;
-  final bN = b / 255.0;
-  final max = math.max(rN, math.max(gN, bN));
-  final min = math.min(rN, math.min(gN, bN));
-  double h = 0;
-  double s = 0;
-  final l = (max + min) / 2;
-  if (max != min) {
-    final d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    if (max == rN) {
-      h = (gN - bN) / d + (gN < bN ? 6 : 0);
-    } else if (max == gN) {
-      h = (bN - rN) / d + 2;
-    } else {
-      h = (rN - gN) / d + 4;
-    }
-    h /= 6;
-  }
-  return [h * 360, s, l];
 }

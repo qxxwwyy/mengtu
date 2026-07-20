@@ -36,9 +36,14 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
     final skinAsync = ref.watch(skinProvider(widget.photoId));
 
     final summary = skinAsync.maybeWhen(
-      data: (s) => s.isEmpty
-          ? '未检出肤色'
-          : '肤色 ΔH ${s.hueOffset?.toStringAsFixed(0) ?? '—'}°',
+      data: (s) {
+        if (s.isEmpty) return '未检出肤色';
+        // 半填充（只有 chroma 数据，无 hueOffset）显示色度而非 ΔH
+        if (s.hueOffset != null) {
+          return '肤色 ΔH ${s.hueOffset!.toStringAsFixed(0)}°';
+        }
+        return '肤色色度已采样';
+      },
       orElse: () => '分析中…',
     );
 

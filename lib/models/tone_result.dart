@@ -95,11 +95,34 @@ class SkinAnalysis {
   /// null = 手动校准模式或旧缓存，示波器回退到单点渲染。
   final List<int>? hueSatBins;
 
+  /// v7.2：Cb/Cr 平面像素分布 2D 直方图（达芬奇 broadcast vectorscope）。
+  ///
+  /// 扁平化一维数组：cbBins × crBins = 64 × 64 = 4096 个 int。
+  /// 索引 = cbBin * 64 + crBin，Cb/Cr 各覆盖 -128~127（full-range）。
+  /// 由 [sampleImageChroma]（全图）或 [analyzeSkinTone]（ROI）产出，
+  /// painter `_drawChromaCloud` 按此铺像素云。
+  /// null = 旧缓存，示波器回退到 HSV hueSatBins 或单点渲染。
+  final List<int>? chromaBins;
+
+  /// v7.2：ROI 内平均 Cb（-128~127），用于肤色光点在 Cb/Cr 平面定位。
+  /// 优先级高于 [hueOffset] 的 123° 估算。
+  final double? chromaCb;
+
+  /// v7.2：ROI 内平均 Cr（-128~127），用于肤色光点在 Cb/Cr 平面定位。
+  /// 优先级高于 [hueOffset] 的 123° 估算。
+  final double? chromaCr;
+
   /// hueSatBins 的 hue 分 bin 数
   static const int hueBinCount = 48;
 
   /// hueSatBins 的 sat 分 bin 数
   static const int satBinCount = 8;
+
+  /// chromaBins 的 Cb 分 bin 数（覆盖 -128~127，每 bin 约 4）
+  static const int cbBinCount = 64;
+
+  /// chromaBins 的 Cr 分 bin 数（覆盖 -128~127，每 bin 约 4）
+  static const int crBinCount = 64;
 
   const SkinAnalysis({
     this.hueOffset,
@@ -109,13 +132,25 @@ class SkinAnalysis {
     this.skinLuminance,
     this.bgLuminance,
     this.hueSatBins,
+    this.chromaBins,
+    this.chromaCb,
+    this.chromaCr,
   });
 
+  /// 是否完全没有可用数据。
+  ///
+  /// v7.2：纳入 chroma 字段。face_service 在 skinCount==0 但 ROI 内有色像素时
+  /// 会返回「标量全 null + chromaBins 有数据」的半填充对象，此时不算 empty
+  /// （示波器仍能渲染 ROI 像素云）。手动校准模式只填 chromaCb/Cr（单点光点），
+  /// 也不算 empty。
   bool get isEmpty =>
       hueOffset == null &&
       saturation == null &&
       luminanceSeparation == null &&
-      colorSeparation == null;
+      colorSeparation == null &&
+      chromaBins == null &&
+      chromaCb == null &&
+      chromaCr == null;
 
   Map<String, dynamic> toJson() => {
         if (hueOffset != null) 'hueOffset': hueOffset,
@@ -126,6 +161,9 @@ class SkinAnalysis {
         if (skinLuminance != null) 'skinLuminance': skinLuminance,
         if (bgLuminance != null) 'bgLuminance': bgLuminance,
         if (hueSatBins != null) 'hueSatBins': hueSatBins,
+        if (chromaBins != null) 'chromaBins': chromaBins,
+        if (chromaCb != null) 'chromaCb': chromaCb,
+        if (chromaCr != null) 'chromaCr': chromaCr,
       };
 
   factory SkinAnalysis.fromJson(Map<String, dynamic>? j) {
@@ -145,6 +183,9 @@ class SkinAnalysis {
       skinLuminance: numOrNull(j['skinLuminance']),
       bgLuminance: numOrNull(j['bgLuminance']),
       hueSatBins: intListOrNull(j['hueSatBins']),
+      chromaBins: intListOrNull(j['chromaBins']),
+      chromaCb: numOrNull(j['chromaCb']),
+      chromaCr: numOrNull(j['chromaCr']),
       // v7.0：sti/flc 键已废弃，旧缓存含则忽略（向前兼容）
     );
   }

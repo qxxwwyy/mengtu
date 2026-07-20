@@ -215,12 +215,12 @@ final skinProvider =
   );
 });
 
-/// v7.1：全图像素色彩分布（用于全图矢量示波器模式）
+/// v7.2：全图像素色彩分布（Cb/Cr 平面，用于达芬奇 broadcast vectorscope）
 ///
-/// 参考 darktable：从缩略图（低分辨率 preview）对整张图做 hue×sat 2D binning，
-/// 不过滤色相段。与 skinProvider 的 ROI-only 模式互补：
-///   - skinProvider = 人脸 ROI 肤色分布
-///   - imageScopeProvider = 全图色彩分布
+/// 从缩略图对整张图做 Cb/Cr 2D binning（64×64），不过滤色相段。
+/// 任何照片（含无脸照片）都有数据 → 修复 v7.1「像素云画不出来」bug：
+/// 不再依赖 skinProvider 的 ROI 结果，示波器像素云始终来自全图采样。
+/// skinRoi 模式额外叠加肤色光点（来自 skinProvider 的 chromaCb/Cr）。
 ///
 /// 性能：Isolate 内 step=2 降采样，缩略图 ~60K 像素 → ~15K 次计算。
 final imageScopeProvider =
@@ -230,7 +230,7 @@ final imageScopeProvider =
 
   final useThumb = photo.thumbnailPath.isNotEmpty && File(photo.thumbnailPath).existsSync();
   final targetPath = useThumb ? photo.thumbnailPath : photo.filePath;
-  return sampleImageHueSat(targetPath);
+  return sampleImageChroma(targetPath);
 });
 
 /// v7.1：示波器显示模式（肤色 ROI / 全图）

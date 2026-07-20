@@ -16,6 +16,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 
 import '../models/tone_result.dart';
+import '../utils/color_utils.dart' show rgbToYCbCr;
 import 'tone_service.dart' show convertP3ToSrgb, skinHueOffset;
 
 /// 检测到的人脸（归一化坐标 0~1）
@@ -135,9 +136,15 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
   double sumLum = 0;
   int skinCount = 0;
 
-  // 肤色像素 hue×sat 2D 直方图（48×8=384 bins），用于矢量示波器像素云渲染。
-  // 在同一遍历循环内累加，几乎零额外成本（只有一次数组自增）。
-  final hueSatBins = List<int>.filled(SkinAnalysis.hueBinCount * SkinAnalysis.satBinCount, 0);
+  // v7.2：Cb/Cr 平面 2D 直方图（64×64=4096 bins），ROI 内全部像素计入
+  // （不再过滤色相段），让人脸区域形成连续云团而非稀疏点。
+  // （旧的 hueSatBins HSV 48×8 累加已删除——示波器改用 Cb/Cr 平面，
+  // SkinAnalysis.hueSatBins 字段保留仅为读旧缓存，不再写入。）
+  final chromaBins =
+      List<int>.filled(SkinAnalysis.cbBinCount * SkinAnalysis.crBinCount, 0);
+  double sumCb = 0;
+  double sumCr = 0;
+  int chromaCount = 0;
 
   // 背景累加器（全图排除 ROI）
   double bgSumLum = 0;
@@ -198,21 +205,46 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
       final h = hsl[0];
       final s = hsl[1];
       final l = hsl[2];
+
+      // v7.2：Cb/Cr 平面累加 —— ROI 内所有像素都计入（不过滤色相段），
+      // 让肤色区域形成连续云团。肤色色相过滤只用于 ΔH/饱和度标量统计。
+      final ycbcr = rgbToYCbCr(r, g, b);
+      final cb = ycbcr.cb;
+      final cr = ycbcr.cr;
+      final cbBin =
+          ((cb + 128) / (256.0 / SkinAnalysis.cbBinCount))
+              .floor()
+              .clamp(0, SkinAnalysis.cbBinCount - 1);
+      final crBin =
+          ((cr + 128) / (256.0 / SkinAnalysis.crBinCount))
+              .floor()
+              .clamp(0, SkinAnalysis.crBinCount - 1);
+      chromaBins[cbBin * SkinAnalysis.crBinCount + crBin]++;
+      sumCb += cb;
+      sumCr += cr;
+      chromaCount++;
+
       // 肤色色相段：0~45° 或 320~360°（暖橙到红）
       if ((h <= 45 || h >= 320) && s >= 0.1 && s <= 0.8) {
         sumHue += (h >= 320) ? (h - 360) : h;
         sumSat += s;
         sumLum += l;
         skinCount++;
-        // hue×sat 2D bin 累加（hue 已归一到 0~360，sat 0~1）
-        final hb = (h / (360.0 / SkinAnalysis.hueBinCount)).floor().clamp(0, SkinAnalysis.hueBinCount - 1);
-        final sb = (s / (1.0 / SkinAnalysis.satBinCount)).floor().clamp(0, SkinAnalysis.satBinCount - 1);
-        hueSatBins[hb * SkinAnalysis.satBinCount + sb]++;
       }
     }
   }
 
-  if (skinCount == 0) return const SkinAnalysis();
+  if (skinCount == 0) {
+    // ROI 内无肤色色相像素（侧脸/遮挡/强光过曝），但 chroma 仍可能有数据：
+    // 返回仅含 Cb/Cr 云的 SkinAnalysis，让示波器能渲染 ROI 像素分布，
+    // 不至于完全空白。
+    if (chromaCount == 0) return const SkinAnalysis();
+    return SkinAnalysis(
+      chromaBins: chromaBins,
+      chromaCb: sumCb / chromaCount,
+      chromaCr: sumCr / chromaCount,
+    );
+  }
 
   double avgHue = sumHue / skinCount;
   if (avgHue < 0) avgHue += 360;
@@ -244,7 +276,9 @@ SkinAnalysis _analyzeRoiSkin(img.Image image, DetectedFace face, bool isP3) {
     colorSeparation: scs,
     skinLuminance: avgLum,
     bgLuminance: bgAvgLum,
-    hueSatBins: hueSatBins,
+    chromaBins: chromaBins,
+    chromaCb: chromaCount > 0 ? sumCb / chromaCount : null,
+    chromaCr: chromaCount > 0 ? sumCr / chromaCount : null,
   );
 }
 
@@ -261,6 +295,7 @@ SkinAnalysis _computeManualSkinStats(
   final h = hsl[0];
   final s = hsl[1];
   final l = hsl[2];
+  final ycbcr = rgbToYCbCr(r, g, b);
   return SkinAnalysis(
     hueOffset: skinHueOffset(h),
     saturation: s * 100,
@@ -268,6 +303,9 @@ SkinAnalysis _computeManualSkinStats(
     colorSeparation: null,
     skinLuminance: l * 100,
     bgLuminance: null,
+    // v7.2：手动取色点也产出 Cb/Cr，让肤色光点能画在 Cb/Cr 平面
+    chromaCb: ycbcr.cb,
+    chromaCr: ycbcr.cr,
   );
 }
 

@@ -19,6 +19,24 @@ int luminance(int r, int g, int b) {
   return (rec709R * r + rec709G * g + rec709B * b).round().clamp(0, 255);
 }
 
+/// RGB → YCbCr（Rec.709 full-range，用于矢量示波器 Cb/Cr 平面）
+///
+/// 输入 R/G/B 为 0-255；返回 [Y] 在 0-255，[cb]/[cr] 在 -128~127。
+/// 公式（Kb=0.0722, Kr=0.2126）：
+///   Y  =  0.2126R + 0.7152G + 0.0722B
+///   Cb = -0.1146R - 0.3854G + 0.5000B   (= (B−Y)/1.8556)
+///   Cr =  0.5000R - 0.4542G - 0.0458B   (= (R−Y)/1.5748)
+/// full-range 而非 studio-swing（16-235），让像素云直接用 Cb/Cr 映射到画布坐标，
+/// 与示波器六色目标（BT.709 彩条）处于同一坐标系。
+({double y, double cb, double cr}) rgbToYCbCr(int r, int g, int b) {
+  final y = rec709R * r + rec709G * g + rec709B * b;
+  return (
+    y: y,
+    cb: -0.1146 * r - 0.3854 * g + 0.5 * b,
+    cr: 0.5 * r - 0.4542 * g - 0.0458 * b,
+  );
+}
+
 /// RGB → HSL
 ({double h, double s, double l}) rgbToHsl(int r, int g, int b) {
   final rf = r / 255, gf = g / 255, bf = b / 255;
