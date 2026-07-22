@@ -118,6 +118,8 @@ class HistogramPainter extends CustomPainter {
     double barWidth, {
     bool solid = false,
   }) {
+    // m3 修复：空 list 上 reduce 会抛 StateError: No element。守卫先判空。
+    if (channel.isEmpty) return;
     final maxVal = channel.reduce((a, b) => a > b ? a : b);
     if (maxVal == 0) return;
 
@@ -215,6 +217,8 @@ class HistogramPainter extends CustomPainter {
   void _drawLuminanceOverlay(
       Canvas canvas, Size size, double drawH, double barWidth) {
     final lum = data.lum;
+    // m3 修复：守卫空 list（与 _drawChannelGradient 同源防 reduce 崩溃）
+    if (lum.isEmpty) return;
     final maxVal = lum.reduce((a, b) => a > b ? a : b);
     if (maxVal == 0) return;
 
@@ -258,24 +262,28 @@ class HistogramPainter extends CustomPainter {
     }
 
     // 底部标签（五段居中）
+    // m4 修复：原用 text.length * 8.0 魔数估算宽度，中文每字 ≈ fontSize
+    // 而非 8px，导致五段标签居中偏移。改用 TextPainter 拿真实宽度。
     const labels = ['黑色', '阴影', '中间调', '高光', '白色'];
     const centers = [25, 76, 128, 179, 230];
     for (var i = 0; i < labels.length; i++) {
       final cx = w * (centers[i] / 256);
       final text = labels[i];
-      final tw = text.length * 8.0;
-      _drawText(
-        canvas,
-        text,
-        Offset(cx - tw / 2, h - 10),
-        TextStyle(color: AppColors.textMuted, fontSize: 8),
-      );
+      final tp = TextPainter(
+        text: TextSpan(
+            text: text,
+            style: const TextStyle(color: AppColors.textMuted, fontSize: 8)),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      tp.paint(canvas, Offset(cx - tp.width / 2, h - 10));
     }
   }
 
   /// 绘制溢出三角（左上角=纯黑，右上角=纯白）
   void _drawOverflowTriangles(Canvas canvas, Size size) {
     final w = size.width;
+    // m3 修复：守卫空 list（data.lum 异常为空时防 reduce 崩溃）
+    if (data.lum.isEmpty) return;
     final totalPixels = data.lum.reduce((a, b) => a + b);
     if (totalPixels == 0) return;
 
@@ -375,16 +383,6 @@ class HistogramPainter extends CustomPainter {
       canvas.drawLine(Offset(x1, y1), Offset(x2, y2), paint);
       distance += dashSpace;
     }
-  }
-
-  /// 绘制文字
-  void _drawText(Canvas canvas, String text, Offset position, TextStyle style) {
-    final textPainter = TextPainter(
-      text: TextSpan(text: text, style: style),
-      textDirection: TextDirection.ltr,
-    );
-    textPainter.layout();
-    textPainter.paint(canvas, position);
   }
 
   // v3.2 性能优化：色相直方图 360 个 bin 的颜色 Paint 预生成。

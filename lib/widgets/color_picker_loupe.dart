@@ -71,7 +71,8 @@ class ColorPickerLoupe extends StatelessWidget {
             decoration: BoxDecoration(
               color: AppColors.onPhotoScrim,
               borderRadius: Radii.smBorder,
-              border: Border.all(color: Colors.white24),
+              // M6 token 化：原 Colors.white24 → DetailColors.divider
+              border: Border.all(color: DetailColors.divider),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -98,7 +99,8 @@ class ColorPickerLoupe extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   'H${hsl.h.round()}° S${hsl.s.round()}%',
-                  style: const TextStyle(color: Colors.white60, fontSize: 10),
+                  // M6 token 化：原 Colors.white60 → DetailColors.textSecondary
+                  style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10),
                 ),
               ],
             ),
@@ -208,7 +210,8 @@ class PixelInfoPanel extends StatelessWidget {
             height: 20,
             decoration: BoxDecoration(
               color: Color.fromARGB(0xFF, pixel.r, pixel.g, pixel.b),
-              border: Border.all(color: Colors.white38),
+              // M6 token 化：原 Colors.white38 → DetailColors.textMuted
+              border: Border.all(color: DetailColors.textMuted),
               borderRadius: Radii.xsBorder,
             ),
           ),
@@ -228,7 +231,8 @@ class PixelInfoPanel extends StatelessWidget {
               ),
               Text(
                 '${pixel.rgbString}  L:${pixel.luminance}',
-                style: const TextStyle(color: Colors.white60, fontSize: 10),
+                // M6 token 化：原 Colors.white60 → DetailColors.textSecondary
+                style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10),
               ),
             ],
           ),
@@ -236,7 +240,8 @@ class PixelInfoPanel extends StatelessWidget {
           // 坐标
           Text(
             '(${pixel.x}, ${pixel.y})',
-            style: const TextStyle(color: Colors.white38, fontSize: 10),
+            // M6 token 化：原 Colors.white38 → DetailColors.textMuted
+            style: const TextStyle(color: DetailColors.textMuted, fontSize: 10),
           ),
         ],
       ),

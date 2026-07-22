@@ -398,8 +398,12 @@ class _DetailPageState extends ConsumerState<DetailPage> {
       key: _imageKey,
       File(filePath),
       fit: BoxFit.contain,
-      cacheWidth:
-          (MediaQuery.of(context).size.width * 3).toInt().clamp(1, 4096),
+      // M4 修复：num.clamp() 返回 num 不是 int。Flutter 的 cacheWidth 要求 int?，
+      // 隐式赋值在部分编译器模式下会失败。显式 .toInt() 保证类型一致。
+      cacheWidth: (MediaQuery.of(context).size.width * 3)
+          .round()
+          .clamp(1, 4096)
+          .toInt(),
       errorBuilder: (_, error, ___) => const Center(
         child: Icon(Icons.broken_image,
             color: DetailColors.textSecondary, size: 64),
@@ -869,12 +873,14 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     return ListTile(
                       leading: ClipRRect(
                         borderRadius: Radii.xsBorder,
+                        // m8：thumbnailPath 空时原图兜底，加 cacheWidth 防列表滚动卡顿
                         child: Image.file(File(p.thumbnailPath.isEmpty
                             ? p.filePath
                             : p.thumbnailPath),
                             width: 48,
                             height: 48,
                             fit: BoxFit.cover,
+                            cacheWidth: 96, // 48×2 retina，避免全分辨率原图进列表
                             errorBuilder: (_, __, ___) => Container(
                               width: 48,
                               height: 48,
@@ -1075,10 +1081,17 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 36,
-                child: Text('${_contrast.round()}',
-                    style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10)),
+              // m7：固定宽度的 Text 可能被数值字符串撑溢（如 `-2.0EV`），
+              // 改 ConstrainedBox + FittedBox 自适应缩放
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 44),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text('${_contrast.round()}',
+                      style: const TextStyle(
+                          color: DetailColors.textSecondary, fontSize: 10)),
+                ),
               ),
             ],
           ),
@@ -1101,10 +1114,15 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 36,
-                child: Text('${_exposure.toStringAsFixed(1)}EV',
-                    style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10)),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 44),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text('${_exposure.toStringAsFixed(1)}EV',
+                      style: const TextStyle(
+                          color: DetailColors.textSecondary, fontSize: 10)),
+                ),
               ),
             ],
           ),

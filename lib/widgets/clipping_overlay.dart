@@ -130,7 +130,7 @@ class ClippingStatusBar extends StatelessWidget {
             Text(
               '暗部 ${(result.darkRatio * 100).toStringAsFixed(1)}%',
               style: const TextStyle(
-                color: Colors.white70,
+                color: DetailColors.textSecondary,
                 fontSize: 11,
               ),
             ),
@@ -150,7 +150,7 @@ class ClippingStatusBar extends StatelessWidget {
             Text(
               '亮部 ${(result.brightRatio * 100).toStringAsFixed(1)}%',
               style: const TextStyle(
-                color: Colors.white70,
+                color: DetailColors.textSecondary,
                 fontSize: 11,
               ),
             ),

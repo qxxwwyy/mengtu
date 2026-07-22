@@ -79,9 +79,12 @@ void main() {
   });
 
   test('alpha sqrt 压缩：count 最高的 bin alpha 最大', () {
+    // 两点必须分别在画布左/右两侧，firstWhere((p) => p.px >/< cx) 才都能命中。
+    // cbB=10 → Cb 中心 = 10×4+2-128 = -86（左侧，低 count）
+    // cbB=40 → Cb 中心 = 40×4+2-128 = +34（右侧，高 count）
     final bins = emptyBins();
-    bins[10 * crBins + 10] = 25; // density=0.25, sqrt=0.5
-    bins[20 * crBins + 20] = 100; // density=1.0, sqrt=1.0
+    bins[10 * crBins + 32] = 25;  // density=0.25, sqrt=0.5  （Cb<0 左侧）
+    bins[40 * crBins + 32] = 100; // density=1.0,  sqrt=1.0  （Cb>0 右侧）
 
     final points = computeCloudPoints(bins, cx, cy, radius);
     final lowCountPoint = points.firstWhere((p) => p.px < cx);

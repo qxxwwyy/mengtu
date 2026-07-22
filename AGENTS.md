@@ -29,7 +29,7 @@
 - ✅ §3.2 色彩占比（色块宽度按占比动态分配）
 - ✅ §3.4 设置页面（存储统计 + 清理缓存 + 关于）
 - ✅ §4.1 MMCQ + K-Means 算法（三种算法可切换 + 数量可调节 3-8）
-- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3→v7）<br>（当前 schemaVersion 已演进至 v11，见下"数据库表"小节）
+- ✅ §4.2 色相直方图（360 bins HSV + 彩虹色条 + DB schemaVersion v3→v7）<br>（当前 schemaVersion 已演进至 v12，见下"数据库表"小节）
 - ✅ §5.x CI 体积优化（`--debug` → `--release`，APK 从 ~150MB 降到 ~30MB）
 - ✅ v2.0 底部导航 4 Tab（作品库/相册/策划/我的）
 - ✅ v2.0 详情页渐进式披露（常驻4按钮 + 激活工具栏 + 更多BottomSheet）
@@ -144,25 +144,22 @@ mengtu/
 ├── lib/
 │   ├── main.dart                    # 应用入口（ErrorWidget 兜底 + MainShell）
 │   ├── models/
-│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）+ SkinAnalysis（v7.0 移除 sti/flc）
+│   │   ├── tone_result.dart         # HistogramData + ToneResult（5段）+ SkinAnalysis（v7.0 移除 sti/flc；v7.2 加 chromaBins/chromaCb/chromaCr）
 │   │   ├── palette_result.dart      # PaletteColor + PaletteResult
 │   │   ├── exif_info.dart           # ExifInfo 强类型 + JSON 序列化 + 格式化（f/2.8、1/250s）
-│   │   ├── advanced_portrait_metrics.dart # v3.5 高级人像指标（black/white/ten_tonal 强制重算 + mergeIntoToneJson；v7.0 移除 STI/FLC）
-│   │   ├── photo_fingerprint.dart   # v3.5 照片指纹（96维直方图 + 7维标量[RAW 单位]）
-│   │   └── style_profile_match.dart # v3.5 档案匹配结果（分层置信度 similarityText/confidenceHint）
+│   │   └── advanced_portrait_metrics.dart # v3.5 高级人像指标（black/white/ten_tonal 强制重算 + mergeIntoToneJson；v7.0 移除 STI/FLC）
 │   ├── theme/
 │   │   └── app_theme.dart           # 设计系统（暗房美学：AppColors + 详情页 DetailColors 暗色专用 token）
 │   ├── services/
 │   │   ├── database/
-│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=11）
-│   │   │   ├── tables.dart          # 表定义（11张表，见下）
+│   │   │   ├── app_database.dart    # drift 数据库（schemaVersion=12）
+│   │   │   ├── tables.dart          # 表定义（9张表，见下）
 │   │   │   └── daos/
 │   │   │       ├── photo_dao.dart   # 照片CRUD + watch流 + watchPhotosByName(按文件名搜索) + 缓存更新 + 清缩略图 + updateExifCache
 │   │   │       ├── tag_dao.dart     # 标签CRUD + 相册-标签关联（v2.1 标签迁移到相册）
 │   │   │       ├── album_dao.dart   # 相册CRUD + 关联 + getCoverPhoto + watchAlbumsByTag/getAlbumsWithTagInfo/watchAlbumsForPhoto（v2.1）+ AlbumWithTags 聚合类
 │   │   │       ├── color_pin_dao.dart # 取色点CRUD
 │   │   │       ├── plan_dao.dart    # 拍摄策划CRUD + shot list/gear序列化 + 模板
-│   │   │       ├── style_profile_dao.dart # v3.5 风格档案CRUD + 关联 + removePhotoFromAllProfiles(删照片钩子) + getProfilePhotoCount
 │   │   │       └── *.g.dart        # 自动生成（gitignore）
 │   │   ├── import_service.dart      # 导入去重+缩略图+EXIF解析+删除+regenerateThumbnail+readExifForExistingPhoto+precomputeAnalysisForPhotos(v3.5 批量预计算含advanced)
 │   │   ├── exif_service.dart        # EXIF 解析纯函数（extractExifJson，Isolate 内调用）
@@ -172,12 +169,11 @@ mengtu/
 │   │   ├── clipping_service.dart    # 高光/阴影溢出警告（动态step）
 │   │   ├── harmony_service.dart     # 配色和谐度（6种HarmonyType）
 │   │   ├── pixel_picker_service.dart # 取色器像素拾取
-│   │   ├── face_service.dart        # v7.0: 移除 BlazeFace/Face Mesh/STI/FLC，只保留人脸 bbox 内缩 20% 肤色采样统计
+│   │   ├── image_scope_service.dart # v7.2 全图像素色彩分布采样（Cb/Cr 64×64 bins，达芬奇 vectorscope 数据源，Isolate）
+│   │   ├── insight_service.dart     # v8.0 洞察生成（替代已删除的档案匹配/复刻参数系统）
+│   │   ├── face_service.dart        # v7.0: 移除 BlazeFace/Face Mesh/STI/FLC，只保留人脸 bbox 内缩 20% 肤色采样统计（v7.2 累加 chromaBins）
 │   │   ├── scrfd_service.dart       # v7.0: SCRFD 离线人脸检测服务 (FFI 插件推理)
-│   │   ├── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
-│   │   ├── fingerprint_service.dart # v3.5 照片指纹（96维直方图+7维标量 Isolate）+ 档案统计 + 标准化欧氏+卡方融合匹配
-│   │   ├── builtin_profiles.dart    # v3.5 内置理论档案（日系/港风[做精]/青橙/中式[待校准]）+ ensureSeeded 幂等
-│   │   └── replication_hints_service.dart # v3.5 复刻参数生成（解读式「样片手法」语境，非诊断）
+│   │   └── sharpness_service.dart   # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源）
 │   ├── pages/
 │   │   ├── main_shell.dart          # 底部导航 4 Tab（作品库/相册/策划/我的）
 │   │   ├── home_page.dart           # 作品库（瀑布流+按文件名搜索+长按多选[加入相册/删除]+静默导入）v2.1去标签化
@@ -188,11 +184,9 @@ mengtu/
 │   │   ├── plan_list_page.dart      # 策划列表（状态筛选chips+卡片）
 │   │   ├── plan_edit_page.dart      # 策划创建/编辑（EditableShotRow子组件隔离+吸底保存）
 │   │   ├── plan_detail_page.dart    # 策划详情（shot完成度+实拍照片）
-│   │   ├── profile_page.dart        # 我的（统计+标签管理[全局相册标签]+设置入口+v3.5 风格档案入口）
+│   │   ├── profile_page.dart        # 我的（统计+标签管理[全局相册标签]+设置入口）
 │   │   ├── settings_page.dart       # 设置（存储+缓存+主题切换+版本）
-│   │   ├── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
-│   │   ├── style_profile_page.dart  # v3.5 风格档案列表/创建（选样片→预计算→关联→recomputeProfileStats）
-│   │   └── style_profile_detail_page.dart # v3.5 风格档案详情（照片列表+移除+重算指纹）
+│   │   └── tag_manage_page.dart     # 标签管理（分组显示 + 每标签相册使用计数）
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层；v2.1移除快速标签按钮）
 │   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行[黑白/溢出/构图/锐度/取色/数据] + 展开 GradingPanel 四阶解构卡片[v3.5 重构]）
@@ -210,26 +204,23 @@ mengtu/
 │   │       ├── grading_panel.dart   # 四阶卡片 ListView 容器（watch advancedMetricsProvider 一次；v6.0 去顶部 padding 消黑框）
 │   │       ├── stage_card.dart      # 通用阶卡片（序号+标题+摘要+折叠/展开）
 │   │       ├── stage_tonal_card.dart # 阶①影调手法（黑点/白点/RMS/十大影调 + 参照直方图）
-│   │       ├── stage_color_card.dart # 阶②色彩手法（v6.2：顶部嵌肤色示波器 + STI/ΔH/饱和解读；展开/折叠时 toggle colorCardExpandedProvider）
-│   │       ├── stage_isolation_card.dart # 阶③主体手法（SLS/SCS/FLC/锐度解读）
-│   │       ├── stage_archive_match_card.dart # 阶④档案比对（相似度列表+雷达图+复刻参数；颜色跟随 similarityText 分层）
+│   │       ├── stage_color_card.dart # 阶②色彩手法（v7.2：顶部嵌 Cb/Cr 矢量示波器 + ΔH/饱和解读；展开/折叠时 toggle colorCardExpandedProvider）
+│   │       ├── stage_isolation_card.dart # 阶③主体手法（SLS/SCS/锐度解读）
+│   │       ├── stage_insight_card.dart # 阶④洞察卡片（v8.0：替代已删除的 archive_match 档案比对 + fingerprint_radar 雷达图）
 │   │       ├── reference_histogram.dart # 参照直方图叠放（教学核心，当前 vs 典型影调高斯/U型）
-│   │       ├── fingerprint_radar.dart # 指纹雷达图 9 维（current vs archive；v6.0：AspectRatio 居中+补全 polygon）
-│   │       ├── skin_radar.dart      # v6.2 达芬奇式肤色示波器（极坐标：角度=色相/半径=饱和度 + 17° 肤色参考线；替代旧版 5 维雷达，嵌入阶②色彩卡片）
+│   │       ├── skin_radar.dart      # v7.2 达芬奇式 Cb/Cr 矢量示波器（broadcast vectorscope：横轴 Cb/纵轴 Cr + BT.709 75% 六色目标 + I-axis 123° 肤色线 + 像素云；v6.2 旧 HSV 极坐标版已废弃）
 │   │       ├── interpretation_row.dart # 解读行（共享）+ InterpretationStatus 状态色
-│   │       ├── replication_hints_card.dart # 复刻参数附录（解读式「样片手法」）
 │   │       └── raw_data_dashboard.dart # 数据仪表盘全屏页（4 section：影调/色彩/隔离/EXIF）
 │   ├── providers/
 │   │   ├── database_provider.dart   # AppDatabase + ImportService 单例
 │   │   ├── photo_provider.dart      # 照片流 + 搜索debounce + 排序 + photosByNameSearchProvider
 │   │   ├── tag_provider.dart        # 标签流 + TagActions（v2.1 相册作用域：addTagToAlbum/removeTagFromAlbum）
 │   │   ├── album_provider.dart      # 相册流（v2.1 集中：albumsProvider/albumsWithTagsProvider/albumPhotosProvider/albumTagsProvider/albumsByTagProvider/photoAlbumsProvider + albumTagFilterProvider）
-│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（ML Kit→BlazeFace→Face Mesh 肤色 ROI）+ v6.1 detectedFaceProvider（主脸 bbox）+ v6.2 colorCardExpandedProvider（色彩卡片展开状态，驱动人脸框可见性）+ v3.5 meshModelPathProvider/advancedMetricsProvider（聚合 advanced 含 STI/FLC）
+│   │   ├── analysis_provider.dart   # 直方图/影调/色卡计算+缓存 + v3.0 skinProvider（SCRFD bbox 肤色 ROI）+ v6.1 detectedFaceProvider（主脸 bbox）+ v6.2 colorCardExpandedProvider（色彩卡片展开状态，驱动人脸框可见性）+ v3.5 advancedMetricsProvider（聚合 advanced）+ v7.1 scopeModeProvider（示波器模式）+ v7.2 imageScopeProvider（全图 Cb/Cr 采样）+ manualSkinSelectionProvider（手动肤色校准）
 │   │   ├── exif_provider.dart       # EXIF Provider + colorPinsProvider（取色点流）
 │   │   ├── clipping_provider.dart   # 溢出状态
 │   │   ├── sharpness_provider.dart  # v3.0 拉普拉斯边缘响应（峰值对焦蒙层数据源，按需计算不缓存）
 │   │   ├── plan_provider.dart       # 策划流 + 模板 + 状态筛选
-│   │   ├── style_profile_provider.dart # v3.5 风格档案流 + fingerprintServiceProvider + photoFingerprintProvider + styleProfileMatchProvider
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
 │       ├── app_info.dart           # 应用版本常量（单一数据源，与 pubspec version 对齐）
@@ -260,8 +251,8 @@ mengtu/
 └── pubspec.yaml                     # version: 1.3.0+1
 ```
 
-**数据库表（11 张，schemaVersion=11）：**
-- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引。v3.5：toneJson 内嵌 `advanced` 键（black_point/white_point/ten_tonal/skin_sti/face_lighting_contrast），不改表结构
+**数据库表（9 张，schemaVersion=12）：**
+- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引。v3.5：toneJson 内嵌 `advanced` 键（black_point/white_point/ten_tonal），不改表结构
 - `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）。v2.1 起标签是相册的子系统，全局定义、可复用
 - `AlbumTags` — 相册-标签多对多（v2.1 替代原 PhotoTags，标签从照片迁移到相册）
 - `ColorPins` — 取色点（v4）
@@ -270,8 +261,8 @@ mengtu/
 - `ShootingPlans` — 拍摄策划（v7，标题/风格/器材/shot list/状态 + v10 associatedAlbumId 关联样片相册，FK setNull）
 - `PlanPhotos` — 策划-照片关联（区分 reference/result 角色）
 - `PlanTemplates` — 策划模板（内置 3 个：人像外拍/街拍/静物）
-- `StyleProfiles` — v3.5 风格档案（id/name/description/fingerprintStats[JSON{mean,std}]/isBuiltin/builtinKey）
-- `StyleProfilePhotos` — v3.5 档案-照片多对多（profileId FK cascade / photoId FK setNull，测试库不生效由 DAO 显式清理，gotcha #40）
+
+> v8.0 已删除 `StyleProfiles` / `StyleProfilePhotos` 两表及配套 `style_profile_dao.dart` / `fingerprint_service.dart` / `builtin_profiles.dart` / `replication_hints_service.dart` / `style_profile_provider.dart` / `style_profile_page.dart` / `style_profile_detail_page.dart`（schemaVersion v11→v12，档案匹配/复刻参数系统被 `insight_service.dart` 洞察生成替代）。`PhotoFingerprint` / `StyleProfileMatch` 模型也一并移除。
 
 ## 编码规范
 

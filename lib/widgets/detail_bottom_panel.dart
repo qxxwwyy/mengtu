@@ -93,7 +93,9 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
   Widget build(BuildContext context) {
     // v6.1：用固定 height 约束（原 maxHeight:380 留余量 → Column(min) 居中 →
     // 工具行与卡片之间出现暗色空隙，用户看成「顶部大黑框」，问题4）。
-    // 收起态 72（工具行），展开态 = 工具行(60) + GradingPanel(308) = 368。
+    // 收起态 80 = grab handle(8) + 工具行(60) + padding(12)；
+    // 展开态 368 = grab handle(8) + 工具行(60) + GradingPanel(300)。
+    // M5 修复：原注释写 72 与代码 80 不一致（gotcha #58 同步更正），统一 80。
     final height = _effectiveExpanded ? 368.0 : 80.0;
     return AnimatedContainer(
       duration: AppAnimations.expandDuration,

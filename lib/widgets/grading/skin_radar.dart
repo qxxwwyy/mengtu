@@ -208,6 +208,7 @@ class _VectorscopePainter extends CustomPainter {
       ..strokeWidth = 0.5
       ..style = PaintingStyle.stroke;
 
+    // 25/50/100% 圈（75% 单独高亮画在下方，避免重复）
     for (final r in [0.25, 0.5, 1.0]) {
       canvas.drawCircle(Offset(cx, cy), radius * r, gridPaint);
     }
@@ -250,7 +251,7 @@ class _VectorscopePainter extends CustomPainter {
       // 标签沿径向外移（scale 1.15）
       final (lx, ly) = _chromaToCanvas(ycbcr.cb, ycbcr.cr, cx, cy, radius, 1.15);
       _drawColorLabel(canvas, t.label, Offset(lx, ly), t.color,
-          align: _labelAlign(ycbcr.cb, ycbcr.cr));
+          align: _labelAlign(ycbcr.cb));
     }
 
     // ===== 5. 肤色参考线（I-axis 123°，仅肤色模式显示）=====
@@ -272,7 +273,7 @@ class _VectorscopePainter extends CustomPainter {
       final (lx, ly) = _chromaToCanvas(skinCb, skinCr, cx, cy, radius, 1.2);
       _drawLabel(canvas, '肤色', Offset(lx, ly),
           color: ChartColors.skinToneLine,
-          align: _labelAlign(skinCb, skinCr));
+          align: _labelAlign(skinCb));
     }
 
     // ===== 6. 肤色光点（仅肤色模式叠加）=====
@@ -283,19 +284,22 @@ class _VectorscopePainter extends CustomPainter {
         cb = skinChromaCb!;
         cr = skinChromaCr!;
       } else if (hueOffset != null) {
-        // 回退路径：chromaCb/Cr 缺失时，沿 I-axis(123°) 按 hueOffset 偏移估算。
-        // 角度 θ = atan2(Cr, Cb)（broadcast 标准，从 +Cb 轴逆时针）。
-        const baseAngle = 123.0 * math.pi / 180.0;
-        final angle = baseAngle + hueOffset! * math.pi / 180;
-        // 半径用 saturation 估算（0~100% → chroma 幅度 0~75）
-        final mag = ((saturation ?? 50) / 100) * 75;
-        cb = mag * math.cos(angle); // θ 从 +Cb 轴，Cb 分量 = mag·cos
-        cr = mag * math.sin(angle); // Cr 分量 = mag·sin
+        // 回退路径：chromaCb/Cr 缺失（老缓存/手动校准单点）。
+        // 不能把 HSV hueOffset 直接加到 Cb/Cr I-axis 角度上 —— HSV hue 和
+        // Cb/Cr atan2(Cr,Cb) 是两个非线性相关的角空间（直接相加会系统性偏移，
+        // 评审 B1）。改为同源转换：还原绝对 HSV hue=17+hueOffset → RGB → rgbToYCbCr，
+        // 与像素云/六色目标共用同一转换函数，坐标系自洽。
+        final absHue = (17.0 + hueOffset!) % 360.0;
+        final sat = (saturation ?? 50) / 100.0;
+        final rgb = _hsvToRgb(absHue, sat, 0.65);
+        final ycbcr = rgbToYCbCr(rgb[0], rgb[1], rgb[2]);
+        cb = ycbcr.cb;
+        cr = ycbcr.cr;
       } else {
-        // 最终兜底：标准 I-axis 123° 肤色点
-        const fallbackAngle = 123.0 * math.pi / 180.0;
-        cb = 50 * math.cos(fallbackAngle);
-        cr = 50 * math.sin(fallbackAngle);
+        // 最终兜底：标准 I-axis 123° 肤色点（RGB(200,150,130) 校准）
+        final ycbcr = rgbToYCbCr(200, 150, 130);
+        cb = ycbcr.cb;
+        cr = ycbcr.cr;
       }
       final (px, py) = _chromaToCanvas(cb, cr, cx, cy, radius, 1.0);
 
@@ -361,9 +365,8 @@ class _VectorscopePainter extends CustomPainter {
   }
 
   /// 标签对齐方向（基于 Cb 横轴位置：Cb<0 在左侧用右对齐，Cb>0 在右侧用左对齐）
-  TextAlign _labelAlign(double cb, double cr) {
-    if (cb < 0) return TextAlign.right;
-    return TextAlign.left;
+  TextAlign _labelAlign(double cb) {
+    return cb < 0 ? TextAlign.right : TextAlign.left;
   }
 
   void _drawColorLabel(Canvas canvas, String text, Offset pos, Color color,
@@ -449,7 +452,7 @@ class _Legend extends StatelessWidget {
                 fontWeight: FontWeight.w600)),
         SizedBox(height: 8),
         Text(
-            '横轴=Cr，纵轴=Cb。\n'
+            '横轴=Cb，纵轴=Cr。\n'
             '每个色块 = 该色彩组合的\n'
             '像素密度。越亮=像素越多。',
             style: TextStyle(
@@ -460,23 +463,33 @@ class _Legend extends StatelessWidget {
 
   Widget _skinRoiLegend() {
     if (!hasSkin) {
-      return const Column(
+      // M2 半填充语义漏洞修复：chromaBins 有数据（ROI 内有色像素但无肤色色相匹配）
+      // 时不能只写「未检出肤色」——示波器画了 ROI 云却没解读，图文割裂。
+      // stage_color_card.summary 已对 chromaCb/Cr 做了「肤色色度已采样」区分，
+      // 这里 legend 同步区分：有 chroma 数据显示色度落点，完全空才显示未检出。
+      final hasChroma = skin.chromaBins != null || skin.chromaCb != null;
+      return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('肤色示波器',
+          const Text('肤色示波器',
               style: TextStyle(
                   color: DetailColors.textPrimary,
                   fontSize: 13,
                   fontWeight: FontWeight.w700)),
-          SizedBox(height: 4),
-          Text('未检出肤色',
-              style: TextStyle(color: InterpretationStatus.low, fontSize: 11)),
-          SizedBox(height: 6),
+          const SizedBox(height: 4),
+          Text(hasChroma ? '肤色色度已采样' : '未检出肤色',
+              style: const TextStyle(
+                  color: InterpretationStatus.low, fontSize: 11)),
+          const SizedBox(height: 6),
           Text(
-              '光点越靠近白色「肤色线」→ 肤色越正。\n'
-              '可长按图片皮肤区域手动校准。',
-              style: TextStyle(
+              hasChroma
+                  ? 'ROI 像素已分布到 Cb/Cr 平面。\n'
+                    '未匹配肤色色相区间（光点参考线）。\n'
+                    '可长按图片皮肤区域手动校准。'
+                  : '光点越靠近「肤色线」→ 肤色越正。\n'
+                    '可长按图片皮肤区域手动校准。',
+              style: const TextStyle(
                   color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
         ],
       );
@@ -566,12 +579,45 @@ List<int> ycbcrToRgbForCloud(double yFixed, double cb, double cr) {
   ];
 }
 
+/// HSV → RGB（用于肤色光点回退路径，从 HSV hue 还原 RGB 再走 rgbToYCbCr）
+///
+/// [h] 0~360°，[s]/[v] 0~1。标准 HSV→RGB 算法。
+List<int> _hsvToRgb(double h, double s, double v) {
+  final c = v * s;
+  final hp = (h % 360) / 60.0;
+  final x = c * (1 - (hp % 2 - 1).abs());
+  double r, g, b;
+  if (hp < 1) {
+    r = c; g = x; b = 0;
+  } else if (hp < 2) {
+    r = x; g = c; b = 0;
+  } else if (hp < 3) {
+    r = 0; g = c; b = x;
+  } else if (hp < 4) {
+    r = 0; g = x; b = c;
+  } else if (hp < 5) {
+    r = x; g = 0; b = c;
+  } else {
+    r = c; g = 0; b = x;
+  }
+  final m = v - c;
+  return [
+    ((r + m) * 255).round().clamp(0, 255),
+    ((g + m) * 255).round().clamp(0, 255),
+    ((b + m) * 255).round().clamp(0, 255),
+  ];
+}
+
 /// 把 Cb/Cr 64×64 bins 转成可绘制的像素云点列表。
 ///
 /// 纯函数，无 canvas 依赖：
 /// - 跳过 count==0 的 bin
 /// - 每个非空 bin 算 Cb/Cr 中心值 → 画布坐标（Cb 横轴/Cr 纵轴）+ sqrt 密度压缩 alpha + 反算 RGB
 /// - [radius] 为示波器半径（满量程 ±127.5 → radius）
+///
+/// 云色块的颜色用「反算 RGB 时 Y 固定 135」的近似值，与六色目标框（真实 Y）
+/// 存在系统性偏差（饱和红/蓝端偏粉/淡紫，评审 M1）。当前作为像素密度可视化
+/// 仍可接受；颜色判读以六色目标框为准。
 List<CloudPoint> computeCloudPoints(
     List<int> bins, double cx, double cy, double radius) {
   final cbBins = SkinAnalysis.cbBinCount;

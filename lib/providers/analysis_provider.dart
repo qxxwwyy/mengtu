@@ -223,6 +223,14 @@ final skinProvider =
 /// skinRoi 模式额外叠加肤色光点（来自 skinProvider 的 chromaCb/Cr）。
 ///
 /// 性能：Isolate 内 step=2 降采样，缩略图 ~60K 像素 → ~15K 次计算。
+///
+/// 缓存策略（评审 M3）：**当前无 SQLite 缓存**（区别于
+/// histogramProvider/paletteProvider/toneProvider 都有 DB 缓存列）。Riverpod
+/// family 缓存让同一 photoId 在同一 ProviderContainer 内不重算，但跨照片切换
+/// 后回来会重跑 Isolate 采样。若未来成为性能热点，可仿 histogram 模式：
+/// 把 bins 序列化成 Uint16List（clamp 65535，gotcha #18）存到 photo 表新列
+/// `chroma_bins`（需 schemaVersion 升级 + 迁移）。当前 Isolate 已足够快，
+/// 且示波器是详情页懒加载（非全量预计算），暂不缓存。
 final imageScopeProvider =
     FutureProvider.family<List<int>, String>((ref, photoId) async {
   final photo = await ref.watch(photoByIdProvider(photoId).future);
