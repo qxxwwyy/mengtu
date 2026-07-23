@@ -13,7 +13,7 @@
 **目标平台：** Android（优先）→ Windows（二期）
 **详细需求：** 以本文档"已完成"清单 + [README.md](./README.md) 功能列表为准（PRD.md/DEVPLAN.md 未入库）
 
-## 当前开发状态（v3.5）
+## 当前开发状态（v8.0）
 
 ### 已完成
 - ✅ §1.1 项目初始化（Flutter 3.44 + Riverpod 3.x + drift + CI/CD）
@@ -60,6 +60,9 @@
 - ✅ v6.1 二轮手动测试修复（①BlazeFace→ML Kit 人脸检测迁移[google_mlkit_face_detection bundled/minFaceSize 0.15 抓大头照]+FaceBBoxOverlay 检测框可视化[建立用户信任]+Face Mesh 保留算 STI/FLC；②顶部通知替代底部 SnackBar[避开工具行操作热区]；③取色坐标系统一 Stack-local[放大镜/像素/pin 三者对齐]+InteractiveViewer 取色锁定 scale=1；④DetailBottomPanel 固定高度 368/72+Expanded 填充消除黑框；⑤作品库多选栏重构[隐藏 FAB+Material 底栏+取消 IconButton 醒目]）
 - ✅ v6.2 肤色示波器 + 人脸框可见性治理（①FaceBBoxOverlay 不再常驻，仅在「色彩手法」卡片展开时显示[colorCardExpandedProvider 按 photoId 作用域，detail_page watch + StageColorCard toggle + dispose 清空，gotcha #56]；②旧版 5 维 SkinRadar[ΔH/饱和/明度/STI/SLS 雷达]重写为达芬奇式肤色示波器[极坐标：角度=色相/半径=饱和度 + 固定 17° 肤色参考线 + 同心饱和度圆 + 光点越靠线越正，gotcha #57]）
 - ✅ v7.0 SCRFD/NCNN人脸检测重构（全面替换 BlazeFace + ML Kit + MediaPipe Face Mesh 为 SCRFD NCNN 推理，下线 STI/FLC，指纹缩至 7 维，首创 Android FFI 极速集成方案）
+- ✅ v7.1 矢量示波器双模式（SkinRadar 改 ConsumerWidget + scopeModeProvider 肤色ROI/全图切换 + imageScopeProvider 全图采样 + stage_color_card 嵌入示波器 + FaceBBoxOverlay 按 photoId 作用域可见性）
+- ✅ v7.2 示波器 Cb/Cr 平面重构（修像素云画不出来 bug + 坐标系从 HSV 极坐标切换到 Cb/Cr[YCbCr Rec.709 full-range]直角平面对齐达芬奇 broadcast vectorscope 规范 + 像素云始终来自全图采样[任何照片都有数据] + rgbToYCbCr 纯函数 + SkinAnalysis 加 chromaBins/chromaCb/chromaCr + sampleImageChroma 64×64 bins + 六色 BT.709 75% 彩条 + I-axis 123° 肤色线 + 抽 computeCloudPoints 纯函数 unit test[评审 M3] + isEmpty 纳入 chroma 字段[评审 M2] + 删 sampleImageHueSat/hueSatBins 死代码[评审 m1]，gotcha #64/#65）
+- ✅ v8.0 洞察生成系统（删 StyleProfiles/StyleProfilePhotos 两表 + 删 style_profile_dao/fingerprint_service/builtin_profiles/replication_hints_service/style_profile_page 等档案匹配系统 + schemaVersion v11→v12 + insight_service 洞察生成替代 + stage_insight_card 阶④改用洞察 + SkinAnalysis 加 chromaBins/chromaCb/chromaCr[示波器 Cb/Cr 平面]，详见下）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -224,7 +227,7 @@ mengtu/
 │   │   └── theme_provider.dart      # 主题模式（暗色/浅色/跟随系统 + SharedPreferences）
 │   └── utils/
 │       ├── app_info.dart           # 应用版本常量（单一数据源，与 pubspec version 对齐）
-│       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度
+│       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度, rgbToYCbCr（v7.2 示波器 Cb/Cr 平面用）
 │       └── file_hash.dart           # 纯Dart SHA256
 ├── algorithms/                      # 取色算法（独立模块）
 │   ├── mmcq.dart                    # MMCQ 改进中位切分
@@ -252,7 +255,7 @@ mengtu/
 ```
 
 **数据库表（9 张，schemaVersion=12）：**
-- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引。v3.5：toneJson 内嵌 `advanced` 键（black_point/white_point/ten_tonal），不改表结构
+- `Photos` — 照片 + 分析缓存（直方图/色卡/影调）+ EXIF 拍摄参数（exifJson，v8）+ fileHash 唯一索引。v3.5：toneJson 内嵌 `advanced` 键（black_point/white_point/ten_tonal），不改表结构。v7.2：toneJson 的 `skin` 键内嵌 `chromaBins`/`chromaCb`/`chromaCr`（示波器 Cb/Cr 平面，64×64=4096 int），仍不改表结构
 - `Tags` — 标签（name + group: 氛围/场景/情绪/自定义）。v2.1 起标签是相册的子系统，全局定义、可复用
 - `AlbumTags` — 相册-标签多对多（v2.1 替代原 PhotoTags，标签从照片迁移到相册）
 - `ColorPins` — 取色点（v4）
@@ -439,7 +442,13 @@ CI 流程（`.github/workflows/build.yml`）：
 60. **作品库多选模式重构（v6.1 问题5）** — 原操作栏 `Row(spaceAround)` 的「取消」按钮被导入 FAB 遮挡。修复：(a) 多选模式隐藏 FAB（`floatingActionButton: _selectMode ? null : FAB`）；(b) 操作栏改 Material elevation 底栏，左侧「取消」IconButton 醒目（绝不被遮挡）+ 已选数量 chip + 右侧「加入相册/删除」主操作按钮
 61. **AnimatedOpacity 不能配条件渲染（v6.1 review 修复）** — `AnimatedOpacity` 是 `ImplicitlyAnimatedWidget`，opacity **值变化**才触发动画，且 widget **首次挂载时不动画**（直接以当前 opacity 渲染）。反模式：`if (visible) AnimatedOpacity(opacity: visible?1:0)` —— widget 存在时 visible 必为 true（opacity 恒 1），移除时直接消失来不及播淡出，**淡入淡出都不触发（死代码）**。正确做法：widget **常驻树**，用独立的 `_visible` bool 切 opacity（先挂载 opacity:0，再 setState opacity:1 触发淡入；onTimeout 先 setState opacity:0 播淡出，动画结束再清内容）。`_buildTopNotice` 已按此重构
 62. **人脸检测框仅在「色彩手法」展开时显示（v6.2）** — v6.1 的 `FaceBBoxOverlay` 用 `_showFaceBox = true` 常驻，虽给用户「安全感」但一直挂着干扰其他工具（取色/构图/锐度）。v6.2 改为仅在用户打开「色彩手法」卡片时显示，把 bbox 与「肤色识别落点」语义绑定。实现：`colorCardExpandedProvider`（`NotifierProvider<_, String?>`，按 photoId 作用域，`analysis_provider.dart`）—— `StageColorCard.onTap` 展开→`setExpanded(photoId)`/折叠→`setCollapsed(photoId)`；`detail_page.build` `ref.watch(colorCardExpandedProvider) == widget.photoId` 决定 bbox 可见；`dispose` 调 `setCollapsed(widget.photoId)` 清空。**坑**：(a) `setCollapsed` 必须比对 photoId 相等才清空（`if(state==photoId) state=null`），否则用户在 A 照片展开后，B 照片折叠会误清 A 的状态；(b) `dispose` 里访问 `ref` 必须在 `super.dispose()` 之前（gotcha 既有模式）；(c) `import` 用 `show` 指令限定的文件（detail_page.dart）新增 provider 引用必须同步加进 show 列表，否则 `Undefined name`
-63. **肤色示波器替代 5 维雷达（v6.2）** — 旧版 `SkinRadar` 5 维雷达（ΔH/饱和/明度/STI/SLS）用户反馈「看不懂是什么意思」，重写为业界标准的**达芬奇式肤色矢量示波器**（参考 DaVinci Resolve / darktable 实现原理）：极坐标，**角度=色相**（HSV hue，0°→右/红，90°→下/黄绿，180°→左/青，270°→上/品红，与达芬奇 R/Yl/G/Cy/B/Mg 六色方位一致）、**半径=饱和度**（0~100%→0~外圈），固定一条 **17° 肤色参考线**（达芬奇肤色线，所有肤色不论种族都落在此线附近 —— 「血透过皮肤」原理：黑色素/血红蛋白决定色相，种族只改明度/饱和）。当前照片肤色画成光点（暖橙 + 白描边 + 外晕），**越靠近参考线 = 肤色越正**。判定阈值与解读文案对齐（ΔH<10° 对齐良好绿/<25° 轻微偏离/>25° 偏色橙）。数据源：`skinProvider` 的 `hueOffset`（相对 17° 的偏差，还原绝对色相 `17+hueOffset`）+ `saturation%`。**保留 `advanced` 参数**（`dynamic`，标 `ignore: unused_field`）避免破坏 StageColorCard 调用签名 —— STI 仍在下方文字解读行展示（示波器不画 STI 维度）。gotcha #55 的旧雷达实现已删
+63. **~~肤色示波器（HSV 极坐标，v6.2）~~（v7.2 已重写，见 gotcha #64）** — v6.2 版 `SkinRadar` 用 HSV 极坐标（角度=色相/半径=饱和度）+ 17° 肤色线。**v7.2 重写为 Cb/Cr 平面对齐达芬奇 broadcast vectorscope**（见 gotcha #64/#65）。此条仅作历史记录，旧 HSV 实现（`_drawPixelCloud`/`sampleImageHueSat`/`hueSatBins`）已删，字段 `hueSatBins` 保留仅为读旧缓存
+64. **达芬奇 vectorscope 轴规范 + 像素云数据源（v7.2）** — 重构示波器时的两个关键认知：
+  - **坐标系**：标准 broadcast/DaVinci vectorscope 用 **Cb/Cr (YCbCr Rec.709 full-range) 直角平面**（参考 FFmpeg `vf_vectorscope.c` / Wikipedia），**横轴=Cb（+Cb 右）、纵轴=Cr（+Cr 上，画布 y 向下故 `py = cy - crNorm×radius`）**。**坑**：早期实现误把 Cr 放横轴、Cb 放纵轴（整个图旋转错位），且肤色线基准向量 Cb 正负号写反过一次。**决定性校验**：肤色线 I-axis 标准在 **123°**（从 +Cb 轴逆时针，方向向量 cos123°≈-0.545 / sin123°≈+0.839），必须落在**左上 ~11 点钟**——这是验证轴配置正确的唯一可靠判据（用真实肤色 RGB(200,150,130) 经 `rgbToYCbCr` 自验证只能证明「自洽」，任何坐标系翻转/镜像都会通过自洽验证，必须用六色绝对方位交叉验证）
+  - **像素云数据源**：v7.1 像素云在 skinRoi 默认模式下画不出来——根因是数据源 `skin.hueSatBins` 在 `analyzeSkinTone()` 的 4 条早退路径（解码失败/手动模式/**无人脸最常见**/ROI 内 skinCount==0）下都返回空 `SkinAnalysis()`，painter 守卫跳过绘制 → 只剩六色框。**修复**：像素云始终来自 `imageScopeProvider`（全图 Cb/Cr 采样，`sampleImageChroma` 64×64 bins），**任何照片都有数据，不再依赖人脸检测**。skinRoi 模式额外叠加肤色光点（`skinProvider` 的 chromaCb/Cr）；skinCount==0 但 ROI 内有色像素时返回「半填充」SkinAnalysis（chromaBins 有、标量无），靠 isEmpty 纳入 chroma 字段（gotcha #65）避免被误判 empty 丢弃
+  - **六色目标**：用 BT.709 **75% 彩条**（每通道 191，非 100%），Cb/Cr 恰为 100% 的 0.75 倍，以 127.5 归一化后自然落在 75% 圈，无需 scale hack，也避免 G/Mg 的 clamp 扭曲
+  - **isEmpty 语义**：`SkinAnalysis.isEmpty` 必须纳入 chroma 字段（`chromaBins/chromaCb/chromaCr 任一非空即非 empty`），否则 face_service 的 skinCount==0 早退路径产出的「半填充」对象被 `stage_color_card` 误判 empty → ROI 像素云分支变死代码
+65. **CustomPaint 的 widget 测试盲区 + unit test 范式（v7.2）** — Flutter 的 `CustomPaint` painter 不产生 Element，`find.*` 全部失效——widget test 无法捕获 painter 的渲染 bug（bin 索引算错/坐标 NaN/Paint 透明都不会让测试失败）。**正确范式**：把 painter 的核心计算逻辑抽成**顶层纯函数** + 独立 unit test。示波器把 `_drawChromaCloud` 的 bin→点映射抽成 `computeCloudPoints(bins, cx, cy, radius)` → `List<CloudPoint>`，`test/unit/chroma_cloud_test.dart` 断言坐标轴方向（+Cb 右/+Cr 上）、bin 索引顺序（`cbB*crBins+crB`）、空 bins 安全返回、alpha sqrt 压缩、RGB 反算 clamp。**坑（CI 踩过）**：测试里用 `firstWhere((p)=>p.px>cx)` 区分两个点时，bin 选址必须让两点 Cb 一正一负分居左右——若两个 bin 的 Cb 都为负（如 cbB=10 Cb=-86、cbB=20 Cb=-46，中心在 cbB=31.5），两点都落左侧，`firstWhere((p)=>p.px>cx)` 抛 `Bad state: No element`。算 bin 中心 Cb 值：`cbB*(256/cbBins)+(256/cbBins)/2-128`，cbB>31.5 才是正 Cb
 
 ## v3.5 已知限制（非阻塞，待后续优化）
 
