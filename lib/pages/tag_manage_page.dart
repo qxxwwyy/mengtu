@@ -1,0 +1,178 @@
+// tag_manage_page.dart — 标签管理页
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../providers/tag_provider.dart';
+
+class TagManagePage extends ConsumerStatefulWidget {
+  const TagManagePage({super.key});
+
+  @override
+  ConsumerState<TagManagePage> createState() => _TagManagePageState();
+}
+
+class _TagManagePageState extends ConsumerState<TagManagePage> {
+  final _newTagController = TextEditingController();
+  String _selectedGroup = 'custom';
+
+  static const _groupLabels = {
+    'atmosphere': '氛围',
+    'scene': '场景',
+    'emotion': '情绪',
+    'custom': '自定义',
+  };
+
+  @override
+  void dispose() {
+    _newTagController.dispose();
+    super.dispose();
+  }
+
+  void _addTag() {
+    final name = _newTagController.text.trim();
+    if (name.isEmpty) return;
+    ref
+        .read(tagActionsProvider.notifier)
+        .createTag(name, group: _selectedGroup);
+    _newTagController.clear();
+  }
+
+  void _deleteTag(String id, String name) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('删除标签'),
+        content: Text('确定要删除标签 "$name" 吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () {
+              ref.read(tagActionsProvider.notifier).deleteTag(id);
+              Navigator.pop(ctx);
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tagsAsync = ref.watch(allTagsProvider);
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('标签管理')),
+      body: Column(
+        children: [
+          // 新建标签区域
+          Card(
+            margin: const EdgeInsets.all(12),
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('新建标签',
+                      style: Theme.of(context).textTheme.titleSmall),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _newTagController,
+                          decoration: const InputDecoration(
+                            hintText: '输入标签名',
+                            border: OutlineInputBorder(),
+                            isDense: true,
+                          ),
+                          onSubmitted: (_) => _addTag(),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton.filled(
+                        icon: const Icon(Icons.add),
+                        onPressed: _addTag,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  // 分组选择
+                  Text('选择分组：',
+                      style: Theme.of(context).textTheme.labelMedium),
+                  const SizedBox(height: 4),
+                  Wrap(
+                    spacing: 6,
+                    children: _groupLabels.entries.map((entry) {
+                      return ChoiceChip(
+                        label: Text(entry.value),
+                        selected: _selectedGroup == entry.key,
+                        onSelected: (_) =>
+                            setState(() => _selectedGroup = entry.key),
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 标签列表（按分组显示）
+          Expanded(
+            child: tagsAsync.when(
+              loading: () =>
+                  const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(child: Text('错误: $e')),
+              data: (tags) {
+                if (tags.isEmpty) {
+                  return Center(
+                    child: Text('暂无标签',
+                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4))),
+                  );
+                }
+                // 按分组归类
+                final grouped = <String, List<({String id, String name})>>{};
+                for (final tag in tags) {
+                  final g = tag.group;
+                  grouped.putIfAbsent(g, () => []);
+                  grouped[g]!.add((id: tag.id, name: tag.name));
+                }
+
+                return ListView(
+                  children: [
+                    for (final groupKey in _groupLabels.keys)
+                      if (grouped.containsKey(groupKey)) ...[
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                          child: Text(
+                            _groupLabels[groupKey]!,
+                            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          child: Wrap(
+                            children: grouped[groupKey]!.map((tag) {
+                            return Chip(
+                              label: Text(tag.name),
+                              deleteIcon: const Icon(Icons.close, size: 16),
+                              onDeleted: () => _deleteTag(tag.id, tag.name),
+                            );
+                          }).toList(),
+                          ),
+                        ),
+                      ],
+                  ],
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
