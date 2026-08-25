@@ -110,11 +110,7 @@ class _FaceBBoxPainter extends CustomPainter {
     final tp = TextPainter(textDirection: TextDirection.ltr)
       ..text = TextSpan(
         text: '肤色采样区',
-        style: TextStyle(
-          color: AppColors.bgBase,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-        ),
+        style: AppTypography.captionCompact.copyWith(color: AppColors.bgBase, fontWeight: FontWeight.w600,),
       );
     tp.layout();
     final labelW = tp.width + 10;

@@ -298,11 +298,7 @@ class _ModeToggle extends StatelessWidget {
               const SizedBox(width: 3),
               Text(
                 mode == ScopeMode.skinRoi ? '肤色' : '全图',
-                style: const TextStyle(
-                  color: ChartColors.skinToneLine,
-                  fontSize: 9,
-                  fontWeight: FontWeight.w600,
-                ),
+                style: AppTypography.chartAnnotation.copyWith(color: ChartColors.skinToneLine, fontWeight: FontWeight.w600,),
               ),
             ],
           ),
@@ -597,7 +593,7 @@ class _VectorscopePainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w700),
+        style: AppTypography.chartAnnotation.copyWith(color: color, fontWeight: FontWeight.w700),
       ),
       textAlign: align,
       textDirection: TextDirection.ltr,
@@ -616,7 +612,7 @@ class _VectorscopePainter extends CustomPainter {
     final tp = TextPainter(
       text: TextSpan(
         text: text,
-        style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.w600),
+        style: AppTypography.chartAnnotation.copyWith(color: color, fontWeight: FontWeight.w600),
       ),
       textAlign: align,
       textDirection: TextDirection.ltr,
@@ -662,28 +658,21 @@ class _Legend extends StatelessWidget {
   }
 
   Widget _fullImageLegend() {
-    return const Column(
+    return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text('矢量示波器',
-            style: TextStyle(
-                color: DetailColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700)),
-        SizedBox(height: 4),
+            style: AppTypography.label.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w700)),
+        const SizedBox(height: 4),
         Text('全图色彩分布（Cb/Cr）',
-            style: TextStyle(
-                color: InterpretationStatus.neutral,
-                fontSize: 11,
-                fontWeight: FontWeight.w600)),
+            style: AppTypography.caption.copyWith(color: InterpretationStatus.neutral, fontWeight: FontWeight.w600)),
         SizedBox(height: 8),
         Text(
             '横轴=Cb，纵轴=Cr。\n'
             '每个色块 = 该色彩组合的\n'
             '像素密度。越亮=像素越多。',
-            style: TextStyle(
-                color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
+            style: AppTypography.chartAnnotation.copyWith(color: DetailColors.textMuted, height: 1.4)),
       ],
     );
   }
@@ -699,15 +688,11 @@ class _Legend extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          const Text('肤色示波器',
-              style: TextStyle(
-                  color: DetailColors.textPrimary,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700)),
+          Text('肤色示波器',
+              style: AppTypography.label.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
           Text(hasChroma ? '肤色色度已采样' : '未检出肤色',
-              style: const TextStyle(
-                  color: InterpretationStatus.low, fontSize: 11)),
+              style: AppTypography.caption.copyWith(color: InterpretationStatus.low)),
           const SizedBox(height: 6),
           Text(
               hasChroma
@@ -716,8 +701,7 @@ class _Legend extends StatelessWidget {
                     '可长按图片皮肤区域手动校准。'
                   : '光点越靠近「肤色线」→ 肤色越正。\n'
                     '可长按图片皮肤区域手动校准。',
-              style: const TextStyle(
-                  color: DetailColors.textMuted, fontSize: 9, height: 1.4)),
+              style: AppTypography.chartAnnotation.copyWith(color: DetailColors.textMuted, height: 1.4)),
         ],
       );
     }
@@ -735,15 +719,11 @@ class _Legend extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        const Text('肤色示波器',
-            style: TextStyle(
-                color: DetailColors.textPrimary,
-                fontSize: 13,
-                fontWeight: FontWeight.w700)),
+        Text('肤色示波器',
+            style: AppTypography.label.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
         Text(verdict,
-            style: TextStyle(
-                color: color, fontSize: 11, fontWeight: FontWeight.w600)),
+            style: AppTypography.caption.copyWith(color: color, fontWeight: FontWeight.w600)),
         const SizedBox(height: 8),
         _metric('色相偏差', '${skin.hueOffset!.toStringAsFixed(0)}°', color),
         const SizedBox(height: 3),
@@ -772,14 +752,10 @@ class _Legend extends StatelessWidget {
         const SizedBox(width: 4),
         Expanded(
           child: Text(label,
-              style: const TextStyle(
-                  color: DetailColors.textSecondary, fontSize: 9)),
+              style: AppTypography.chartAnnotation.copyWith(color: DetailColors.textSecondary)),
         ),
         Text(value,
-            style: TextStyle(
-                color: color,
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
+            style: AppTypography.captionCompact.copyWith(color: color, fontWeight: FontWeight.w600,
                 fontFamily: AppTypography.monoFontFamily)),
       ],
     );

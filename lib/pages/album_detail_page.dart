@@ -337,10 +337,8 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
                     padding: const EdgeInsets.all(16),
                     child: Row(
                       children: [
-                        const Text('选择标签',
-                            style: TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600)),
+                        Text('选择标签',
+                            style: AppTypography.title.copyWith(fontWeight: FontWeight.w600)),
                         const Spacer(),
                         TextButton.icon(
                           icon: const Icon(Icons.add, size: 18),

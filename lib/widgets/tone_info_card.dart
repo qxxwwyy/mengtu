@@ -51,7 +51,7 @@ class ToneInfoCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Text('· ${tone.toneRangeLabel}',
-              style: TextStyle(color: secondary, fontSize: 12)),
+              style: AppTypography.caption.copyWith(color: secondary)),
         ],
       ),
     );
@@ -81,8 +81,7 @@ class ToneInfoCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('明度分区',
-            style: TextStyle(
-                fontSize: 12, color: labelColor, fontWeight: FontWeight.w500)),
+            style: AppTypography.caption.copyWith(color: labelColor, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         _ZoneBar(
             label: '黑色', ratio: tone.blacks, color: blackColor),
@@ -113,8 +112,7 @@ class ToneInfoCard extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('统计指标',
-            style: TextStyle(
-                fontSize: 12, color: labelColor, fontWeight: FontWeight.w500)),
+            style: AppTypography.caption.copyWith(color: labelColor, fontWeight: FontWeight.w500)),
         const SizedBox(height: 8),
         GridView.count(
           shrinkWrap: true,
@@ -160,7 +158,7 @@ class _ZoneBar extends StatelessWidget {
       children: [
         SizedBox(
           width: 56,
-          child: Text(label, style: TextStyle(fontSize: 12, color: labelColor)),
+          child: Text(label, style: AppTypography.caption.copyWith(color: labelColor)),
         ),
         Expanded(
           child: ClipRRect(
@@ -210,8 +208,7 @@ class _StatCell extends StatelessWidget {
           Text(label,
               style: AppTypography.captionCompact.copyWith(color: DetailColors.textMuted)),
           Text(value,
-              style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.bold, color: accent)),
+              style: AppTypography.label.copyWith(fontWeight: FontWeight.bold, color: accent)),
         ],
       ),
     );

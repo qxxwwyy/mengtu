@@ -117,11 +117,7 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
               : Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text('十大影调：${a.tenTonalType}',
-                      style: const TextStyle(
-                        color: InterpretationStatus.neutral,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      )),
+                      style: AppTypography.caption.copyWith(color: InterpretationStatus.neutral, fontWeight: FontWeight.w600,)),
                 ),
           orElse: () => const SizedBox.shrink(),
         ),

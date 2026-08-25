@@ -430,11 +430,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
                       children: [
                         Text(
                           album.name,
-                          style: const TextStyle(
-                            color: AppColors.onPhotoText,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
+                          style: AppTypography.label.copyWith(color: AppColors.onPhotoText, fontWeight: FontWeight.w600,),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

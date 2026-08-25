@@ -63,25 +63,17 @@ class InterpretationRow extends StatelessWidget {
               Row(
                 children: [
                   Text(label,
-                      style: const TextStyle(
-                          color: DetailColors.textSecondary, fontSize: 11)),
+                      style: AppTypography.caption.copyWith(color: DetailColors.textSecondary)),
                   const Spacer(),
                   Text(value,
-                      style: TextStyle(
-                        color: statusColor,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        fontFamily: AppTypography.monoFontFamily,
-                      )),
+                      style: AppTypography.caption.copyWith(color: statusColor, fontWeight: FontWeight.w600,
+                        fontFamily: AppTypography.monoFontFamily,)),
                 ],
               ),
               const SizedBox(height: 2),
               Text(
                 interpretation,
-                style: const TextStyle(
-                    color: DetailColors.textMuted,
-                    fontSize: 11,
-                    height: 1.4),
+                style: AppTypography.caption.copyWith(color: DetailColors.textMuted, height: 1.4),
               ),
             ],
           ),

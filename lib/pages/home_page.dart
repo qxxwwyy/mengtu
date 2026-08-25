@@ -88,10 +88,10 @@ class _HomePageState extends ConsumerState<HomePage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
               child: Text('选择相册',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  style: AppTypography.title.copyWith(fontWeight: FontWeight.w600)),
             ),
             const Divider(height: 1),
             ...albums.map((a) => ListTile(
@@ -257,8 +257,8 @@ class _HomePageState extends ConsumerState<HomePage> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text('加入相册',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  Text('加入相册',
+                      style: AppTypography.title.copyWith(fontWeight: FontWeight.w600)),
                   TextButton.icon(
                     icon: const Icon(Icons.add, size: 18),
                     label: const Text('新建相册'),
@@ -516,11 +516,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 ),
                 child: Text(
                   '已选 $count',
-                  style: TextStyle(
-                    color: theme.colorScheme.primary,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
+                  style: AppTypography.caption.copyWith(color: theme.colorScheme.primary, fontWeight: FontWeight.w600,),
                 ),
               ),
               const Spacer(),

@@ -26,12 +26,12 @@ void main() async {
               children: [
                 const Icon(Icons.error_outline, size: 48, color: Colors.white38),
                 const SizedBox(height: 16),
-                const Text('应用遇到错误',
-                    style: TextStyle(fontSize: 16, color: Colors.white70)),
+                Text('应用遇到错误',
+                    style: AppTypography.title.copyWith(color: Colors.white70)),
                 const SizedBox(height: 8),
                 Text(
                   details.exception.toString(),
-                  style: const TextStyle(fontSize: 12, color: Colors.white54),
+                  style: AppTypography.caption.copyWith(color: Colors.white54),
                   textAlign: TextAlign.center,
                   maxLines: 4,
                   overflow: TextOverflow.ellipsis,

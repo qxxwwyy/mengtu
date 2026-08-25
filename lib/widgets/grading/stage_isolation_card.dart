@@ -15,6 +15,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/analysis_provider.dart';
 import '../../providers/sharpness_provider.dart';
 import 'interpretation_row.dart';
+import '../../theme/app_theme.dart';
 import 'stage_card.dart';
 
 /// 阶③主体手法卡片
@@ -69,12 +70,12 @@ class _StageIsolationCardState extends ConsumerState<StageIsolationCard> {
         ),
       ),
       error: (e, _) => Text('主体分析失败：$e',
-          style: const TextStyle(color: InterpretationStatus.bad, fontSize: 11)),
+          style: AppTypography.caption.copyWith(color: InterpretationStatus.bad)),
       data: (skin) {
         final s = skin;
         if (s.isEmpty) {
-          return const Text('未检出人脸主体，无法计算隔离度。',
-              style: TextStyle(color: InterpretationStatus.low, fontSize: 11, height: 1.4));
+          return Text('未检出人脸主体，无法计算隔离度。',
+              style: AppTypography.caption.copyWith(color: InterpretationStatus.low, height: 1.4));
         }
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,

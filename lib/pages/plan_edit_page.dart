@@ -351,9 +351,9 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
                     shape: RoundedRectangleBorder(
                         borderRadius: Radii.mdBorder),
                   ),
-                  child: const Text('保存策划',
+                  child: Text('保存策划',
                       style:
-                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                          AppTypography.body.copyWith(fontWeight: FontWeight.bold)),
                 ),
               ),
             ),
@@ -377,11 +377,8 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8, bottom: 4),
       child: Text(
         '$title ($count)',
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: theme.colorScheme.primary,
-        ),
+        style: AppTypography.label.copyWith(fontWeight: FontWeight.w600,
+          color: theme.colorScheme.primary,),
       ),
     );
   }

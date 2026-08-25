@@ -191,11 +191,7 @@ class _ColorWheelPainter extends CustomPainter {
       final tp = TextPainter(
         text: TextSpan(
           text: labels[i],
-          style: TextStyle(
-            color: AppColors.textMuted,
-            fontSize: 8,
-            fontWeight: FontWeight.w500,
-          ),
+          style: AppTypography.chartAnnotation.copyWith(color: AppColors.textMuted, fontWeight: FontWeight.w500,),
         ),
         textDirection: TextDirection.ltr,
       )..layout();

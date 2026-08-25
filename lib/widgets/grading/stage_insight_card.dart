@@ -201,19 +201,11 @@ class _InsightSection extends StatelessWidget {
         SizedBox(
           width: 32,
           child: Text(label,
-              style: const TextStyle(
-                color: DetailColors.textSecondary,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              )),
+              style: AppTypography.caption.copyWith(color: DetailColors.textSecondary, fontWeight: FontWeight.w600,)),
         ),
         Expanded(
           child: Text(text,
-              style: const TextStyle(
-                color: DetailColors.textPrimary,
-                fontSize: 11,
-                height: 1.5,
-              )),
+              style: AppTypography.caption.copyWith(color: DetailColors.textPrimary, height: 1.5,)),
         ),
       ],
     );

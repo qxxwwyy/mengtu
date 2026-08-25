@@ -225,11 +225,8 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
                         children: [
                           Text(
                             _effectiveExpanded ? '收起' : '分析 / 信息',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: DetailColors.textSecondary,
-                              fontWeight: FontWeight.w500,
-                            ),
+                            style: AppTypography.caption.copyWith(color: DetailColors.textSecondary,
+                              fontWeight: FontWeight.w500,),
                           ),
                           const SizedBox(width: 4),
                           // 展开时向上（可收起），收起时向下（可展开）

@@ -89,18 +89,14 @@ class ColorPickerLoupe extends StatelessWidget {
                 const SizedBox(width: 6),
                 Text(
                   pixel.hex,
-                  style: const TextStyle(
-                    color: DetailColors.textPrimary,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    fontFamily: AppTypography.monoFontFamily,
-                  ),
+                  style: AppTypography.caption.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w600,
+                    fontFamily: AppTypography.monoFontFamily,),
                 ),
                 const SizedBox(width: 6),
                 Text(
                   'H${hsl.h.round()}° S${hsl.s.round()}%',
                   // M6 token 化：原 Colors.white60 → DetailColors.textSecondary
-                  style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10),
+                  style: AppTypography.captionCompact.copyWith(color: DetailColors.textSecondary),
                 ),
               ],
             ),
@@ -223,16 +219,12 @@ class PixelInfoPanel extends StatelessWidget {
             children: [
               Text(
                 pixel.hex,
-                style: const TextStyle(
-                  color: DetailColors.textPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: AppTypography.caption.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w500,),
               ),
               Text(
                 '${pixel.rgbString}  L:${pixel.luminance}',
                 // M6 token 化：原 Colors.white60 → DetailColors.textSecondary
-                style: const TextStyle(color: DetailColors.textSecondary, fontSize: 10),
+                style: AppTypography.captionCompact.copyWith(color: DetailColors.textSecondary),
               ),
             ],
           ),
@@ -241,7 +233,7 @@ class PixelInfoPanel extends StatelessWidget {
           Text(
             '(${pixel.x}, ${pixel.y})',
             // M6 token 化：原 Colors.white38 → DetailColors.textMuted
-            style: const TextStyle(color: DetailColors.textMuted, fontSize: 10),
+            style: AppTypography.captionCompact.copyWith(color: DetailColors.textMuted),
           ),
         ],
       ),

@@ -114,19 +114,12 @@ class StageCard extends StatelessWidget {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(title,
-                    style: const TextStyle(
-                      color: DetailColors.textPrimary,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    )),
+                    style: AppTypography.label.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w600,)),
                 if (summary.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(summary,
-                        style: const TextStyle(
-                          color: DetailColors.textMuted,
-                          fontSize: 11,
-                        ),
+                        style: AppTypography.caption.copyWith(color: DetailColors.textMuted),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis),
                   ),
@@ -176,11 +169,7 @@ class _IndexBadge extends StatelessWidget {
       alignment: Alignment.center,
       child: Text(
         '$index',
-        style: const TextStyle(
-          color: AppColors.bgBase,
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-        ),
+        style: AppTypography.caption.copyWith(color: AppColors.bgBase, fontWeight: FontWeight.w700,),
       ),
     );
   }

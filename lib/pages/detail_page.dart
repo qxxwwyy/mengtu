@@ -629,11 +629,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                           Flexible(
                             child: Text(
                               _topNotice ?? '',
-                              style: const TextStyle(
-                                color: AppColors.bgBase,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
+                              style: AppTypography.caption.copyWith(color: AppColors.bgBase, fontWeight: FontWeight.w600,),
                             ),
                           ),
                         ],
@@ -728,15 +724,11 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(hex,
-                            style: const TextStyle(
-                                color: DetailColors.textPrimary,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
+                            style: AppTypography.label.copyWith(color: DetailColors.textPrimary, fontWeight: FontWeight.w600,
                                 fontFamily: AppTypography.monoFontFamily)),
                         const SizedBox(height: 2),
                         Text('HSL $hue° / $sat% / $lum%',
-                            style: const TextStyle(
-                                color: DetailColors.textMuted, fontSize: 11)),
+                            style: AppTypography.caption.copyWith(color: DetailColors.textMuted)),
                       ],
                     ),
                   ),
@@ -757,8 +749,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   isCurrentSkin
                       ? '肤色卡片正以此色校准'
                       : '把此取色点作为肤色样本，重算 ΔH/饱和度等指标',
-                  style: const TextStyle(
-                      color: DetailColors.textMuted, fontSize: 11)),
+                  style: AppTypography.caption.copyWith(color: DetailColors.textMuted)),
               onTap: () {
                 Navigator.pop(ctx);
                 ref.read(manualSkinSelectionProvider.notifier).select(
@@ -859,10 +850,10 @@ class _DetailPageState extends ConsumerState<DetailPage> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
+              Padding(
                 padding: EdgeInsets.all(16),
                 child: Text('选择对比的照片',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500)),
+                    style: AppTypography.title.copyWith(fontWeight: FontWeight.w500)),
               ),
               const Divider(height: 1),
               Flexible(
@@ -946,10 +937,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                       fileName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: DetailColors.textSecondary,
-                      ),
+                      style: AppTypography.label.copyWith(color: DetailColors.textSecondary,),
                     ),
                   ),
                   IconButton(
@@ -1026,10 +1014,10 @@ class _DetailPageState extends ConsumerState<DetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Padding(
+            Padding(
               padding: EdgeInsets.all(16),
               child: Text('选择相册',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                  style: AppTypography.title.copyWith(fontWeight: FontWeight.w600)),
             ),
             const Divider(height: 1),
             Expanded(
@@ -1088,8 +1076,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerRight,
                   child: Text('${_contrast.round()}',
-                      style: const TextStyle(
-                          color: DetailColors.textSecondary, fontSize: 10)),
+                      style: AppTypography.captionCompact.copyWith(color: DetailColors.textSecondary)),
                 ),
               ),
             ],
@@ -1119,8 +1106,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerRight,
                   child: Text('${_exposure.toStringAsFixed(1)}EV',
-                      style: const TextStyle(
-                          color: DetailColors.textSecondary, fontSize: 10)),
+                      style: AppTypography.captionCompact.copyWith(color: DetailColors.textSecondary)),
                 ),
               ),
             ],

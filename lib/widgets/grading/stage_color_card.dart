@@ -12,6 +12,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../models/tone_result.dart';
 import '../../providers/analysis_provider.dart';
 import 'interpretation_row.dart';
+import '../../theme/app_theme.dart';
 import 'skin_radar.dart';
 import 'stage_card.dart';
 
@@ -79,7 +80,7 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
         ),
       ),
       error: (e, _) => Text('肤色分析失败：$e',
-          style: const TextStyle(color: InterpretationStatus.bad, fontSize: 11)),
+          style: AppTypography.caption.copyWith(color: InterpretationStatus.bad)),
       data: (skin) {
         // skin 是 SkinAnalysis
         final s = skin;
@@ -88,11 +89,8 @@ class _StageColorCardState extends ConsumerState<StageColorCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // v6.2：无肤色时显示空示波器占位 + 引导手动校准
-              const Text('未检出肤色。可尝试用取色工具长按皮肤区域手动校准。',
-                  style: TextStyle(
-                      color: InterpretationStatus.low,
-                      fontSize: 11,
-                      height: 1.4)),
+              Text('未检出肤色。可尝试用取色工具长按皮肤区域手动校准。',
+                  style: AppTypography.caption.copyWith(color: InterpretationStatus.low, height: 1.4)),
               const SizedBox(height: 8),
               SkinRadar(
                 skin: const SkinAnalysis(),

@@ -75,12 +75,8 @@ class _SectionHeader extends StatelessWidget {
           Icon(icon, size: 14, color: AppColors.accent),
           const SizedBox(width: 6),
           Text(title,
-              style: const TextStyle(
-                color: AppColors.accent,
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                letterSpacing: 0.5,
-              )),
+              style: AppTypography.caption.copyWith(color: AppColors.accent, fontWeight: FontWeight.w600,
+                letterSpacing: 0.5,)),
         ],
       ),
     );
@@ -107,8 +103,7 @@ class _ReadingTile extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(
-                  color: DetailColors.textMuted, fontSize: 10)),
+              style: AppTypography.captionCompact.copyWith(color: DetailColors.textMuted)),
           const SizedBox(height: 4),
           Row(
             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -124,8 +119,7 @@ class _ReadingTile extends StatelessWidget {
               if (unit != null) ...[
                 const SizedBox(width: 2),
                 Text(unit!,
-                    style: const TextStyle(
-                        color: DetailColors.textSecondary, fontSize: 11)),
+                    style: AppTypography.caption.copyWith(color: DetailColors.textSecondary)),
               ],
             ],
           ),
@@ -160,7 +154,7 @@ class _TonalReadingsSection extends ConsumerWidget {
               height: 100,
               child: Center(child: CircularProgressIndicator())),
           error: (e, _) => Text('直方图加载失败: $e',
-              style: const TextStyle(color: DetailColors.warning, fontSize: 11)),
+              style: AppTypography.caption.copyWith(color: DetailColors.warning)),
           data: (hist) => Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
@@ -273,9 +267,9 @@ class _ColorReadingsSection extends ConsumerWidget {
                   color: DetailColors.cardSurface,
                   borderRadius: Radii.mdBorder,
                 ),
-                child: const Text('未检出肤色',
+                child: Text('未检出肤色',
                     style:
-                        TextStyle(color: DetailColors.textMuted, fontSize: 11)),
+                        AppTypography.caption.copyWith(color: DetailColors.textMuted)),
               );
             }
             return GridView.count(
@@ -356,8 +350,8 @@ class _IsolationReadingsSection extends ConsumerWidget {
           color: DetailColors.cardSurface,
           borderRadius: Radii.mdBorder,
         ),
-        child: const Text('未检出主体（无脸或侧脸），隔离度指标不可用',
-            style: TextStyle(color: DetailColors.textMuted, fontSize: 11, height: 1.4)),
+        child: Text('未检出主体（无脸或侧脸），隔离度指标不可用',
+            style: AppTypography.caption.copyWith(color: DetailColors.textMuted, height: 1.4)),
       );
     }
 
@@ -387,7 +381,7 @@ class _ExifReadingsSection extends ConsumerWidget {
       loading: () => const SizedBox(
           height: 60, child: Center(child: CircularProgressIndicator())),
       error: (e, _) => Text('EXIF 加载失败: $e',
-          style: const TextStyle(color: DetailColors.warning, fontSize: 11)),
+          style: AppTypography.caption.copyWith(color: DetailColors.warning)),
       data: (exif) {
         if (exif == null || exif.isEmpty) {
           return Container(
@@ -396,9 +390,9 @@ class _ExifReadingsSection extends ConsumerWidget {
               color: DetailColors.cardSurface,
               borderRadius: Radii.mdBorder,
             ),
-            child: const Text('本照片无拍摄参数',
+            child: Text('本照片无拍摄参数',
                 style:
-                    TextStyle(color: DetailColors.textMuted, fontSize: 11)),
+                    AppTypography.caption.copyWith(color: DetailColors.textMuted)),
           );
         }
         return Container(
@@ -444,16 +438,11 @@ class _ExifLine extends StatelessWidget {
           SizedBox(
             width: 56,
             child: Text(label,
-                style: const TextStyle(
-                    color: DetailColors.textMuted, fontSize: 11)),
+                style: AppTypography.caption.copyWith(color: DetailColors.textMuted)),
           ),
           Expanded(
             child: Text(value,
-                style: TextStyle(
-                  color: DetailColors.textPrimary,
-                  fontSize: 12,
-                  fontFamily: mono ? 'monospace' : null,
-                )),
+                style: AppTypography.caption.copyWith(color: DetailColors.textPrimary, fontFamily: mono ? 'monospace' : null,)),
           ),
         ],
       ),

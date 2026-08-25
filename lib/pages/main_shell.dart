@@ -200,11 +200,8 @@ class _NavTile extends StatelessWidget {
                       padding: const EdgeInsets.only(left: 6),
                       child: Text(
                         item.label,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: primaryColor,
-                        ),
+                        style: AppTypography.label.copyWith(fontWeight: FontWeight.w600,
+                          color: primaryColor,),
                       ),
                     )
                   : const SizedBox.shrink(),
