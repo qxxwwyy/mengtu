@@ -78,7 +78,9 @@ class StageInsightExpandedCard extends StatefulWidget {
 }
 
 class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
-  bool _expanded = false;
+  // v8.1：默认展开（修 audit 矛盾 —— 注释宣称"默认展开"却 _expanded=false；
+  // 洞察是四阶卡片的终点交付，用户点开解构面板就该看到它）
+  bool _expanded = true;
 
   @override
   Widget build(BuildContext context) {
@@ -107,20 +109,25 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
               ),
               child: Row(
                 children: [
-                  Icon(Icons.auto_awesome,
+                  const Icon(Icons.auto_awesome,
                       size: 14, color: AppColors.accent),
                   const SizedBox(width: 6),
                   Text(
                     '整体风格：${insight.styleLabel}',
-                    style: TextStyle(
-                      color: AppColors.accent,
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: AppTypography.labelWith(AppColors.accent),
                   ),
                 ],
               ),
             ),
+          // 通透度诊断（v8.1 调研核心：黑位/RMS → "通透/闷/灰"用户语言）
+          if (insight.clarityInsight.isNotEmpty) ...[
+            _InsightSection(
+              icon: Icons.water_drop_outlined,
+              label: '通透',
+              text: insight.clarityInsight,
+            ),
+            const SizedBox(height: 8),
+          ],
           // 三维度解读
           _InsightSection(
             icon: Icons.tonality,
@@ -157,11 +164,9 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
                 Expanded(
                   child: Text(
                     insight.summary,
-                    style: TextStyle(
-                      color: AppColors.accent.withValues(alpha: 0.9),
-                      fontSize: 12,
-                      height: 1.5,
-                    ),
+                    style: AppTypography.captionWith(
+                            AppColors.accent.withValues(alpha: 0.9))
+                        .copyWith(height: 1.5),
                   ),
                 ),
               ],

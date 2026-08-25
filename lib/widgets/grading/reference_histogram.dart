@@ -1,11 +1,14 @@
-// reference_histogram.dart — 参照直方图叠放（v3.5 PR3 教学核心）
+// reference_histogram.dart — 参照直方图叠放（v3.5 PR3 教学核心；v8.1 风格参照库）
 //
-// 当前照片亮度直方图（强调色琥珀）+ 半透明灰背景的典型影调参照分布。
+// 当前照片亮度直方图（强调色琥珀）+ 半透明灰背景的典型分布参照。
 // 让用户直观看到「这张样片的直方图 vs 典型风格的直方图」差异 ——
 // 例如高调样片会看到当前分布与「高调参照（右偏钟形）」重合度高。
 //
-// 参照分布用高斯/U型函数预生成 4 组 256 bins 常量（high/low/mid/full），
-// 不依赖运行时计算，确保 O(1) 内存与零延迟。
+// v8.1（小红书调研驱动）：参照从 4 组影调扩展为 8 组 —— 影调参照
+// （高调/低调/中间调/全长调）+ 风格参照（日系清透/电影感/胶片感/港风）。
+// 风格分布参数由调研的风格特征表推导（色调倾向/影调特征 → 高斯参数）。
+//
+// 参照分布用高斯/U型函数预生成常量，不依赖运行时计算，O(1) 内存零延迟。
 //
 // 规格对齐：HistogramPainter 的 barWidth = size.width / 256 约定。
 import 'dart:math' as math;
@@ -14,7 +17,19 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../charts/chart_animations.dart';
 
-/// 参照直方图叠放：当前直方图 + 典型影调参照（半透明灰背景）
+/// 可选的参照分布（key → 显示名），UI 用它渲染切换 chips
+const kReferenceChoices = [
+  ('auto', '自动'),
+  ('japanese', '日系清透'),
+  ('cinema', '电影感'),
+  ('film', '胶片感'),
+  ('hongkong', '港风'),
+  ('high', '高调'),
+  ('low', '低调'),
+  ('full', '全长调'),
+];
+
+/// 参照直方图叠放：当前直方图 + 典型分布参照（半透明灰背景）
 class ReferenceHistogram extends StatelessWidget {
   /// 当前照片的亮度直方图（256 bins）。null 时只画参照。
   final List<int>? current;
@@ -22,15 +37,19 @@ class ReferenceHistogram extends StatelessWidget {
   /// 当前影调类型（high/mid/low/full），决定用哪组参照
   final String? currentToneKey;
 
+  /// 参照选择 key（kReferenceChoices 之一）；'auto' 按影调自动选
+  final String referenceKey;
+
   const ReferenceHistogram({
     super.key,
     this.current,
     this.currentToneKey,
+    this.referenceKey = 'auto',
   });
 
   @override
   Widget build(BuildContext context) {
-    final reference = _getReferenceHistogram(currentToneKey);
+    final reference = getReferenceHistogram(referenceKey, currentToneKey);
     // width: double.infinity 强制撑满父级宽度。
     // 根因（gotcha #64）：CustomPaint 无 child 时 intrinsic 宽度 = 0，
     // 若父级是 Column(crossAxisAlignment: start)（如 stage_card 展开内容）
@@ -54,24 +73,40 @@ class ReferenceHistogram extends StatelessWidget {
       ),
     );
   }
+}
 
-  /// 取与当前影调最接近的参照直方图
-  ///
-  /// high → 右偏钟形（高调：主体在高光区）
-  /// low → 左偏钟形（低调：主体在阴影区）
-  /// full → U 型（全长调：两端高中间低，高反差）
-  /// mid/default → 中央钟形（中间调：主体在中调区）
-  List<int> _getReferenceHistogram(String? toneKey) {
-    switch (toneKey) {
-      case 'high':
-        return _kHighKeyReference;
-      case 'low':
-        return _kLowKeyReference;
-      case 'full':
-        return _kFullRangeReference;
-      default:
-        return _kMidKeyReference;
-    }
+/// 取参照分布（纯函数，供切换参照时复用）
+///
+/// 'auto' → 按当前影调选（high/low/mid/full 四组经典形态）；
+/// 风格 key → 风格参照库（v8.1 调研驱动）。
+List<int> getReferenceHistogram(String key, String? toneKey) {
+  switch (key) {
+    case 'japanese':
+      return _kJapaneseReference;
+    case 'cinema':
+      return _kCinemaReference;
+    case 'film':
+      return _kFilmReference;
+    case 'hongkong':
+      return _kHongkongReference;
+    case 'high':
+      return _kHighKeyReference;
+    case 'low':
+      return _kLowKeyReference;
+    case 'full':
+      return _kFullRangeReference;
+    case 'auto':
+    default:
+      switch (toneKey) {
+        case 'high':
+          return _kHighKeyReference;
+        case 'low':
+          return _kLowKeyReference;
+        case 'full':
+          return _kFullRangeReference;
+        default:
+          return _kMidKeyReference;
+      }
   }
 }
 
@@ -166,24 +201,67 @@ final _kHighKeyReference = _generateGaussian(mean: 180, std: 40);
 /// 低调参照：均值 60（偏左），标准差 40 —— 主体落在阴影区
 final _kLowKeyReference = _generateGaussian(mean: 60, std: 40);
 
-/// 中间调参照：均值 128（中央），标准差 50 —— 主体落在中调区
+/// 中间调参照：均值 128（中央），标准差 50 —— 主体在中调区
 final _kMidKeyReference = _generateGaussian(mean: 128, std: 50);
 
 /// 全长调参照：U 型（两端高，中间低）—— 高反差，明暗两端都有内容
 final _kFullRangeReference = _generateUShape();
 
+// ── v8.1 风格参照库（小红书调研 2026-08 驱动，参数由风格特征表推导）──
+
+/// 日系清透：高调（mean 165）+ 中低对比（std 45）+ 黑位上提（低 bin 削减）
+/// 调研依据：「中高调、低-中对比、通透感并不来自于低对比」
+final _kJapaneseReference = _generateGaussian(mean: 165, std: 45, blackLift: 6);
+
+/// 电影感：低长调（mean 95）+ 高对比（std 55）+ 黑位抬起 + 高光压制
+/// 调研依据：「低长调 + 黑场提升（空气感）+ 高光压制（避免死白）」
+final _kCinemaReference = _generateGaussian(
+    mean: 95, std: 55, blackLift: 10, whiteCeiling: 240);
+
+/// 胶片感：中间偏暗（mean 120）+ 低对比窄分布（std 32）+ 黑位上提
+/// 调研依据：「低对比、黑位抬起、故意发灰是核心手法」
+final _kFilmReference = _generateGaussian(mean: 120, std: 32, blackLift: 12);
+
+/// 港风：宽分布高对比（mean 105 + std 65 的宽钟形 + 两端翘起）
+/// 调研依据：「高饱和高对比 + 暗调 + 颗粒」
+final _kHongkongReference = _blendWide(
+    _generateGaussian(mean: 105, std: 65), _generateUShape(), 0.7, 0.3);
+
 /// 生成高斯钟形分布（256 bins）
 ///
 /// [mean] 均值（峰值位置），[std] 标准差（峰宽）。
 /// 用 exp(-((x-mean)²)/(2σ²)) 归一化到整数直方图，峰值约 1000。
-List<int> _generateGaussian({required double mean, required double std}) {
+/// [blackLift] 黑位上提量：低于它的 bin 削减（模拟"空气感"曲线黑点抬升）。
+/// [whiteCeiling] 白点压制：高于它的 bin 削减（模拟高光保护）。
+List<int> _generateGaussian({
+  required double mean,
+  required double std,
+  double blackLift = 0,
+  double whiteCeiling = 255,
+}) {
   final result = List<int>.filled(256, 0);
   const peak = 1000.0;
   for (var i = 0; i < 256; i++) {
     final d = (i - mean) / std;
-    result[i] = (peak * math.exp(-0.5 * d * d)).round();
+    var v = peak * math.exp(-0.5 * d * d);
+    if (blackLift > 0 && i < blackLift + 20) {
+      // 黑位上提：低 bin 按 (i/blackLift+20) 渐进削减
+      v *= (i / (blackLift + 20)).clamp(0.0, 1.0);
+    }
+    if (whiteCeiling < 255 && i > whiteCeiling - 20) {
+      // 白点压制：高 bin 渐进削减到 0
+      v *= ((whiteCeiling - i) / 20).clamp(0.0, 1.0);
+    }
+    result[i] = v.round();
   }
   return result;
+}
+
+/// 两个分布线性混合（港风 = 宽钟形 + U 型高反差）
+List<int> _blendWide(List<int> a, List<int> b, double wa, double wb) {
+  return [
+    for (var i = 0; i < 256; i++) (a[i] * wa + b[i] * wb).round(),
+  ];
 }
 
 /// 生成 U 型分布（全长调参照）

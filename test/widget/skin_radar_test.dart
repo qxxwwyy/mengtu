@@ -52,24 +52,24 @@ void main() {
     expect(find.text('40%'), findsOneWidget);
   });
 
-  testWidgets('ΔH 暖偏移（30°）→ 暖偏移标签', (tester) async {
+  testWidgets('ΔH 暖偏移（30°）→ 偏黄气标签（v8.1 调研词典）', (tester) async {
     await tester.pumpWidget(wrap(SkinRadar(
       skin: const SkinAnalysis(hueOffset: 30, saturation: 75),
       photoId: 'test',
     )));
 
-    expect(find.textContaining('暖偏移'), findsOneWidget);
+    expect(find.textContaining('偏黄气'), findsOneWidget);
     expect(find.text('30°'), findsOneWidget);
     expect(find.text('75%'), findsOneWidget);
   });
 
-  testWidgets('ΔH 负值（冷偏移）→ 冷偏移标签', (tester) async {
+  testWidgets('ΔH 负值（偏粉气）→ 偏粉气标签（v8.1 调研词典）', (tester) async {
     await tester.pumpWidget(wrap(SkinRadar(
       skin: const SkinAnalysis(hueOffset: -12, saturation: 35),
       photoId: 'test',
     )));
 
-    expect(find.textContaining('冷偏移'), findsOneWidget);
+    expect(find.textContaining('偏粉气'), findsOneWidget);
   });
 
   testWidgets('饱和度数值正常渲染', (tester) async {

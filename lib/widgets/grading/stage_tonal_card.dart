@@ -10,11 +10,13 @@
 // gotcha #32：不在 build() 内用 AsyncValue.whenData 改局部变量，所有展开态
 // 内容在 .when/.maybeWhen 的 data 闭包内构建。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../models/advanced_portrait_metrics.dart';
 import '../../models/tone_result.dart';
 import '../../providers/analysis_provider.dart';
+import '../../theme/app_theme.dart';
 import 'interpretation_row.dart';
 import 'reference_histogram.dart';
 import 'stage_card.dart';
@@ -39,6 +41,10 @@ class StageTonalCard extends ConsumerStatefulWidget {
 class _StageTonalCardState extends ConsumerState<StageTonalCard> {
   bool _expanded = false;
 
+  /// 参照风格选择（'auto' = 按影调自动匹配；风格 key 见 kReferenceChoices）
+  /// v8.1 风格参照库（调研驱动）：拿自己的直方图对叠典型风格分布
+  String _referenceKey = 'auto';
+
   @override
   Widget build(BuildContext context) {
     final toneAsync = ref.watch(toneProvider(widget.photoId));
@@ -57,16 +63,43 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
       onTap: () => setState(() => _expanded = !_expanded),
       children: [
         if (_expanded) ...[
-          // 参照直方图叠放（教学核心）
+          // 参照直方图叠放（教学核心）+ 风格参照切换
           ReferenceHistogram(
             current: histAsync.asData?.value.lum,
             currentToneKey: toneAsync.asData?.value.toneKey,
+            referenceKey: _referenceKey,
           ),
+          const SizedBox(height: 6),
+          _buildReferenceChips(),
           const SizedBox(height: 12),
           // 影调解读
           _buildInterpretation(toneAsync, widget.advanced),
         ],
       ],
+    );
+  }
+
+  /// 风格参照 chips：自动 / 日系清透 / 电影感 / 胶片感 / 港风 / 影调形态
+  Widget _buildReferenceChips() {
+    return SizedBox(
+      height: 30,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          for (final (key, label) in kReferenceChoices)
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: _ReferenceChip(
+                label: label,
+                selected: _referenceKey == key,
+                onTap: () {
+                  HapticFeedback.selectionClick();
+                  setState(() => _referenceKey = key);
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -146,6 +179,48 @@ class _StageTonalCardState extends ConsumerState<StageTonalCard> {
           orElse: () => const SizedBox.shrink(),
         ),
       ],
+    );
+  }
+}
+
+/// 参照风格 chip（选中琥珀高亮）
+class _ReferenceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _ReferenceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: selected
+              ? DetailColors.accent.withValues(alpha: 0.18)
+              : DetailColors.chipSurface,
+          borderRadius: Radii.pillBorder,
+          border: Border.all(
+            color: selected
+                ? DetailColors.accent.withValues(alpha: 0.6)
+                : DetailColors.divider,
+            width: 0.5,
+          ),
+        ),
+        child: Text(
+          label,
+          style: AppTypography.captionCompact.copyWith(
+            color: selected ? DetailColors.accent : DetailColors.textSecondary,
+            fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          ),
+        ),
+      ),
     );
   }
 }

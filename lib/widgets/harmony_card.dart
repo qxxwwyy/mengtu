@@ -15,6 +15,13 @@ class HarmonyCard extends ConsumerWidget {
 
   const HarmonyCard({super.key, required this.palette});
 
+  /// 置信度 → 定性档位（0.55/0.75 分档）
+  static String _confidenceLabel(double c) {
+    if (c >= 0.75) return '强';
+    if (c >= 0.55) return '中';
+    return '弱';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = analyzeHarmony(palette);
@@ -42,11 +49,12 @@ class HarmonyCard extends ConsumerWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // 置信度条
+          // 置信度条（v8.1：百分比 → 定性档位。heuristic 置信度包装成统计量
+          // 是伪精确，违反 v8.0 洞察系统"不做伪精确"的定位原则）
           if (result.confidence > 0) ...[
             Row(
               children: [
-                Text('置信度', style: AppTypography.captionWith(DetailColors.textSecondary)),
+                Text('信号强度', style: AppTypography.captionWith(DetailColors.textSecondary)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: LinearProgressIndicator(
@@ -59,8 +67,8 @@ class HarmonyCard extends ConsumerWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text('${(result.confidence * 100).round()}%',
-                    style: AppTypography.mono.copyWith(fontSize: 11)),
+                Text(_confidenceLabel(result.confidence),
+                    style: AppTypography.labelWith(DetailColors.accent)),
               ],
             ),
             const SizedBox(height: 12),

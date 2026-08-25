@@ -727,8 +727,8 @@ class _Legend extends StatelessWidget {
     final verdict = dh < 10
         ? '贴近肤色线'
         : (skin.hueOffset! > 0
-            ? '暖偏移（黄金时段/港风常见）'
-            : '冷偏移（日系/阴影环境常见）');
+            ? '偏黄气（黄金时段/港风常见）'
+            : '偏粉气（日系/冷白皮方向）');
     final color = InterpretationStatus.neutral;
 
     return Column(
@@ -748,6 +748,15 @@ class _Legend extends StatelessWidget {
         _metric('色相偏差', '${skin.hueOffset!.toStringAsFixed(0)}°', color),
         const SizedBox(height: 3),
         _metric('饱和度', '${sat.toStringAsFixed(0)}%', InterpretationStatus.neutral),
+        // v8.1 调研词典：肤色明度 → "冷白皮/健康小麦"用户语言
+        if (skin.skinLuminance != null) ...[
+          const SizedBox(height: 3),
+          _metric(
+              '肤色明度',
+              '${skin.skinLuminance!.toStringAsFixed(0)}%（'
+              '${skin.skinLuminance! > 60 ? "冷白皮方向" : (skin.skinLuminance! < 40 ? "健康小麦" : "自然明度")}）',
+              InterpretationStatus.neutral),
+        ],
       ],
     );
   }
