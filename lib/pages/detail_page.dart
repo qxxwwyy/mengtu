@@ -715,7 +715,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     decoration: BoxDecoration(
                       color: color,
                       borderRadius: Radii.mdBorder,
-                      border: Border.all(color: Colors.white24),
+                      border: Border.all(color: DetailColors.divider),
                     ),
                   ),
                   const SizedBox(width: 12),
