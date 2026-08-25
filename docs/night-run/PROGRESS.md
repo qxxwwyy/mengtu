@@ -1,6 +1,6 @@
 # 夜航进度
 
-## 状态：全部里程碑完成，push 重试中（网络阻塞，见缺口①）
+## 状态：✅ 全部完成 — 验收 1-8 全过（push 经 SSH 443 通道成功，CI 绿 9m49s）
 
 | 里程碑 | 状态 | commit |
 |---|---|---|
@@ -10,7 +10,7 @@
 | M3 三页重做 | ✅ | cbcc27b |
 | M4 一致性清账 + 死代码 | ✅ | 9af1c10 + e4b37b5 |
 | M5 功能增删 | ✅ | b254250 |
-| M6 质量门 | analyze 0 issues ✅ / test 378 全绿 ✅ / push ⏳ | 见下 |
+| M6 质量门 | analyze 0 issues ✅ / test 378 全绿 ✅ / push ✅ / CI 绿 ✅（run 32863786148） | 1c9539b |
 | M7 AGENTS.md 同步 | ✅ | 4b7eeed |
 
 ## 验收对照（简报 1-8）
@@ -21,13 +21,17 @@
 4. **一致性清账** ✅ 15 条中 13 条消除，2 条有理由保留（网格间距两种场景 D4、相册封面 Hero 无接收端 D5，见 DECISIONS.md）；死代码 4 项全删。
 5. **功能增删** ✅ `docs/feature-decisions.md`：补 5 项（B1 通透度诊断/B2 风格参照库/B3 词典文案/B4 直方图读数/B5 肤色人话）+ 砍改 3 项（C1 置信度伪精确/C2 默认展开/C3 电影感判定），全部附调研/代码依据；被改功能无死链（harmony_card 保留组件只改显示）。
 6. **质量门** ✅ `dart analyze` 0 issues；`flutter test` 378 用例全绿（新增交互测试：interactive_histogram widget 4 + histogram_probe unit 6 + vectorscope_probe unit 8 + insight_service unit 14）；无删改既有断言（仅 2 处文案升级同步断言措辞：冷偏移→偏粉气、暖偏移→偏黄气）。
-7. **CI** ⏳ push 被网络阻塞（git 代理 127.0.0.1:7897 无进程监听 + 直连被 reset）。后台重试循环已挂（每 5 分钟 × 2 小时）。push 成功后 CI 自动触发。
+7. **CI** ✅ push 经 SSH 443 通道成功（`git push ssh://git@ssh.github.com:443/qxxwwyy/mengtu.git`，HTTPS 被墙/代理未运行），CI run 32863786148 全绿（pub get → build_runner → analyze → test → release APK 9m49s）。
 8. **文档同步** ✅ AGENTS.md v8.1：已完成清单条目 + gotcha #66/#67/#68 + 项目结构树。
 
 ## 缺口交接
 
-- **① push/CI（验收 7）**：本机 git 配置代理 127.0.0.1:7897（clash 系），代理软件未运行，直连 github.com 被 reset。全部 8 个 commit 已在本地 feature/experience-overhaul。后台脚本 /tmp/xhs-run/push-retry.sh 每 5 分钟重试（2 小时窗口）。**恢复方式**：启动代理软件后手动 `git push -u origin feature/experience-overhaul`，或等脚本自动成功。本地质量门（analyze/test）已全绿，CI 预期绿（无平台特定改动；sqlite3 hook 的本地镜像 hack 只在本机 pub cache，CI 用原生下载路径）。
-- 无其他缺口。
+- 无。全部验收 1-8 通过。
+
+## 备注：github 访问通道
+
+本机 HTTPS github.com 被墙 + git 代理（127.0.0.1:7897）软件未运行，但 **ssh.github.com:443 SSH 通道可用**（本机已配 GitHub SSH key）。后续 push 命令：
+`git push ssh://git@ssh.github.com:443/qxxwwyy/mengtu.git <branch>`
 
 ## 环境事件记录（对后续会话有用）
 
