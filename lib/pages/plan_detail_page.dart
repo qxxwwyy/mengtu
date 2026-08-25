@@ -1,4 +1,4 @@
-// plan_detail_page.dart — 策划详情（v2.0）
+// plan_detail_page.dart — 策划详情（v2.0；v8.1 重做：token 化 + 三态 + 照片点击放大）
 import 'dart:io';
 import 'package:drift/drift.dart' show Value;
 import 'package:flutter/material.dart';
@@ -7,9 +7,12 @@ import '../providers/plan_provider.dart';
 import '../providers/database_provider.dart';
 import '../services/database/daos/plan_dao.dart';
 import '../services/database/app_database.dart';
+import '../theme/app_theme.dart';
+import '../widgets/common/async_views.dart';
+import '../widgets/common/empty_state.dart';
+import '../widgets/common/page_transitions.dart';
 import 'plan_edit_page.dart';
 import 'album_detail_page.dart';
-import '../theme/app_theme.dart';
 
 class PlanDetailPage extends ConsumerStatefulWidget {
   final String planId;
@@ -65,7 +68,11 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
         content: const Text('确定删除这个策划吗？关联的照片不会被删除。'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('删除')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              style: TextButton.styleFrom(
+                  foregroundColor: StatusColors.error),
+              child: const Text('删除')),
         ],
       ),
     );
@@ -91,8 +98,8 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
             icon: const Icon(Icons.edit_outlined),
             tooltip: '编辑',
             onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(
-                builder: (_) => PlanEditPage(planId: widget.planId),
+              await Navigator.push(context, detailPageRoute(
+                PlanEditPage(planId: widget.planId),
               ));
               _loadDetails();
             },
@@ -100,49 +107,56 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
           IconButton(
             icon: const Icon(Icons.delete_outline),
             tooltip: '删除',
+            color: StatusColors.error,
             onPressed: _deletePlan,
           ),
         ],
       ),
       body: planAsync.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (_, __) => const Center(child: Text('加载失败')),
+        loading: () => const AsyncLoadingView(height: 200),
+        error: (_, __) => AsyncErrorView(
+          message: '策划加载失败',
+          onRetry: () => ref.invalidate(planByIdProvider(widget.planId)),
+        ),
         data: (plan) {
-          if (plan == null) return const Center(child: Text('策划不存在'));
+          if (plan == null) {
+            return const EmptyState(
+              icon: Icons.event_busy,
+              title: '策划不存在',
+              subtitle: '它可能已被删除',
+            );
+          }
           return ListView(
-            padding: const EdgeInsets.all(16),
+            padding: Spacing.all(Spacing.lg),
             children: [
               // 基本信息
-              Text(plan.title,
-                  style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+              Text(plan.title, style: AppTypography.headline),
               if (plan.style.isNotEmpty || plan.theme.isNotEmpty) ...[
-                const SizedBox(height: 6),
+                SizedBox(height: Spacing.xs + 2),
                 Text(
                   [if (plan.style.isNotEmpty) plan.style, if (plan.theme.isNotEmpty) plan.theme].join(' · '),
-                  style: TextStyle(fontSize: 14, color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                  style: AppTypography.bodySecondary,
                 ),
               ],
               if (plan.location.isNotEmpty || plan.plannedDate != null) ...[
-                const SizedBox(height: 4),
+                SizedBox(height: Spacing.xs),
                 Text(
                   [
-                    if (plan.location.isNotEmpty) '📍 ${plan.location}',
-                    if (plan.plannedDate != null)
-                      '📅 ${plan.plannedDate!.year}/${plan.plannedDate!.month}/${plan.plannedDate!.day}',
-                  ].join('  '),
-                  style: TextStyle(fontSize: 13, color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                    if (plan.location.isNotEmpty) plan.location,
+                    if (plan.plannedDate != null) _formatDate(plan.plannedDate!),
+                  ].join('  ·  '),
+                  style: AppTypography.captionWith(AppColors.textMuted),
                 ),
               ],
 
               // v3.0: 关联样片相册卡片（点击一键跳转浏览）
               if (plan.associatedAlbumId != null &&
                   plan.associatedAlbumId!.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _AssociatedAlbumCard(
-                    albumId: plan.associatedAlbumId!),
+                SizedBox(height: Spacing.md),
+                _AssociatedAlbumCard(albumId: plan.associatedAlbumId!),
               ],
 
-              const SizedBox(height: 24),
+              SizedBox(height: Spacing.xl),
               // Shot list 完成度
               _SectionTitle(
                 title: 'Shot List',
@@ -165,13 +179,14 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                     title: Text(
                       item.desc,
                       style: item.done
-                          ? TextStyle(decoration: TextDecoration.lineThrough, color: theme.colorScheme.onSurface.withValues(alpha: 0.4))
-                          : null,
+                          ? AppTypography.bodyWith(AppColors.textMuted)
+                              .copyWith(decoration: TextDecoration.lineThrough)
+                          : AppTypography.body,
                     ),
                   );
                 }),
 
-              const SizedBox(height: 16),
+              SizedBox(height: Spacing.lg),
               // 器材清单
               _SectionTitle(title: '器材清单'),
               if (_gearList.isEmpty)
@@ -181,18 +196,22 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                       contentPadding: EdgeInsets.zero,
                       leading: Icon(Icons.camera_alt_outlined,
                           size: 20, color: theme.colorScheme.primary),
-                      title: Text(g.lens),
-                      subtitle: g.note.isNotEmpty ? Text(g.note, style: const TextStyle(fontSize: 12)) : null,
+                      title: Text(g.lens, style: AppTypography.body),
+                      subtitle: g.note.isNotEmpty
+                          ? Text(g.note, style: AppTypography.captionMuted)
+                          : null,
                     )),
 
-              const SizedBox(height: 16),
+              SizedBox(height: Spacing.lg),
               // 实拍照片
               _SectionTitle(title: '实拍照片'),
               resultPhotosAsync.when(
-                loading: () => const SizedBox(height: 100, child: Center(child: CircularProgressIndicator())),
-                error: (_, __) => _emptyHint('加载失败'),
+                loading: () => const AsyncLoadingView(height: 100),
+                error: (_, __) => const AsyncErrorLine(message: '实拍照片加载失败'),
                 data: (photos) {
-                  if (photos.isEmpty) return _emptyHint('还没有实拍照片');
+                  if (photos.isEmpty) {
+                    return _emptyHint('还没有实拍照片，拍摄后从相册详情加入');
+                  }
                   return GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -202,23 +221,31 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                       crossAxisSpacing: 4,
                     ),
                     itemCount: photos.length,
-                    itemBuilder: (_, i) => ClipRRect(
-                      borderRadius: Radii.legacy8Border,
-                      child: Image.file(
-                        File(photos[i].thumbnailPath.isEmpty
-                            ? photos[i].filePath
-                            : photos[i].thumbnailPath),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(
-                          color: theme.colorScheme.surface,
-                          child: Icon(Icons.broken_image, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+                    itemBuilder: (_, i) {
+                      final photo = photos[i];
+                      return ClipRRect(
+                        borderRadius: Radii.smBorder,
+                        child: GestureDetector(
+                          // v8.1：九宫格点击放大查看（此前不可点击）
+                          onTap: () => _showPhotoViewer(context, photo),
+                          child: Image.file(
+                            File(photo.thumbnailPath.isEmpty
+                                ? photo.filePath
+                                : photo.thumbnailPath),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Container(
+                              color: theme.colorScheme.surface,
+                              child: Icon(Icons.broken_image,
+                                  color: theme.colorScheme.onSurfaceVariant),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   );
                 },
               ),
-              const SizedBox(height: 32),
+              SizedBox(height: Spacing.xxl),
             ],
           );
         },
@@ -226,15 +253,55 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
     );
   }
 
-  Widget _emptyHint(String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Text(text,
-          style: TextStyle(
-              fontSize: 13,
-              color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35))),
+  /// 实拍照片全屏查看（InteractiveViewer 缩放 + 点击关闭）
+  void _showPhotoViewer(BuildContext context, Photo photo) {
+    Navigator.push(
+      context,
+      detailPageRoute(
+        Scaffold(
+          backgroundColor: DetailColors.background,
+          appBar: AppBar(
+            title: Text(photo.fileName, style: AppTypography.caption),
+            backgroundColor: DetailColors.background,
+            foregroundColor: DetailColors.textPrimary,
+            iconTheme: const IconThemeData(color: DetailColors.textPrimary),
+          ),
+          body: GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: InteractiveViewer(
+              maxScale: 5.0,
+              child: Center(
+                child: Image.file(
+                  File(photo.thumbnailPath.isEmpty
+                      ? photo.filePath
+                      : photo.thumbnailPath),
+                  fit: BoxFit.contain,
+                  errorBuilder: (_, __, ___) => const Icon(
+                    Icons.broken_image,
+                    color: DetailColors.textMuted,
+                    size: 48,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
+
+  Widget _emptyHint(String text) {
+    return Padding(
+      padding: Spacing.v(Spacing.md),
+      child: Text(text, style: AppTypography.captionMuted),
+    );
+  }
+}
+
+/// 日期格式：2026-08-25（补零，跨页统一由 M4 迁移至 util）
+String _formatDate(DateTime dt) {
+  String two(int n) => n.toString().padLeft(2, '0');
+  return '${dt.year}-${two(dt.month)}-${two(dt.day)}';
 }
 
 class _SectionTitle extends StatelessWidget {
@@ -250,18 +317,10 @@ class _SectionTitle extends StatelessWidget {
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
-          Text(title,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
-              )),
+          Text(title, style: AppTypography.titleWith(theme.colorScheme.primary)),
           if (trailing != null) ...[
             const SizedBox(width: 8),
-            Text(trailing!,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+            Text(trailing!, style: AppTypography.labelSecondary),
           ],
         ],
       ),
@@ -287,17 +346,15 @@ class _AssociatedAlbumCard extends ConsumerWidget {
       elevation: 0,
       color: theme.colorScheme.primaryContainer.withValues(alpha: 0.3),
       child: InkWell(
-        borderRadius: Radii.legacy12Border,
+        borderRadius: Radii.mdBorder,
         onTap: () {
           Navigator.push(
             context,
-            MaterialPageRoute(
-              builder: (_) => AlbumDetailPage(albumId: albumId),
-            ),
+            detailPageRoute(AlbumDetailPage(albumId: albumId)),
           );
         },
         child: Padding(
-          padding: const EdgeInsets.all(12),
+          padding: Spacing.all(Spacing.md),
           child: FutureBuilder<Album?>(
             future: db.albumDao.getAlbumById(albumId),
             builder: (ctx, snap) {
@@ -305,24 +362,14 @@ class _AssociatedAlbumCard extends ConsumerWidget {
               // 但已加载的 plan 缓存仍是旧 id）→ 提示并隐藏
               final album = snap.data;
               if (snap.connectionState != ConnectionState.done) {
-                return Row(
-                  children: [
-                    Icon(Icons.photo_album_outlined,
-                        color: theme.colorScheme.primary, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('加载关联相册...'),
-                  ],
-                );
+                return const AsyncLoadingView(height: 32);
               }
               if (album == null) {
                 return Row(
                   children: [
-                    Icon(Icons.link_off,
-                        color: theme.colorScheme.error, size: 20),
+                    Icon(Icons.link_off, color: theme.colorScheme.error, size: 20),
                     const SizedBox(width: 8),
-                    const Expanded(
-                        child: Text('关联相册已删除',
-                            style: TextStyle(fontSize: 12))),
+                    const AsyncErrorLine(message: '关联相册已删除'),
                   ],
                 );
               }
@@ -335,19 +382,15 @@ class _AssociatedAlbumCard extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('关联样片相册',
-                            style: TextStyle(
-                                fontSize: 11,
-                                color: AppColors.textMuted,
-                                letterSpacing: 0.5)),
-                        Text(album.name,
-                            style: const TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w600)),
+                        Text('关联样片相册',
+                            style: AppTypography.captionMuted
+                                .copyWith(letterSpacing: 0.5)),
+                        Text(album.name, style: AppTypography.label),
                       ],
                     ),
                   ),
-                  const Icon(Icons.chevron_right,
-                      color: AppColors.textMuted, size: 20),
+                  Icon(Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant, size: 20),
                 ],
               );
             },

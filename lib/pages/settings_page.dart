@@ -1,10 +1,15 @@
 // settings_page.dart — 设置页（版本信息 + 存储统计 + 清理缓存 + 关于）
+//
+// v8.1 重做：全面 token 化（此前全 app 唯一零 token 页面）；
+// 存储统计补齐三态（loading 不再显示"0 张 / 0 B"假数据）。
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import '../providers/database_provider.dart';
 import '../utils/app_info.dart';
+import '../theme/app_theme.dart';
+import '../widgets/common/async_views.dart';
 
 import '../providers/theme_provider.dart';
 
@@ -107,11 +112,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
-
   Widget _buildStorageSection() {
     return FutureBuilder<({int count, int size})>(
       future: _storageFuture,
       builder: (context, snapshot) {
+        // 三态：等待中显示加载视图（不再显示假数据"0 张 / 0 B"）
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _SectionCard(
+            title: '存储',
+            children: const [AsyncLoadingView(height: 76)],
+          );
+        }
+        if (snapshot.hasError) {
+          return _SectionCard(
+            title: '存储',
+            children: [
+              Padding(
+                padding: Spacing.all(Spacing.md),
+                child: AsyncErrorView(
+                  message: '存储统计加载失败',
+                  onRetry: _refreshStorage,
+                ),
+              ),
+            ],
+          );
+        }
         final count = snapshot.data?.count ?? 0;
         final size = snapshot.data?.size ?? 0;
         return _SectionCard(
@@ -234,17 +259,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('关于萌图'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(appVersionLabel),
-            SizedBox(height: 12),
+            const Text(appVersionLabel, style: AppTypography.mono),
+            const SizedBox(height: Spacing.md),
             Text(
               '面向摄影爱好者的照片灵感收集与调色参考工具。\n\n'
-              '功能：照片管理、直方图/色相分析、色卡提取（MMCQ/K-Means/Celebi三算法）、影调分析、一键黑白。\n\n'
-              '纯本地应用，不联网，不收集用户数据。',
-              style: TextStyle(fontSize: 13),
+              '功能：照片管理、直方图/示波器分析、色卡提取（MMCQ/K-Means/Celebi三算法）、影调分析、一键黑白。\n\n'
+              '只解读、不代修 —— 所有分析在本地完成，不联网，不收集用户数据。',
+              style: AppTypography.captionWith(AppColors.textSecondary),
             ),
           ],
         ),
@@ -267,7 +292,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 }
 
-/// 分区卡片
+/// 分区卡片（token 化）
 class _SectionCard extends StatelessWidget {
   final String title;
   final List<Widget> children;
@@ -277,17 +302,13 @@ class _SectionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: Spacing.hv(Spacing.md, Spacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(4, 8, 0, 4),
-            child: Text(title,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600)),
+            child: Text(title, style: AppTypography.labelSecondary),
           ),
           Card(
             child: Column(children: children),
@@ -298,7 +319,7 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-/// 信息行
+/// 信息行（token 化）
 class _InfoRow extends StatelessWidget {
   final String label;
   final String value;
@@ -308,14 +329,12 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      padding: Spacing.hv(Spacing.lg, Spacing.md),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label),
-          Text(value,
-              style: TextStyle(
-                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6), fontWeight: FontWeight.w500)),
+          Text(label, style: AppTypography.body),
+          Text(value, style: AppTypography.mono),
         ],
       ),
     );
