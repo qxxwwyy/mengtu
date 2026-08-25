@@ -64,7 +64,7 @@ class _PhotoCardState extends State<PhotoCard> {
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: Radii.legacy12Border,
+          borderRadius: Radii.mdBorder,
           child: AspectRatio(
             aspectRatio: ratio,
             child: Stack(
@@ -114,9 +114,7 @@ class _PhotoCardState extends State<PhotoCard> {
                         const SizedBox(height: 4),
                         Text(
                           photo.fileName,
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: Theme.of(context)
+                          style: AppTypography.captionCompact.copyWith(color: Theme.of(context)
                                 .colorScheme
                                 .onSurface
                                 .withValues(alpha: 0.4),

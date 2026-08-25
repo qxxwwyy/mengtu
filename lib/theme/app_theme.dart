@@ -41,11 +41,16 @@ ThemeData buildDarkTheme() {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: AppColors.bgBase,
     textTheme: _buildTextTheme(AppColors.textPrimary),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
       foregroundColor: AppColors.textPrimary,
+      // 统一页头标题样式（消除各页手写 w600/20/primary）
+      titleTextStyle: AppTypography.headline.copyWith(
+        fontSize: 20,
+        color: colorScheme.primary,
+      ),
     ),
     cardTheme: CardThemeData(
       color: AppColors.bgSurface,
@@ -114,11 +119,15 @@ ThemeData buildLightTheme() {
     colorScheme: colorScheme,
     scaffoldBackgroundColor: AppColors.lightBgBase,
     textTheme: _buildTextTheme(AppColors.lightTextPrimary),
-    appBarTheme: const AppBarTheme(
+    appBarTheme: AppBarTheme(
       backgroundColor: Colors.transparent,
       elevation: 0,
       centerTitle: false,
       foregroundColor: AppColors.lightTextPrimary,
+      titleTextStyle: AppTypography.headline.copyWith(
+        fontSize: 20,
+        color: colorScheme.primary,
+      ),
     ),
     cardTheme: CardThemeData(
       color: AppColors.lightBgSurface,

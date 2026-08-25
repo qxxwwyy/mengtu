@@ -12,6 +12,7 @@
 // 时发光斑点会错位。letterbox 计算与 ClippingOverlay 一致。
 import 'package:flutter/material.dart';
 import '../services/sharpness_service.dart';
+import '../utils/letterbox.dart';
 
 /// 峰值对焦发光蒙层
 class SharpnessOverlay extends StatelessWidget {
@@ -45,21 +46,12 @@ class _SharpnessPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final imageAspect = map.aspectRatio;
-    final containerAspect = size.width / size.height;
-
-    // BoxFit.contain letterbox（与 ClippingOverlay 同款）
-    double drawWidth, drawHeight, offsetX, offsetY;
-    if (imageAspect > containerAspect) {
-      drawWidth = size.width;
-      drawHeight = size.width / imageAspect;
-      offsetX = 0;
-      offsetY = (size.height - drawHeight) / 2;
-    } else {
-      drawHeight = size.height;
-      drawWidth = size.height * imageAspect;
-      offsetX = (size.width - drawWidth) / 2;
-      offsetY = 0;
-    }
+    // 图片实际显示矩形（letterbox 统一计算，utils/letterbox.dart）
+    final rect = imageRectInContainer(size, imageAspect);
+    final drawWidth = rect.width;
+    final drawHeight = rect.height;
+    final offsetX = rect.left;
+    final offsetY = rect.top;
 
     // 平移到图片矩形，按图片区域画格子（与 Image 像素对齐）
     canvas.save();

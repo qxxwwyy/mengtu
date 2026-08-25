@@ -3,6 +3,7 @@
 // 在图片上高亮显示死黑（蓝色）和过曝（红色）区域
 import 'package:flutter/material.dart';
 import '../services/clipping_service.dart';
+import '../utils/letterbox.dart';
 import '../theme/app_theme.dart';
 
 /// Clipping 警告叠加层
@@ -44,25 +45,12 @@ class _ClippingPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     if (!result.hasAnyClipping) return;
 
-    // 计算图片在容器中的实际位置和尺寸（BoxFit.contain）
-    final imageAspect = result.width / result.height;
-    final containerAspect = size.width / size.height;
-
-    double drawWidth, drawHeight, offsetX, offsetY;
-
-    if (imageAspect > containerAspect) {
-      // 图片更宽，以宽度为准
-      drawWidth = size.width;
-      drawHeight = size.width / imageAspect;
-      offsetX = 0;
-      offsetY = (size.height - drawHeight) / 2;
-    } else {
-      // 图片更高，以高度为准
-      drawHeight = size.height;
-      drawWidth = size.height * imageAspect;
-      offsetX = (size.width - drawWidth) / 2;
-      offsetY = 0;
-    }
+    // 图片实际显示矩形（letterbox 统一计算，utils/letterbox.dart）
+    final rect = imageRectInContainer(size, result.width / result.height);
+    final drawWidth = rect.width;
+    final drawHeight = rect.height;
+    final offsetX = rect.left;
+    final offsetY = rect.top;
 
     // 绘制暗部 clipping 点
     if (result.hasDarkClipping) {
@@ -93,70 +81,5 @@ class _ClippingPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _ClippingPainter oldDelegate) {
     return oldDelegate.result != result;
-  }
-}
-
-/// Clipping 状态栏（显示暗部/亮部占比）
-class ClippingStatusBar extends StatelessWidget {
-  final ClippingResult result;
-
-  const ClippingStatusBar({super.key, required this.result});
-
-  @override
-  Widget build(BuildContext context) {
-    if (!result.hasAnyClipping) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      decoration: BoxDecoration(
-        color: DetailColors.scrim,
-        borderRadius: Radii.xsBorder,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (result.hasDarkClipping) ...[
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: DetailColors.accent.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '暗部 ${(result.darkRatio * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(
-                color: DetailColors.textSecondary,
-                fontSize: 11,
-              ),
-            ),
-          ],
-          if (result.hasDarkClipping && result.hasBrightClipping)
-            const SizedBox(width: 12),
-          if (result.hasBrightClipping) ...[
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: DetailColors.warning.withValues(alpha: 0.6),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 4),
-            Text(
-              '亮部 ${(result.brightRatio * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(
-                color: DetailColors.textSecondary,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

@@ -1,11 +1,16 @@
-// plan_list_page.dart — 拍摄策划列表（v2.0）
+// plan_list_page.dart — 拍摄策划列表（v2.0；v8.1 清账：三态统一 + token 化 + haptic）
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/plan_provider.dart';
 import '../services/database/app_database.dart';
 import 'plan_edit_page.dart';
 import 'plan_detail_page.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_format.dart';
+import '../widgets/common/async_views.dart';
+import '../widgets/common/empty_state.dart';
+import '../widgets/common/page_transitions.dart';
 
 class PlanListPage extends ConsumerWidget {
   const PlanListPage({super.key});
@@ -14,20 +19,17 @@ class PlanListPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final plansAsync = ref.watch(allPlansProvider);
     final filter = ref.watch(planStatusFilterProvider);
-    final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('策划',
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 20,
-                color: theme.colorScheme.primary)),
+        title: const Text('策划'),
       ),
       floatingActionButton: FloatingActionButton(
         heroTag: 'plan_fab',
-        onPressed: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => const PlanEditPage())),
+        onPressed: () {
+          HapticFeedback.selectionClick();
+          Navigator.push(context, detailPageRoute(const PlanEditPage()));
+        },
         child: const Icon(Icons.add),
       ),
       body: Column(
@@ -37,7 +39,7 @@ class PlanListPage extends ConsumerWidget {
             height: 44,
             child: ListView(
               scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: Spacing.h(Spacing.md),
               children: PlanStatusFilter.values.map((f) {
                 final selected = filter == f;
                 return Padding(
@@ -45,8 +47,10 @@ class PlanListPage extends ConsumerWidget {
                   child: FilterChip(
                     label: Text(_filterLabel(f)),
                     selected: selected,
-                    onSelected: (_) =>
-                        ref.read(planStatusFilterProvider.notifier).set(f),
+                    onSelected: (_) {
+                      HapticFeedback.selectionClick();
+                      ref.read(planStatusFilterProvider.notifier).set(f);
+                    },
                   ),
                 );
               }).toList(),
@@ -55,33 +59,35 @@ class PlanListPage extends ConsumerWidget {
           // 策划列表
           Expanded(
             child: plansAsync.when(
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (_, __) => Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32),
-                  child: Text('加载失败',
-                      style: TextStyle(
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
-                ),
+              loading: () => const AsyncLoadingView(height: 200),
+              error: (_, __) => AsyncErrorView(
+                message: '策划加载失败',
+                onRetry: () => ref.invalidate(allPlansProvider),
               ),
               data: (plans) {
                 final filtered = filter == PlanStatusFilter.all
                     ? plans
                     : plans.where((p) => p.status == _filterStatus(filter)).toList();
                 if (filtered.isEmpty) {
-                  return _buildEmptyState(context, theme);
+                  return EmptyState(
+                    icon: Icons.assignment_outlined,
+                    title: filter == PlanStatusFilter.all ? '还没有拍摄策划' : '该状态下暂无策划',
+                    subtitle: '点击右下角 + 创建策划\n提前规划主题、器材、shot list',
+                    actionLabel: filter == PlanStatusFilter.all ? '创建策划' : null,
+                    onAction: filter == PlanStatusFilter.all
+                        ? () => Navigator.push(
+                            context, detailPageRoute(const PlanEditPage()))
+                        : null,
+                  );
                 }
                 return ListView.builder(
-                  padding: const EdgeInsets.all(12),
+                  padding: Spacing.all(Spacing.md),
                   itemCount: filtered.length,
                   itemBuilder: (_, i) => _PlanCard(
                     plan: filtered[i],
                     onTap: () => Navigator.push(
                       context,
-                      MaterialPageRoute(
-                        builder: (_) => PlanDetailPage(planId: filtered[i].id),
-                      ),
+                      detailPageRoute(PlanDetailPage(planId: filtered[i].id)),
                     ),
                   ),
                 );
@@ -89,34 +95,6 @@ class PlanListPage extends ConsumerWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(BuildContext context, ThemeData theme) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.assignment_outlined,
-                size: 64, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
-            const SizedBox(height: 16),
-            Text('还没有拍摄策划',
-                style: TextStyle(
-                    fontSize: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6))),
-            const SizedBox(height: 8),
-            Text(
-              '点击右下角 + 创建策划\n提前规划主题、器材、shot list',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 13,
-                  color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
-            ),
-          ],
-        ),
       ),
     );
   }
@@ -154,9 +132,9 @@ class _PlanCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         onTap: onTap,
-        borderRadius: Radii.legacy12Border,
+        borderRadius: Radii.mdBorder,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: Spacing.all(Spacing.md + 2),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -165,23 +143,20 @@ class _PlanCard extends StatelessWidget {
                   Expanded(
                     child: Text(
                       plan.title,
-                      style: const TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w600),
+                      style: AppTypography.title.copyWith(fontSize: 16),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: Spacing.hv(Spacing.sm, 3),
                     decoration: BoxDecoration(
                       color: statusInfo.$2.withValues(alpha: 0.15),
-                      borderRadius: Radii.legacy8Border,
+                      borderRadius: Radii.mdBorder,
                     ),
                     child: Text(
                       statusInfo.$1,
-                      style:
-                          TextStyle(fontSize: 11, color: statusInfo.$2),
+                      style: AppTypography.captionWith(statusInfo.$2),
                     ),
                   ),
                 ],
@@ -191,9 +166,7 @@ class _PlanCard extends StatelessWidget {
                 Text(
                   [if (plan.style.isNotEmpty) plan.style, if (plan.theme.isNotEmpty) plan.theme]
                       .join(' · '),
-                  style: TextStyle(
-                      fontSize: 13,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5)),
+                  style: AppTypography.labelSecondary,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -202,33 +175,23 @@ class _PlanCard extends StatelessWidget {
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    if (plan.location.isNotEmpty)
-                      Icon(Icons.location_on_outlined,
-                          size: 12,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
                     if (plan.location.isNotEmpty) ...[
+                      Icon(Icons.location_on_outlined,
+                          size: 12, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(width: 2),
-                      Text(plan.location,
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                      Text(plan.location, style: AppTypography.captionWith(
+                          theme.colorScheme.onSurfaceVariant)),
                     ],
                     if (plan.location.isNotEmpty && plan.plannedDate != null)
-                      Text(' · ',
-                          style: TextStyle(
-                              fontSize: 12,
-                              color: theme.colorScheme.onSurface.withValues(alpha: 0.4))),
+                      Text(' · ', style: AppTypography.captionWith(
+                          theme.colorScheme.onSurfaceVariant)),
                     if (plan.plannedDate != null) ...[
                       Icon(Icons.calendar_today_outlined,
-                          size: 12,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
+                          size: 12, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(width: 2),
-                      Text(
-                        '${plan.plannedDate!.month}/${plan.plannedDate!.day}',
-                        style: TextStyle(
-                            fontSize: 12,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.4)),
-                      ),
+                      Text(fmtMonthDay(plan.plannedDate!),
+                          style: AppTypography.captionWith(
+                              theme.colorScheme.onSurfaceVariant)),
                     ],
                   ],
                 ),

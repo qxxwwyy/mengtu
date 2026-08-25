@@ -16,6 +16,7 @@ import '../../providers/analysis_provider.dart';
 import '../../providers/exif_provider.dart';
 import '../../services/palette_service.dart';
 import '../../theme/app_theme.dart';
+import '../../utils/date_format.dart';
 import '../color_card.dart';
 import '../harmony_card.dart';
 import '../tone_info_card.dart';
@@ -100,7 +101,7 @@ class _ReadingTile extends StatelessWidget {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: DetailColors.cardSurface,
-        borderRadius: Radii.legacy8Border,
+        borderRadius: Radii.mdBorder,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -118,7 +119,7 @@ class _ReadingTile extends StatelessWidget {
                     color: DetailColors.textPrimary,
                     fontSize: 18,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'monospace',
+                    fontFamily: AppTypography.monoFontFamily,
                   )),
               if (unit != null) ...[
                 const SizedBox(width: 2),
@@ -164,7 +165,7 @@ class _TonalReadingsSection extends ConsumerWidget {
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: DetailColors.cardSurface,
-              borderRadius: Radii.legacy8Border,
+              borderRadius: Radii.mdBorder,
             ),
             // 入场动画用 ChartEnterBuilder（TweenAnimationBuilder 值不变不重播，
             // rebuild 安全）；触摸读数用 Listener raw pointer，不与滚动冲突
@@ -270,7 +271,7 @@ class _ColorReadingsSection extends ConsumerWidget {
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
                   color: DetailColors.cardSurface,
-                  borderRadius: Radii.legacy8Border,
+                  borderRadius: Radii.mdBorder,
                 ),
                 child: const Text('未检出肤色',
                     style:
@@ -353,7 +354,7 @@ class _IsolationReadingsSection extends ConsumerWidget {
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: DetailColors.cardSurface,
-          borderRadius: Radii.legacy8Border,
+          borderRadius: Radii.mdBorder,
         ),
         child: const Text('未检出主体（无脸或侧脸），隔离度指标不可用',
             style: TextStyle(color: DetailColors.textMuted, fontSize: 11, height: 1.4)),
@@ -393,7 +394,7 @@ class _ExifReadingsSection extends ConsumerWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: DetailColors.cardSurface,
-              borderRadius: Radii.legacy8Border,
+              borderRadius: Radii.mdBorder,
             ),
             child: const Text('本照片无拍摄参数',
                 style:
@@ -404,7 +405,7 @@ class _ExifReadingsSection extends ConsumerWidget {
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: DetailColors.cardSurface,
-            borderRadius: Radii.legacy8Border,
+            borderRadius: Radii.mdBorder,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +417,7 @@ class _ExifReadingsSection extends ConsumerWidget {
               if (exif.exposureTriple.isNotEmpty)
                 _ExifLine(label: '曝光', value: exif.exposureTriple, mono: true),
               if (exif.takenAt != null)
-                _ExifLine(label: '拍摄时间', value: _formatDate(exif.takenAt!)),
+                _ExifLine(label: '拍摄时间', value: fmtDateTime(exif.takenAt!)),
             ],
           ),
         );
@@ -424,10 +425,6 @@ class _ExifReadingsSection extends ConsumerWidget {
     );
   }
 
-  static String _formatDate(DateTime dt) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${dt.year}-${two(dt.month)}-${two(dt.day)} ${two(dt.hour)}:${two(dt.minute)}';
-  }
 }
 
 class _ExifLine extends StatelessWidget {

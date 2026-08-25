@@ -45,7 +45,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
               height: 56,
               child: Center(
                 child: CircularProgressIndicator(
-                  color: Theme.of(context).colorScheme.primary,
+                  color: DetailColors.accent,
                 ),
               ),
             ),
@@ -90,7 +90,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
         // ── 算法 segmented control ──
         Container(
           decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            color: DetailColors.controlSurface,
             borderRadius: Radii.smBorder,
           ),
           child: Row(
@@ -109,7 +109,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
                       padding: Spacing.v(Spacing.sm),
                       decoration: BoxDecoration(
                         color: _algorithm == algo
-                            ? Theme.of(context).colorScheme.primary
+                            ? DetailColors.accent
                             : Colors.transparent,
                         borderRadius: Radii.smBorder,
                       ),
@@ -118,7 +118,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
                         textAlign: TextAlign.center,
                         style: _algorithm == algo
                             ? AppTypography.label.copyWith(
-                                color: Theme.of(context).colorScheme.onPrimary,
+                                color: DetailColors.background,
                               )
                             : AppTypography.labelSecondary,
                       ),
@@ -223,8 +223,7 @@ class _ColorCardState extends ConsumerState<ColorCard> {
                   decoration: BoxDecoration(
                     color: Color(argb),
                     borderRadius: Radii.mdBorder,
-                    border: Border.all(
-                        color: Theme.of(context).colorScheme.outline),
+                    border: Border.all(color: ChartColors.gridLight),
                   ),
                 ),
                 SizedBox(width: Spacing.md),
@@ -344,9 +343,7 @@ class _AnimatedColorBlockState extends State<_AnimatedColorBlock>
               padding: Spacing.bottom(Spacing.xs),
               child: Text(
                 '${widget.ratio.toStringAsFixed(0)}%',
-                style: TextStyle(
-                  fontSize: 10,
-                  color: _getContrastColor(widget.color),
+                style: AppTypography.captionCompact.copyWith(color: _getContrastColor(widget.color),
                   fontWeight: FontWeight.w500,
                 ),
               ),

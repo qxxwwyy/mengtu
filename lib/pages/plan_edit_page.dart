@@ -7,6 +7,7 @@ import '../providers/database_provider.dart';
 import '../services/database/daos/plan_dao.dart';
 import '../services/database/app_database.dart';
 import '../theme/app_theme.dart';
+import '../utils/date_format.dart';
 
 class PlanEditPage extends ConsumerStatefulWidget {
   final String? planId; // 编辑模式传入，创建模式为 null
@@ -245,7 +246,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
             leading: const Icon(Icons.calendar_today_outlined),
             title: Text(_plannedDate == null
                 ? '选择拍摄日期'
-                : '拍摄日期：${_plannedDate!.year}/${_plannedDate!.month}/${_plannedDate!.day}'),
+                : '拍摄日期：${fmtDate(_plannedDate!)}'),
             trailing: _plannedDate != null
                 ? IconButton(
                     icon: const Icon(Icons.close, size: 20),
@@ -348,7 +349,7 @@ class _PlanEditPageState extends ConsumerState<PlanEditPage> {
                     foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     minimumSize: const Size(double.infinity, 50),
                     shape: RoundedRectangleBorder(
-                        borderRadius: Radii.legacy12Border),
+                        borderRadius: Radii.mdBorder),
                   ),
                   child: const Text('保存策划',
                       style:

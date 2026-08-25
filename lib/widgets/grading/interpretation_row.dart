@@ -71,7 +71,7 @@ class InterpretationRow extends StatelessWidget {
                         color: statusColor,
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
-                        fontFamily: 'monospace',
+                        fontFamily: AppTypography.monoFontFamily,
                       )),
                 ],
               ),

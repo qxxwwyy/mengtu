@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../theme/app_theme.dart';
+import 'common/page_transitions.dart';
 import 'grading/grading_panel.dart';
 import 'grading/raw_data_dashboard.dart';
 
@@ -40,9 +41,6 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
   final VoidCallback onColorPickToggle;
   final VoidCallback onFocusPeakingToggle;
 
-  /// 展开/收起变化回调（父组件可借此在收起时让图片获得更多空间）
-  final ValueChanged<bool>? onExpandChanged;
-
   /// 强制收起（取色模式时为 true）：保留工具行可见，但禁止展开 GradingPanel
   /// 避免 GradingPanel 与取色放大镜/pin 标记重叠争夺空间
   final bool forceCollapsed;
@@ -59,9 +57,7 @@ class DetailBottomPanel extends ConsumerStatefulWidget {
     required this.onClippingToggle,
     required this.onCompositionToggle,
     required this.onColorPickToggle,
-    required this.onFocusPeakingToggle,
-    this.onExpandChanged,
-    this.forceCollapsed = false,
+    required this.onFocusPeakingToggle,    this.forceCollapsed = false,
   });
 
   @override
@@ -76,16 +72,12 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
 
   void _toggleExpand() {
     if (widget.forceCollapsed) return; // 取色模式禁止展开
-    setState(() => _expanded = !_expanded);
-    widget.onExpandChanged?.call(_expanded);
-  }
+    setState(() => _expanded = !_expanded);  }
 
   void _openDataDashboard() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => RawDataDashboard(photoId: widget.photoId),
-      ),
+      detailPageRoute(RawDataDashboard(photoId: widget.photoId)),
     );
   }
 
@@ -209,18 +201,15 @@ class _DetailBottomPanelState extends ConsumerState<DetailBottomPanel> {
                   Padding(
                       padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 8),
-                      child: const Row(
+                      child: Row(
                         mainAxisAlignment: MainAxisAlignment.center,
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.touch_app,
+                          const Icon(Icons.touch_app,
                               size: 14, color: DetailColors.textMuted),
-                          SizedBox(width: 4),
+                          const SizedBox(width: 4),
                           Text('长按图片取色点',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: DetailColors.textMuted,
-                              )),
+                              style: AppTypography.captionWith(DetailColors.textMuted)),
                         ],
                       ),
                     )
@@ -285,12 +274,12 @@ class _ToolButton extends StatelessWidget {
         HapticFeedback.selectionClick();
         onTap();
       },
-      borderRadius: Radii.legacy12Border,
+      borderRadius: Radii.mdBorder,
       child: Container(
         decoration: isActive
             ? BoxDecoration(
                 color: accent.withValues(alpha: 0.12),
-                borderRadius: Radii.legacy12Border,
+                borderRadius: Radii.mdBorder,
                 boxShadow: [
                   BoxShadow(
                     color: accent.withValues(alpha: 0.2),
@@ -309,11 +298,8 @@ class _ToolButton extends StatelessWidget {
                 color: isActive ? accent : DetailColors.textSecondary),
             const SizedBox(height: 3),
             Text(label,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: isActive ? accent : DetailColors.textMuted,
-                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,
-                )),
+                style: AppTypography.captionCompact.copyWith(color: isActive ? accent : DetailColors.textMuted,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.normal,)),
           ],
         ),
       ),

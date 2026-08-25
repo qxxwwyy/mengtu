@@ -179,8 +179,7 @@ class _ZoneBar extends StatelessWidget {
           child: Text(
             '${ratio.toStringAsFixed(1)}%',
             textAlign: TextAlign.right,
-            style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w500, color: labelColor),
+            style: AppTypography.caption.copyWith(fontWeight: FontWeight.w500, color: labelColor),
           ),
         ),
       ],
@@ -209,9 +208,7 @@ class _StatCell extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Text(label,
-              style: TextStyle(
-                  fontSize: 10,
-                  color: DetailColors.textMuted)),
+              style: AppTypography.captionCompact.copyWith(color: DetailColors.textMuted)),
           Text(value,
               style: TextStyle(
                   fontSize: 14, fontWeight: FontWeight.bold, color: accent)),

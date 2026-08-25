@@ -10,6 +10,7 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../theme/app_theme.dart';
+import '../utils/letterbox.dart';
 
 /// 构图模式
 enum CompositionMode {
@@ -54,20 +55,7 @@ class CompositionOverlay extends StatelessWidget {
 /// 按 BoxFit.contain 在 [size] 内计算图片实际显示矩形（居中 letterbox）
 ///
 /// 与 ClippingOverlay 的 letterbox 计算保持一致，确保构图线/溢出斑点对齐。
-Rect _imageRectInContainer(Size size, double imageAspect) {
-  final containerAspect = size.width / size.height;
-  if (imageAspect > containerAspect) {
-    // 图片更宽 → 以宽度为准，上下留白
-    final drawHeight = size.width / imageAspect;
-    final offsetY = (size.height - drawHeight) / 2;
-    return Offset(0, offsetY) & Size(size.width, drawHeight);
-  } else {
-    // 图片更高 → 以高度为准，左右留白
-    final drawWidth = size.height * imageAspect;
-    final offsetX = (size.width - drawWidth) / 2;
-    return Offset(offsetX, 0) & Size(drawWidth, size.height);
-  }
-}
+
 
 class _CompositionPainter extends CustomPainter {
   final CompositionMode mode;
@@ -91,7 +79,7 @@ class _CompositionPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = _imageRectInContainer(size, imageAspect);
+    final rect = imageRectInContainer(size, imageAspect);
     // 把坐标系平移+裁剪到图片实际矩形，所有子绘制都基于 rect 的局部坐标
     canvas.save();
     canvas.clipRect(rect);

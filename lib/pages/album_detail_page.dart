@@ -114,8 +114,8 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
             );
     final selectedIds = await Navigator.push<Set<String>>(
       context,
-      MaterialPageRoute(
-        builder: (_) => PhotoSelectionPage(
+      detailPageRoute(
+        PhotoSelectionPage(
           photos: availablePhotos,
           albumName: albumName,
         ),
@@ -265,7 +265,7 @@ class _AlbumDetailPageState extends ConsumerState<AlbumDetailPage> {
         color: theme.colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
+            color: AppColors.divider,
           ),
         ),
       ),
@@ -630,7 +630,7 @@ class _PhotoSelectionPageState extends State<PhotoSelectionPage> {
                     _selectMode
                         ? '点击照片切换选中，再次点击取消'
                         : '长按照片进入选择模式，然后点击多张',
-                    style: TextStyle(fontSize: 11, color: cs.onSurface.withValues(alpha: 0.6)),
+                    style: AppTypography.captionWith(cs.onSurfaceVariant),
                   ),
                 ),
                 if (_selectMode)

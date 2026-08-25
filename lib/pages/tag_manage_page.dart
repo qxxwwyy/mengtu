@@ -7,6 +7,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../providers/tag_provider.dart';
 import '../providers/database_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/async_views.dart';
+import '../widgets/common/empty_state.dart';
 
 class TagManagePage extends ConsumerStatefulWidget {
   const TagManagePage({super.key});
@@ -129,12 +131,16 @@ class _TagManagePageState extends ConsumerState<TagManagePage> {
             child: tagsAsync.when(
               loading: () =>
                   const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('错误: $e')),
+              error: (e, _) => AsyncErrorView(
+                message: '标签加载失败',
+                onRetry: () => ref.invalidate(allTagsProvider),
+              ),
               data: (tags) {
                 if (tags.isEmpty) {
-                  return Center(
-                    child: Text('暂无标签',
-                        style: TextStyle(color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4))),
+                  return const EmptyState(
+                    icon: Icons.local_offer_outlined,
+                    title: '暂无标签',
+                    subtitle: '在相册详情页可以给相册挂标签',
                   );
                 }
                 // 按分组归类

@@ -9,13 +9,13 @@ import '../providers/album_provider.dart';
 import '../utils/app_info.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/animated_number.dart';
+import '../widgets/common/page_transitions.dart';
 
 class ProfilePage extends ConsumerWidget {
   const ProfilePage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     // Reactive 统计：watch 三个 stream，IndexedStack 常驻下也能随 DB 变化刷新。
     final photosAsync = ref.watch(allPhotosProvider);
     final tagsAsync = ref.watch(allTagsProvider);
@@ -27,11 +27,7 @@ class ProfilePage extends ConsumerWidget {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('我的',
-            style: TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 20,
-                color: theme.colorScheme.primary)),
+        title: const Text('我的'),
       ),
       body: ListView(
         children: [
@@ -69,14 +65,14 @@ class ProfilePage extends ConsumerWidget {
             title: '标签管理',
             subtitle: '管理相册标签（全局可复用）',
             onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const TagManagePage())),
+                detailPageRoute(const TagManagePage())),
           ),
           _MenuItem(
             icon: Icons.settings_outlined,
             title: '设置',
             subtitle: '存储、缓存、关于',
             onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const SettingsPage())),
+                detailPageRoute(const SettingsPage())),
           ),
           SizedBox(height: Spacing.xl),
           Center(
@@ -155,12 +151,9 @@ class _MenuItem extends StatelessWidget {
     return ListTile(
       leading: Icon(icon, color: theme.colorScheme.primary),
       title: Text(title),
-      subtitle: Text(subtitle,
-          style: TextStyle(
-              fontSize: 12,
-              color: theme.colorScheme.onSurface.withValues(alpha: 0.5))),
+      subtitle: Text(subtitle, style: AppTypography.captionMuted),
       trailing: Icon(Icons.chevron_right,
-          color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+          color: theme.colorScheme.onSurfaceVariant),
       onTap: onTap,
     );
   }

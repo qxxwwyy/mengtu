@@ -16,6 +16,9 @@ import '../services/database/app_database.dart';
 import '../services/database/daos/album_dao.dart' show AlbumWithTags;
 import 'album_detail_page.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/async_views.dart';
+import '../widgets/common/empty_state.dart';
+import '../widgets/common/page_transitions.dart';
 
 class AlbumPage extends ConsumerStatefulWidget {
   const AlbumPage({super.key});
@@ -86,7 +89,10 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
           Expanded(
             child: albumsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(child: Text('加载失败: $e')),
+              error: (e, _) => AsyncErrorView(
+            message: '相册加载失败',
+            onRetry: () => ref.invalidate(albumsWithTagsProvider),
+          ),
               data: (albums) {
                 if (albums.isEmpty) {
                   return _buildEmptyState();
@@ -119,33 +125,12 @@ class _AlbumPageState extends ConsumerState<AlbumPage> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.photo_album_outlined,
-            size: 64,
-            color:
-                Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
-          ),
-          const SizedBox(height: 16),
-          Text(
-            '还没有相册',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .onSurface
-                      .withValues(alpha: 0.5),
-                ),
-          ),
-          const SizedBox(height: 8),
-          TextButton(
-            onPressed: _createAlbum,
-            child: const Text('创建第一个相册'),
-          ),
-        ],
-      ),
+    return EmptyState(
+      icon: Icons.photo_album_outlined,
+      title: '还没有相册',
+      subtitle: '创建相册来整理作品集，还能挂标签快速筛选',
+      actionLabel: '创建第一个相册',
+      onAction: _createAlbum,
     );
   }
 
@@ -362,9 +347,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
   void _openDetail() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => AlbumDetailPage(albumId: widget.item.album.id),
-      ),
+      detailPageRoute(AlbumDetailPage(albumId: widget.item.album.id)),
     );
   }
 
@@ -410,11 +393,11 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
       onTapUp: (_) => setState(() => _isPressed = false),
       onTapCancel: () => setState(() => _isPressed = false),
       child: AnimatedScale(
-        scale: _isPressed ? 0.97 : 1.0,
+        scale: _isPressed ? 0.96 : 1.0,
         duration: const Duration(milliseconds: 120),
         curve: Curves.easeOut,
         child: ClipRRect(
-          borderRadius: Radii.legacy12Border,
+          borderRadius: Radii.mdBorder,
           child: Container(
             decoration: BoxDecoration(
               color: theme.colorScheme.surfaceContainerHighest,
@@ -495,7 +478,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
       return Center(
         child: Icon(Icons.photo_album,
             size: 40,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+            color: theme.colorScheme.onSurfaceVariant),
       );
     }
     final path = cover.thumbnailPath.isNotEmpty
@@ -508,7 +491,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
       errorBuilder: (_, __, ___) => Center(
         child: Icon(Icons.broken_image,
             size: 40,
-            color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+            color: theme.colorScheme.onSurfaceVariant),
       ),
     );
   }
@@ -525,10 +508,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
 
   Widget _countText(int count) => Text(
         '$count 张',
-        style: TextStyle(
-          fontSize: 11,
-          color: AppColors.onPhotoText,
-        ),
+        style: AppTypography.caption.copyWith(color: AppColors.onPhotoText,),
       );
 
   /// 标签 chips：最多 2 个 + "+N"（标签筛选分支无聚合标签，此时不显示）
@@ -551,7 +531,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
               ),
               child: Text(
                 t.name,
-                style: const TextStyle(fontSize: 10, color: AppColors.onPhotoText),
+                style: AppTypography.captionCompact.copyWith(color: AppColors.onPhotoText),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -566,7 +546,7 @@ class _AlbumCardState extends ConsumerState<_AlbumCard> {
             ),
             child: Text(
               '+$extra',
-              style: const TextStyle(fontSize: 10, color: AppColors.onPhotoText),
+              style: AppTypography.captionCompact.copyWith(color: AppColors.onPhotoText),
             ),
           ),
       ],

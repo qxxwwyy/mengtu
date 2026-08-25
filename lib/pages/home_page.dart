@@ -357,7 +357,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                 decoration: InputDecoration(
                   hintText: '搜索照片名称...',
                   hintStyle: TextStyle(
-                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4)),
+                      color: Theme.of(context).colorScheme.onSurfaceVariant),
                   border: InputBorder.none,
                 ),
                 onChanged: (value) {
@@ -365,12 +365,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                       value.isEmpty ? null : value);
                 },
               )
-            : Text('萌图',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 20,
-                  color: Theme.of(context).colorScheme.primary,
-                )),
+            : const Text('萌图'),
         actions: [
           IconButton(
             icon: Icon(_isSearching ? Icons.close : Icons.search),
@@ -495,7 +490,7 @@ class _HomePageState extends ConsumerState<HomePage> {
           decoration: BoxDecoration(
             border: Border(
               top: BorderSide(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.08),
+                color: AppColors.divider,
               ),
             ),
           ),
@@ -517,7 +512,7 @@ class _HomePageState extends ConsumerState<HomePage> {
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                  borderRadius: Radii.legacy12Border,
+                  borderRadius: Radii.mdBorder,
                 ),
                 child: Text(
                   '已选 $count',
@@ -560,7 +555,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       crossAxisSpacing: 6,
       children: List.generate(6, (i) {
         return ClipRRect(
-          borderRadius: Radii.legacy12Border,
+          borderRadius: Radii.mdBorder,
           child: Container(
             color: Theme.of(context).colorScheme.surfaceContainerHighest
                 .withValues(alpha: 0.15),

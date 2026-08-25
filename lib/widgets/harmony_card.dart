@@ -1,4 +1,7 @@
 // harmony_card.dart — 色彩和谐度分析卡片
+//
+// v8.1：作为详情页生态组件改用 DetailColors（永远暗色，gotcha #26 —— 此前
+// 依赖 Theme.of(context).colorScheme，浅色主题会泄漏进详情页）；token 化清账。
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../services/harmony_service.dart';
@@ -15,10 +18,9 @@ class HarmonyCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final result = analyzeHarmony(palette);
-    final colorScheme = Theme.of(context).colorScheme;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(12),
+      padding: Spacing.all(Spacing.md),
       child: Column(
         children: [
           // 色轮
@@ -26,21 +28,17 @@ class HarmonyCard extends ConsumerWidget {
           const SizedBox(height: 12),
           // 配色方案标签
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            padding: Spacing.hv(Spacing.md, 6),
             decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.15),
+              color: DetailColors.accent.withValues(alpha: 0.15),
               borderRadius: Radii.lgBorder,
               border: Border.all(
-                color: colorScheme.primary.withValues(alpha: 0.4),
+                color: DetailColors.accent.withValues(alpha: 0.4),
               ),
             ),
             child: Text(
               result.type.label,
-              style: TextStyle(
-                color: colorScheme.primary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppTypography.labelWith(DetailColors.accent),
             ),
           ),
           const SizedBox(height: 8),
@@ -48,33 +46,21 @@ class HarmonyCard extends ConsumerWidget {
           if (result.confidence > 0) ...[
             Row(
               children: [
-                Text(
-                  '置信度',
-                  style: TextStyle(
-                    color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    fontSize: 11,
-                  ),
-                ),
+                Text('置信度', style: AppTypography.captionWith(DetailColors.textSecondary)),
                 const SizedBox(width: 8),
                 Expanded(
                   child: LinearProgressIndicator(
                     value: result.confidence,
-                    backgroundColor:
-                        colorScheme.surfaceContainerHighest,
+                    backgroundColor: DetailColors.controlSurface,
                     valueColor:
-                        AlwaysStoppedAnimation<Color>(colorScheme.primary),
+                        const AlwaysStoppedAnimation<Color>(DetailColors.accent),
                     minHeight: 4,
                     borderRadius: Radii.xsBorder,
                   ),
                 ),
                 const SizedBox(width: 8),
-                Text(
-                  '${(result.confidence * 100).round()}%',
-                  style: TextStyle(
-                    color: colorScheme.onSurface.withValues(alpha: 0.5),
-                    fontSize: 11,
-                  ),
-                ),
+                Text('${(result.confidence * 100).round()}%',
+                    style: AppTypography.mono.copyWith(fontSize: 11)),
               ],
             ),
             const SizedBox(height: 12),
@@ -82,19 +68,15 @@ class HarmonyCard extends ConsumerWidget {
           // 描述
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(12),
+            padding: Spacing.all(Spacing.md),
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerHighest
-                  .withValues(alpha: 0.5),
-              borderRadius: Radii.legacy8Border,
+              color: DetailColors.controlSurface,
+              borderRadius: Radii.mdBorder,
             ),
             child: Text(
               result.description,
-              style: TextStyle(
-                color: colorScheme.onSurface.withValues(alpha: 0.7),
-                fontSize: 12,
-                height: 1.5,
-              ),
+              style: AppTypography.captionWith(DetailColors.textSecondary)
+                  .copyWith(height: 1.5),
               textAlign: TextAlign.center,
             ),
           ),
@@ -128,14 +110,7 @@ class HarmonyCard extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Text(
-                      '$hue°',
-                      style: TextStyle(
-                        color:
-                            colorScheme.onSurface.withValues(alpha: 0.6),
-                        fontSize: 11,
-                      ),
-                    ),
+                    Text('$hue°', style: AppTypography.mono.copyWith(fontSize: 11)),
                   ],
                 );
               }).toList(),

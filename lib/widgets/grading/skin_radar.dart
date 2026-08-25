@@ -771,7 +771,7 @@ class _Legend extends StatelessWidget {
                 color: color,
                 fontSize: 10,
                 fontWeight: FontWeight.w600,
-                fontFamily: 'monospace')),
+                fontFamily: AppTypography.monoFontFamily)),
       ],
     );
   }

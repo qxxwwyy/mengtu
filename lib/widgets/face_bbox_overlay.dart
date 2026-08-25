@@ -9,6 +9,7 @@
 import 'package:flutter/material.dart';
 import '../services/face_service.dart' show DetectedFace;
 import '../theme/app_theme.dart';
+import '../utils/letterbox.dart';
 
 /// 人脸检测框可视化蒙层
 class FaceBBoxOverlay extends StatelessWidget {
@@ -49,18 +50,6 @@ class FaceBBoxOverlay extends StatelessWidget {
 }
 
 /// 按 BoxFit.contain 在 [size] 内计算图片实际显示矩形（与其它蒙层一致）
-Rect _imageRectInContainer(Size size, double imageAspect) {
-  final containerAspect = size.width / size.height;
-  if (imageAspect > containerAspect) {
-    final drawHeight = size.width / imageAspect;
-    final offsetY = (size.height - drawHeight) / 2;
-    return Offset(0, offsetY) & Size(size.width, drawHeight);
-  } else {
-    final drawWidth = size.height * imageAspect;
-    final offsetX = (size.width - drawWidth) / 2;
-    return Offset(offsetX, 0) & Size(drawWidth, size.height);
-  }
-}
 
 class _FaceBBoxPainter extends CustomPainter {
   final DetectedFace face;
@@ -75,7 +64,7 @@ class _FaceBBoxPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final rect = _imageRectInContainer(size, imageAspect);
+    final rect = imageRectInContainer(size, imageAspect);
     final color = highlight ? AppColors.accent : DetailColors.faceBoxNormal;
 
     // bbox 归一化 0~1 → 图片矩形内像素坐标

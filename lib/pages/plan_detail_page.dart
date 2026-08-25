@@ -10,6 +10,7 @@ import '../services/database/app_database.dart';
 import '../theme/app_theme.dart';
 import '../widgets/common/async_views.dart';
 import '../widgets/common/empty_state.dart';
+import '../utils/date_format.dart';
 import '../widgets/common/page_transitions.dart';
 import 'plan_edit_page.dart';
 import 'album_detail_page.dart';
@@ -143,7 +144,7 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
                 Text(
                   [
                     if (plan.location.isNotEmpty) plan.location,
-                    if (plan.plannedDate != null) _formatDate(plan.plannedDate!),
+                    if (plan.plannedDate != null) fmtDate(plan.plannedDate!),
                   ].join('  ·  '),
                   style: AppTypography.captionWith(AppColors.textMuted),
                 ),
@@ -296,12 +297,6 @@ class _PlanDetailPageState extends ConsumerState<PlanDetailPage> {
       child: Text(text, style: AppTypography.captionMuted),
     );
   }
-}
-
-/// 日期格式：2026-08-25（补零，跨页统一由 M4 迁移至 util）
-String _formatDate(DateTime dt) {
-  String two(int n) => n.toString().padLeft(2, '0');
-  return '${dt.year}-${two(dt.month)}-${two(dt.day)}';
 }
 
 class _SectionTitle extends StatelessWidget {

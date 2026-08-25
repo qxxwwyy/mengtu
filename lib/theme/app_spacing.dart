@@ -79,35 +79,10 @@ class Radii {
 
   // ── BorderRadius 工厂 ──
 
-  /// BorderRadius.circular(sm)
   static const xsBorder = BorderRadius.all(Radius.circular(xs));
-
-  /// BorderRadius.circular(sm)
   static const smBorder = BorderRadius.all(Radius.circular(sm));
-
-  /// BorderRadius.circular(md)
   static const mdBorder = BorderRadius.all(Radius.circular(md));
-
-  /// BorderRadius.circular(lg)
   static const lgBorder = BorderRadius.all(Radius.circular(lg));
-
-  /// BorderRadius.circular(xl)
   static const xlBorder = BorderRadius.all(Radius.circular(xl));
-
-  /// BorderRadius.circular(pill)
   static const pillBorder = BorderRadius.all(Radius.circular(pill));
-
-  // ── 旧值兼容（迁移过渡用，Phase 4 后清理）──
-
-  /// 8px 圆角（旧 app_theme chip/小圆角用，对应 ~Radii.sm 偏大）
-  static const legacy8 = 8.0;
-  static const legacy8Border = BorderRadius.all(Radius.circular(legacy8));
-
-  /// 12px 圆角（旧 app_theme card 用，对应 ~Radii.md 偏大）
-  static const legacy12 = 12.0;
-  static const legacy12Border = BorderRadius.all(Radius.circular(legacy12));
-
-  /// 16px 圆角（旧 FAB 用，= Radii.lg）
-  static const legacy16 = 16.0;
-  static const legacy16Border = BorderRadius.all(Radius.circular(legacy16));
 }

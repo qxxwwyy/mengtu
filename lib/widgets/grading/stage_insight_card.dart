@@ -99,7 +99,7 @@ class _StageInsightExpandedCardState extends State<StageInsightExpandedCard> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: AppColors.accent.withValues(alpha: 0.12),
-                borderRadius: Radii.legacy8Border,
+                borderRadius: Radii.mdBorder,
                 border: Border.all(
                   color: AppColors.accent.withValues(alpha: 0.3),
                   width: 0.5,

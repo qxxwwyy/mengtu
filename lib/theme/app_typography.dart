@@ -12,6 +12,9 @@ import 'app_colors.dart';
 class AppTypography {
   AppTypography._();
 
+  /// 等宽字体族名（数据数值统一用，禁止页面手写 'monospace' 字符串）
+  static const monoFontFamily = 'monospace';
+
   // ═══════════════════════════════════════════════
   // 文字层级
   // ═══════════════════════════════════════════════
@@ -71,6 +74,28 @@ class AppTypography {
   );
 
   // ═══════════════════════════════════════════════
+  // 数据密集 UI 小号层级（图表标注 / 紧凑数据行）
+  // ═══════════════════════════════════════════════
+
+  /// 紧凑数据行（示波器读数/统计行，空间受限）
+  static const captionCompact = TextStyle(
+    fontSize: 10,
+    fontWeight: FontWeight.w400,
+    letterSpacing: 0.3,
+    color: AppColors.textPrimary,
+    height: 1.3,
+  );
+
+  /// 图表标注（painter 内标签/图例注脚）
+  static const chartAnnotation = TextStyle(
+    fontSize: 9,
+    fontWeight: FontWeight.w500,
+    letterSpacing: 0.3,
+    color: AppColors.textPrimary,
+    height: 1.2,
+  );
+
+  // ═══════════════════════════════════════════════
   // 数据数值层级（暖金色 textData，区分文字和数据）
   // ═══════════════════════════════════════════════
 
@@ -98,7 +123,7 @@ class AppTypography {
     fontWeight: FontWeight.w400,
     letterSpacing: 0.5,
     color: AppColors.textData,
-    fontFamily: 'monospace',
+    fontFamily: monoFontFamily,
     height: 1.4,
   );
 

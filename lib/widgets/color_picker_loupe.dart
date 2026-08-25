@@ -93,7 +93,7 @@ class ColorPickerLoupe extends StatelessWidget {
                     color: DetailColors.textPrimary,
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    fontFamily: 'monospace',
+                    fontFamily: AppTypography.monoFontFamily,
                   ),
                 ),
                 const SizedBox(width: 6),
@@ -199,7 +199,7 @@ class PixelInfoPanel extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
         color: DetailColors.scrim,
-        borderRadius: Radii.legacy8Border,
+        borderRadius: Radii.mdBorder,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

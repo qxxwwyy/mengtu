@@ -30,6 +30,7 @@ import '../widgets/sharpness_overlay.dart';
 import '../widgets/color_picker_loupe.dart';
 import '../services/pixel_picker_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/common/page_transitions.dart';
 import '../utils/color_utils.dart';
 
 class DetailPage extends ConsumerStatefulWidget {
@@ -717,7 +718,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                     height: 40,
                     decoration: BoxDecoration(
                       color: color,
-                      borderRadius: Radii.legacy8Border,
+                      borderRadius: Radii.mdBorder,
                       border: Border.all(color: Colors.white24),
                     ),
                   ),
@@ -731,7 +732,7 @@ class _DetailPageState extends ConsumerState<DetailPage> {
                                 color: DetailColors.textPrimary,
                                 fontSize: 14,
                                 fontWeight: FontWeight.w600,
-                                fontFamily: 'monospace')),
+                                fontFamily: AppTypography.monoFontFamily)),
                         const SizedBox(height: 2),
                         Text('HSL $hue° / $sat% / $lum%',
                             style: const TextStyle(
@@ -903,12 +904,10 @@ class _DetailPageState extends ConsumerState<DetailPage> {
     if (selected != null && mounted) {
       Navigator.push(
         context,
-        MaterialPageRoute(
-          builder: (_) => ComparePage(
-            photoId1: widget.photoId,
-            photoId2: selected,
-          ),
-        ),
+        detailPageRoute(ComparePage(
+          photoId1: widget.photoId,
+          photoId2: selected,
+        )),
       );
     }
   }

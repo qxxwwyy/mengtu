@@ -10,8 +10,9 @@ import '../../theme/app_animations.dart';
 /// ```dart
 /// Navigator.push(context, detailPageRoute(DetailPage(photoId: id)));
 /// ```
-Route<T> detailPageRoute<T>(Widget page) {
+Route<T> detailPageRoute<T>(Widget page, {bool fullscreenDialog = false}) {
   return PageRouteBuilder<T>(
+    fullscreenDialog: fullscreenDialog,
     pageBuilder: (context, animation, secondaryAnimation) => page,
     transitionsBuilder: (context, animation, secondaryAnimation, child) {
       return FadeTransition(
