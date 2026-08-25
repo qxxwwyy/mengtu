@@ -3,6 +3,7 @@
 // v2.1：照片不再有标签，搜索改为按文件名；多选仅保留"加入相册/删除"。
 // 标签体系已迁移到相册（相册 Tab + 相册详情）。
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:wechat_assets_picker/wechat_assets_picker.dart';
@@ -53,6 +54,7 @@ class _HomePageState extends ConsumerState<HomePage> {
       ),
     );
     if (confirmed != true) return;
+    HapticFeedback.mediumImpact();
 
     final importService = await ref.read(importServiceProvider.future);
     // 先记录数量再 clear，否则 SnackBar 永远显示"已删除 0 张"
@@ -465,7 +467,10 @@ class _HomePageState extends ConsumerState<HomePage> {
       floatingActionButton: _selectMode
           ? null
           : FloatingActionButton(
-              onPressed: _pickAndImport,
+              onPressed: () {
+                HapticFeedback.selectionClick();
+                _pickAndImport();
+              },
               child: const Icon(Icons.add_photo_alternate),
             ),
     );
