@@ -18,8 +18,9 @@ import '../../services/palette_service.dart';
 import '../../theme/app_theme.dart';
 import '../color_card.dart';
 import '../harmony_card.dart';
-import '../histogram_painter.dart';
 import '../tone_info_card.dart';
+import '../histogram_painter.dart' show HistogramMode;
+import '../charts/interactive_histogram.dart';
 
 /// 数据仪表盘：分类展示所有原始读数
 class RawDataDashboard extends ConsumerWidget {
@@ -152,7 +153,7 @@ class _TonalReadingsSection extends ConsumerWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // 直方图
+        // 直方图（可交互：按住读数 + 入场动画）
         histAsync.when(
           loading: () => const SizedBox(
               height: 100,
@@ -160,15 +161,17 @@ class _TonalReadingsSection extends ConsumerWidget {
           error: (e, _) => Text('直方图加载失败: $e',
               style: const TextStyle(color: DetailColors.warning, fontSize: 11)),
           data: (hist) => Container(
-            height: 100,
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
               color: DetailColors.cardSurface,
               borderRadius: Radii.legacy8Border,
             ),
-            // 数据读数页直方图不需要入场动画（避免 rebuild 导致动画反复重置）
-            child: CustomPaint(
-              painter: HistogramPainter(data: hist, mode: HistogramMode.rgbLum),
+            // 入场动画用 ChartEnterBuilder（TweenAnimationBuilder 值不变不重播，
+            // rebuild 安全）；触摸读数用 Listener raw pointer，不与滚动冲突
+            child: InteractiveHistogram(
+              data: hist,
+              mode: HistogramMode.rgbLum,
+              height: 84,
             ),
           ),
         ),

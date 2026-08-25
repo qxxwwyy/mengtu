@@ -241,4 +241,14 @@ class ChartColors {
 
   /// 更浅网格线（白色 10%）
   static const gridFaint = Color(0x1AFFFFFF);
+
+  // ── 图表触摸交互（读数游标/浮层）──
+  /// 触摸查询游标线（琥珀，与 accent 同源但独立命名以便图表语义演化）
+  static const probeCursor = Color(0xFFE8A838);
+
+  /// 查询浮层底色（深色半透明）
+  static const probeBadgeBg = Color(0xE61E1E24);
+
+  /// 参照直方图填充（白色 50%，典型分布的"底"）
+  static const referenceFill = Color(0x80FFFFFF);
 }

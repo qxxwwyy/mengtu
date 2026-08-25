@@ -30,10 +30,16 @@ import '../../models/tone_result.dart';
 import '../../theme/app_theme.dart';
 import '../../utils/color_utils.dart' show rgbToYCbCr;
 import '../../providers/analysis_provider.dart';
+import '../charts/chart_animations.dart';
 import 'interpretation_row.dart';
 
-/// 矢量示波器（支持肤色 ROI / 全图双模式）
-class SkinRadar extends ConsumerWidget {
+/// 矢量示波器（支持肤色 ROI / 全图双模式 + 交互）
+///
+/// 交互（v8.1）：
+/// - 模式切换过渡：云层 crossfade + 肤色元素淡入淡出（modeProgress 0↔1）
+/// - 入场动画：整体淡入 + 云从中心生长（enterProgress）
+/// - 长按查询：按住示波器任意点位 → 十字游标 + Cb/Cr 读数浮层
+class SkinRadar extends ConsumerStatefulWidget {
   /// 肤色分析（hueOffset / saturation / chromaCb / chromaCr），空时显示占位
   final SkinAnalysis skin;
 
@@ -43,19 +49,29 @@ class SkinRadar extends ConsumerWidget {
   const SkinRadar({super.key, required this.skin, required this.photoId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SkinRadar> createState() => _SkinRadarState();
+}
+
+class _SkinRadarState extends ConsumerState<SkinRadar> {
+  /// 长按查询的画布位置（null = 未查询）
+  Offset? _probe;
+
+  void _probeAt(LongPressEndDetails _) => setState(() => _probe = null);
+
+  @override
+  Widget build(BuildContext context) {
     final mode = ref.watch(scopeModeProvider);
+    final skin = widget.skin;
     final hasSkin = skin.hueOffset != null && skin.saturation != null;
 
     // 全图 Cb/Cr bins（修复 bug 核心：任何照片都有数据）
-    final imageBinsAsync = ref.watch(imageScopeProvider(photoId));
+    final imageBinsAsync = ref.watch(imageScopeProvider(widget.photoId));
+    final imageBins = imageBinsAsync.asData?.value;
 
     // skinRoi 模式下，如果 skin 自带 chromaBins（ROI 内云）优先用 skin 的，
     // 否则回退到全图 bins。这样 skinRoi 也能看到云（即使无脸，ROI 区域云）。
     // fullImage 模式始终用全图 bins。
-    final List<int>? bins = mode == ScopeMode.fullImage
-        ? imageBinsAsync.asData?.value
-        : (skin.chromaBins ?? imageBinsAsync.asData?.value);
+    final skinBins = skin.chromaBins ?? imageBins;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4, bottom: 4),
@@ -67,27 +83,72 @@ class SkinRadar extends ConsumerWidget {
             flex: 3,
             child: AspectRatio(
               aspectRatio: 1,
-              child: Stack(
-                children: [
-                  CustomPaint(
-                    painter: _VectorscopePainter(
-                      chromaBins: bins,
-                      skinChromaCb: skin.chromaCb,
-                      skinChromaCr: skin.chromaCr,
-                      hueOffset: skin.hueOffset,
-                      saturation: skin.saturation,
-                      showSkinDot: mode == ScopeMode.skinRoi && hasSkin,
-                      showSkinLine: mode == ScopeMode.skinRoi,
-                    ),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final size = constraints.biggest;
+                return GestureDetector(
+                  // 长按查询任意点位 Cb/Cr（移动跟手、抬起消失）
+                  onLongPressStart: (d) =>
+                      setState(() => _probe = d.localPosition),
+                  onLongPressMoveUpdate: (d) =>
+                      setState(() => _probe = d.localPosition),
+                  onLongPressEnd: _probeAt,
+                  onLongPressCancel: () => setState(() => _probe = null),
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      // 入场动画（enterProgress：整体淡入 + 云从中心生长）
+                      ChartEnterBuilder(
+                        builder: (context, enter) =>
+                            // 模式切换过渡（modeProgress：skinRoi=0 ↔ fullImage=1，
+                            // 云层 crossfade + 肤色元素淡入淡出）
+                            TweenAnimationBuilder<double>(
+                          tween: Tween(
+                            begin: 0.0,
+                            end: mode == ScopeMode.fullImage ? 1.0 : 0.0,
+                          ),
+                          duration: AppAnimations.chartSwitchDuration,
+                          curve: AppAnimations.chartSwitchCurve,
+                          builder: (context, modeT, _) => Opacity(
+                            opacity: 0.25 + 0.75 * enter,
+                            child: CustomPaint(
+                              painter: _VectorscopePainter(
+                                binsImage: imageBins,
+                                binsSkin: skinBins,
+                                skinChromaCb: skin.chromaCb,
+                                skinChromaCr: skin.chromaCr,
+                                hueOffset: skin.hueOffset,
+                                saturation: skin.saturation,
+                                showSkinDot: mode == ScopeMode.skinRoi && hasSkin,
+                                showSkinLine: mode == ScopeMode.skinRoi,
+                                modeProgress: modeT,
+                                enterProgress: enter,
+                                probe: _probe,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      // 长按查询浮层（Cb/Cr 读数）
+                      if (_probe != null)
+                        Positioned(
+                          top: 2,
+                          left: 0,
+                          right: 0,
+                          child: _ProbeBadge(
+                            probe: _probe!,
+                            scopeSize: size,
+                          ),
+                        ),
+                      // 右上角模式切换按钮
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: _ModeToggle(mode: mode),
+                      ),
+                    ],
                   ),
-                  // 右上角模式切换按钮
-                  Positioned(
-                    top: 0,
-                    right: 0,
-                    child: _ModeToggle(mode: mode),
-                  ),
-                ],
-              ),
+                );
+              }),
             ),
           ),
           const SizedBox(width: 8),
@@ -97,6 +158,112 @@ class SkinRadar extends ConsumerWidget {
             child: _Legend(skin: skin, hasSkin: hasSkin, mode: mode),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// 画布坐标 → Cb/Cr 值（纯函数，painter 的 _chromaToCanvas 逆变换）
+///
+/// 与 painter 共用同一套几何参数（cx/cy/radius），保证读数与视觉点严格对齐。
+/// 超出满量程圆的点位 clamp 到 ±128。
+({double cb, double cr}) canvasToChroma(Offset local, Size size) {
+  final cx = size.width / 2;
+  final cy = size.height / 2;
+  final radius = size.shortestSide / 2 - 16;
+  final cb = ((local.dx - cx) / radius * 127.5).clamp(-128.0, 128.0);
+  // y 翻转：Cr 正方向朝上（画布 y 向下）
+  final cr = (-(local.dy - cy) / radius * 127.5).clamp(-128.0, 128.0);
+  return (cb: cb, cr: cr);
+}
+
+/// Cb/Cr → 中文色相名（红/橙/黄/黄绿/绿/青/蓝/紫/品红，9 区）
+///
+/// 反算 RGB（Y 固定 135）→ HSV hue → 分区。用于长按查询的直观读数。
+String chromaToHueName(double cb, double cr) {
+  final rgb = ycbcrToRgbForCloud(135, cb, cr);
+  final maxC = [rgb[0], rgb[1], rgb[2]].reduce((a, b) => a > b ? a : b);
+  final minC = [rgb[0], rgb[1], rgb[2]].reduce((a, b) => a < b ? a : b);
+  // 近无彩色（中心附近）：Cb/Cr 都小时直接按 Cb/Cr 方向给弱色名
+  final chroma = math.sqrt(cb * cb + cr * cr);
+  if (chroma < 8) return '无彩';
+  if (maxC == minC) return '无彩';
+
+  double r = rgb[0] / 255.0, g = rgb[1] / 255.0, b = rgb[2] / 255.0;
+  final max = [r, g, b].reduce((a, c) => a > c ? a : c);
+  final min = [r, g, b].reduce((a, c) => a < c ? a : c);
+  final d = max - min;
+  double hue;
+  if (max == r) {
+    hue = ((g - b) / d) % 6;
+  } else if (max == g) {
+    hue = (b - r) / d + 2;
+  } else {
+    hue = (r - g) / d + 4;
+  }
+  hue *= 60;
+  if (hue < 0) hue += 360;
+
+  if (hue < 15 || hue >= 345) return '红';
+  if (hue < 40) return '橙';
+  if (hue < 70) return '黄';
+  if (hue < 100) return '黄绿';
+  if (hue < 160) return '绿';
+  if (hue < 200) return '青';
+  if (hue < 260) return '蓝';
+  if (hue < 300) return '紫';
+  return '品红';
+}
+
+/// 长按查询浮层：色块 + Cb/Cr 数值 + 色相名
+class _ProbeBadge extends StatelessWidget {
+  final Offset probe;
+  final Size scopeSize;
+
+  const _ProbeBadge({required this.probe, required this.scopeSize});
+
+  @override
+  Widget build(BuildContext context) {
+    final chroma = canvasToChroma(probe, scopeSize);
+    final rgb = ycbcrToRgbForCloud(135, chroma.cb, chroma.cr);
+    final swatch = Color.fromARGB(255, rgb[0], rgb[1], rgb[2]);
+
+    String fmt(double v) =>
+        (v >= 0 ? '+' : '') + v.toStringAsFixed(0).replaceAll('-', '−');
+
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: ChartColors.probeBadgeBg,
+          borderRadius: Radii.smBorder,
+          border: Border.all(color: ChartColors.gridLight, width: 0.5),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 10,
+              decoration: BoxDecoration(
+                color: swatch,
+                shape: BoxShape.circle,
+                border: Border.all(color: ChartColors.gridLight, width: 0.5),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'Cb ${fmt(chroma.cb)}  Cr ${fmt(chroma.cr)}',
+              style: AppTypography.mono.copyWith(fontSize: 10),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              chromaToHueName(chroma.cb, chroma.cr),
+              style: AppTypography.captionWith(DetailColors.accent)
+                  .copyWith(fontSize: 10),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -116,8 +283,8 @@ class _ModeToggle extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.4),
-            borderRadius: BorderRadius.circular(4),
+            color: DetailColors.chipSurface,
+            borderRadius: Radii.xsBorder,
             border: Border.all(color: ChartColors.gridLight, width: 0.5),
           ),
           child: Row(
@@ -131,7 +298,7 @@ class _ModeToggle extends StatelessWidget {
               const SizedBox(width: 3),
               Text(
                 mode == ScopeMode.skinRoi ? '肤色' : '全图',
-                style: TextStyle(
+                style: const TextStyle(
                   color: ChartColors.skinToneLine,
                   fontSize: 9,
                   fontWeight: FontWeight.w600,
@@ -169,8 +336,11 @@ const _targets = [
 
 /// 示波器画笔
 class _VectorscopePainter extends CustomPainter {
-  /// Cb/Cr 64×64 bins（像素云数据源）
-  final List<int>? chromaBins;
+  /// 全图层 Cb/Cr 64×64 bins（fullImage 模式数据源）
+  final List<int>? binsImage;
+
+  /// 肤色 ROI 层 bins（skinRoi 模式数据源，无 ROI 数据时与全图相同）
+  final List<int>? binsSkin;
 
   /// 肤色 ROI 平均 Cb/Cr（画肤色光点用，优先级高于 hueOffset 估算）
   final double? skinChromaCb;
@@ -184,14 +354,28 @@ class _VectorscopePainter extends CustomPainter {
   final bool showSkinDot;
   final bool showSkinLine;
 
+  /// 模式过渡进度：0 = skinRoi，1 = fullImage。
+  /// 云层 crossfade（skin 层 alpha=1−t，image 层 alpha=t）+ 肤色元素 alpha=1−t。
+  final double modeProgress;
+
+  /// 入场动画进度 0~1：云从中心生长（半径 ×(0.55+0.45·t)）
+  final double enterProgress;
+
+  /// 长按查询位置（画布坐标，null = 无查询）。画十字游标 + 圆环。
+  final Offset? probe;
+
   _VectorscopePainter({
-    this.chromaBins,
+    this.binsImage,
+    this.binsSkin,
     this.skinChromaCb,
     this.skinChromaCr,
     this.hueOffset,
     this.saturation,
     required this.showSkinDot,
     required this.showSkinLine,
+    this.modeProgress = 0,
+    this.enterProgress = 1.0,
+    this.probe,
   });
 
   @override
@@ -227,9 +411,21 @@ class _VectorscopePainter extends CustomPainter {
     canvas.drawLine(Offset(cx - radius, cy), Offset(cx + radius, cy), axisPaint);
     canvas.drawLine(Offset(cx, cy - radius), Offset(cx, cy + radius), axisPaint);
 
-    // ===== 3. 像素云（Cb/Cr 平面）=====
-    if (chromaBins != null && chromaBins!.isNotEmpty) {
-      _drawChromaCloud(canvas, cx, cy, radius);
+    // ===== 3. 像素云（双层 crossfade）=====
+    // skinRoi 层（alpha = 1−t）：skin bins（无 ROI 数据回退 image bins）
+    // fullImage 层（alpha = t）：image bins
+    // 两层数据相同时只画一层（避免同数据双重叠加发白）。
+    final t = modeProgress.clamp(0.0, 1.0);
+    if (binsSkin != null && binsSkin!.isNotEmpty && t < 1.0) {
+      _drawChromaCloud(canvas, cx, cy, radius, binsSkin!, 1.0 - t);
+    }
+    if (binsImage != null && binsImage!.isNotEmpty && t > 0.0) {
+      final same = identical(binsSkin, binsImage) ||
+          (binsSkin != null && _listEq(binsSkin!, binsImage!));
+      // 同数据时由 skin 层负责绘制（t<1 期间），仅在切到纯 fullImage 时接管
+      if (!same || t >= 1.0) {
+        _drawChromaCloud(canvas, cx, cy, radius, binsImage!, t);
+      }
     }
 
     // ===== 4. 六色目标方框（BT.709 75% 彩条）=====
@@ -240,8 +436,8 @@ class _VectorscopePainter extends CustomPainter {
       ..strokeWidth = 1.0
       ..style = PaintingStyle.stroke;
     const targetSize = 5.0;
-    for (final t in _targets) {
-      final ycbcr = rgbToYCbCr(t.r, t.g, t.b);
+    for (final tg in _targets) {
+      final ycbcr = rgbToYCbCr(tg.r, tg.g, tg.b);
       final (px, py) = _chromaToCanvas(ycbcr.cb, ycbcr.cr, cx, cy, radius, 1.0);
       canvas.drawRect(
         Rect.fromCenter(center: Offset(px, py), width: targetSize * 2, height: targetSize * 2),
@@ -250,20 +446,20 @@ class _VectorscopePainter extends CustomPainter {
 
       // 标签沿径向外移（scale 1.15）
       final (lx, ly) = _chromaToCanvas(ycbcr.cb, ycbcr.cr, cx, cy, radius, 1.15);
-      _drawColorLabel(canvas, t.label, Offset(lx, ly), t.color,
+      _drawColorLabel(canvas, tg.label, Offset(lx, ly), tg.color,
           align: _labelAlign(ycbcr.cb));
     }
 
-    // ===== 5. 肤色参考线（I-axis 123°，仅肤色模式显示）=====
+    // ===== 5. 肤色参考线（I-axis 123°，仅肤色模式显示，alpha=1−t）=====
     // 标准 I-axis 123°（从 +Cb 轴逆时针）：方向向量 (cos123°, sin123°) ≈
     // (-0.545, +0.839)，即左上 ~11 点钟。用幅度 75 画到 75% 圈处。
-    if (showSkinLine) {
+    if (showSkinLine && t < 1.0) {
       const skinAngle = 123.0 * math.pi / 180.0;
       const skinMag = 75.0; // 落在 75% 电平圈
       final skinCb = skinMag * math.cos(skinAngle); // ≈ -40.9
       final skinCr = skinMag * math.sin(skinAngle); // ≈ +62.9
       final skinLinePaint = Paint()
-        ..color = ChartColors.skinToneLine
+        ..color = ChartColors.skinToneLine.withValues(alpha: 1.0 - t)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
       final (ex, ey) = _chromaToCanvas(skinCb, skinCr, cx, cy, radius, 1.0);
@@ -272,12 +468,12 @@ class _VectorscopePainter extends CustomPainter {
       // 肤色线标签
       final (lx, ly) = _chromaToCanvas(skinCb, skinCr, cx, cy, radius, 1.2);
       _drawLabel(canvas, '肤色', Offset(lx, ly),
-          color: ChartColors.skinToneLine,
+          color: ChartColors.skinToneLine.withValues(alpha: 1.0 - t),
           align: _labelAlign(skinCb));
     }
 
-    // ===== 6. 肤色光点（仅肤色模式叠加）=====
-    if (showSkinDot) {
+    // ===== 6. 肤色光点（仅肤色模式叠加，alpha=1−t）=====
+    if (showSkinDot && t < 1.0) {
       double cb, cr;
       if (skinChromaCb != null && skinChromaCr != null) {
         // 精确路径：直接用 ROI 平均 Cb/Cr
@@ -304,17 +500,17 @@ class _VectorscopePainter extends CustomPainter {
       final (px, py) = _chromaToCanvas(cb, cr, cx, cy, radius, 1.0);
 
       final glow = Paint()
-        ..color = ChartColors.skinToneHalo.withValues(alpha: 0.25)
+        ..color = ChartColors.skinToneHalo.withValues(alpha: 0.25 * (1.0 - t))
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 9, glow);
 
       final dot = Paint()
-        ..color = ChartColors.skinTonePoint
+        ..color = ChartColors.skinTonePoint.withValues(alpha: 1.0 - t)
         ..style = PaintingStyle.fill;
       canvas.drawCircle(Offset(px, py), 4, dot);
 
       final ring = Paint()
-        ..color = DetailColors.textPrimary
+        ..color = DetailColors.textPrimary.withValues(alpha: 1.0 - t)
         ..strokeWidth = 1.0
         ..style = PaintingStyle.stroke;
       canvas.drawCircle(Offset(px, py), 4, ring);
@@ -323,6 +519,27 @@ class _VectorscopePainter extends CustomPainter {
     // ===== 7. 中心点 =====
     final centerPaint = Paint()..color = ChartColors.gridLight;
     canvas.drawCircle(Offset(cx, cy), 1.5, centerPaint);
+
+    // ===== 8. 长按查询游标（十字线 + 圆环）=====
+    if (probe != null) {
+      final probePaint = Paint()
+        ..color = ChartColors.probeCursor.withValues(alpha: 0.7)
+        ..strokeWidth = 1.0
+        ..style = PaintingStyle.stroke;
+      canvas.drawLine(
+          Offset(probe!.dx, cy - radius), Offset(probe!.dx, cy + radius), probePaint);
+      canvas.drawLine(
+          Offset(cx - radius, probe!.dy), Offset(cx + radius, probe!.dy), probePaint);
+      canvas.drawCircle(probe!, 6, probePaint);
+    }
+  }
+
+  bool _listEq(List<int> a, List<int> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   /// Cb/Cr 值 → 画布坐标
@@ -345,8 +562,13 @@ class _VectorscopePainter extends CustomPainter {
   /// - 颜色 = 该 Cb/Cr 反算回 RGB 的真实颜色（让云团呈现真实色彩分布）
   /// - 透明度 = sqrt(count/maxCount)，热点更亮，稀疏处淡（darktable 风格）
   /// - BlendMode.screen：暗背景上叠加出发光感
-  void _drawChromaCloud(Canvas canvas, double cx, double cy, double radius) {
-    final points = computeCloudPoints(chromaBins!, cx, cy, radius);
+  ///
+  /// [alphaScale] 模式过渡系数（crossfade 用），[enterProgress] 入场进度
+  /// （云从中心生长：映射半径 ×(0.55+0.45·t)）。
+  void _drawChromaCloud(Canvas canvas, double cx, double cy, double radius,
+      List<int> bins, double alphaScale) {
+    final grow = 0.55 + 0.45 * enterProgress.clamp(0.0, 1.0);
+    final points = computeCloudPoints(bins, cx, cy, radius * grow);
     if (points.isEmpty) return;
 
     // 色块半径：让相邻 bin 略有重叠（云团连续感），但不超过 bin 宽的一半
@@ -359,7 +581,8 @@ class _VectorscopePainter extends CustomPainter {
       ..blendMode = BlendMode.screen;
 
     for (final p in points) {
-      paint.color = Color.fromARGB(p.alphaByte, p.r, p.g, p.b);
+      paint.color = Color.fromARGB(
+          (p.alphaByte * alphaScale).round().clamp(0, 255), p.r, p.g, p.b);
       canvas.drawCircle(Offset(p.px, p.py), cloudDotRadius, paint);
     }
   }
@@ -409,13 +632,17 @@ class _VectorscopePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VectorscopePainter old) =>
-      old.chromaBins != chromaBins ||
+      old.binsImage != binsImage ||
+      old.binsSkin != binsSkin ||
       old.skinChromaCb != skinChromaCb ||
       old.skinChromaCr != skinChromaCr ||
       old.hueOffset != hueOffset ||
       old.saturation != saturation ||
       old.showSkinDot != showSkinDot ||
-      old.showSkinLine != showSkinLine;
+      old.showSkinLine != showSkinLine ||
+      old.modeProgress != modeProgress ||
+      old.enterProgress != enterProgress ||
+      old.probe != probe;
 }
 
 /// 右侧解读面板（双模式）

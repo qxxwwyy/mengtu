@@ -12,6 +12,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../theme/app_theme.dart';
+import '../charts/chart_animations.dart';
 
 /// 参照直方图叠放：当前直方图 + 典型影调参照（半透明灰背景）
 class ReferenceHistogram extends StatelessWidget {
@@ -36,13 +37,19 @@ class ReferenceHistogram extends StatelessWidget {
     // 不给交叉轴紧约束，整条链会把 SizedBox 压成 0 宽度 → painter 拿到
     // size.width=0 → barWidth=0 → 所有点塌缩到 x=0 → 视觉上 0 像素（黑框）。
     // 显式 width: double.infinity 让 SizedBox 在水平方向请求父级最大宽度。
+    //
+    // 入场动画（图表规范）：参照分布先浮现（progress 前半段），
+    // 当前分布从底部生长（后半段）—— 教学语义：先看"典型"再看"你的"。
     return SizedBox(
       width: double.infinity,
       height: 80,
-      child: CustomPaint(
-        painter: _ReferenceHistogramPainter(
-          current: current,
-          reference: reference,
+      child: ChartEnterBuilder(
+        builder: (context, progress) => CustomPaint(
+          painter: _ReferenceHistogramPainter(
+            current: current,
+            reference: reference,
+            progress: progress,
+          ),
         ),
       ),
     );
@@ -75,12 +82,18 @@ class _ReferenceHistogramPainter extends CustomPainter {
   /// 参照分布（256 bins）
   final List<int> reference;
 
-  _ReferenceHistogramPainter({required this.current, required this.reference});
+  /// 入场动画进度 0~1：0~0.5 参照浮现，0.5~1 当前分布从底部生长
+  final double progress;
 
-  // 性能优化：Paint 对象 static final
-  // 参照用白 50% alpha——在 DetailColors.cardSurface 上保证可见
+  _ReferenceHistogramPainter({
+    required this.current,
+    required this.reference,
+    this.progress = 1.0,
+  });
+
+  // 性能优化：Paint 对象 static final（参照色 token 化，ChartColors.referenceFill）
   static final _referencePaint = Paint()
-    ..color = const Color(0x80FFFFFF)
+    ..color = ChartColors.referenceFill
     ..style = PaintingStyle.fill;
 
   static final _currentPaint = Paint()
@@ -104,23 +117,30 @@ class _ReferenceHistogramPainter extends CustomPainter {
     canvas.drawLine(
         Offset(0, height - 0.5), Offset(width, height - 0.5), _axisPaint);
 
-    // 1) 参照分布（半透明灰背景）
-    _drawHistogram(canvas, size, reference, _referencePaint, barWidth);
+    final p = progress.clamp(0.0, 1.0);
 
-    // 2) 当前分布（强调色，叠在参照上）
-    if (current != null && current!.isNotEmpty) {
-      _drawHistogram(canvas, size, current!, _currentPaint, barWidth);
+    // 1) 参照分布（半透明灰背景，前半段浮现）
+    final refH = Curves.easeOutCubic.transform((p / 0.5).clamp(0.0, 1.0));
+    if (refH > 0) {
+      _drawHistogram(canvas, size, reference, _referencePaint, barWidth, refH);
+    }
+
+    // 2) 当前分布（强调色，后半段从底部生长，叠在参照上）
+    final curH = Curves.easeOutCubic.transform(((p - 0.5) / 0.5).clamp(0.0, 1.0));
+    if (current != null && current!.isNotEmpty && curH > 0) {
+      _drawHistogram(canvas, size, current!, _currentPaint, barWidth, curH);
     }
   }
 
   void _drawHistogram(Canvas canvas, Size size, List<int> hist, Paint paint,
-      double barWidth) {
+      double barWidth, double grow) {
     final maxVal = hist.reduce(math.max);
     if (maxVal <= 0) return;
     final height = size.height;
+    final drawH = height * grow;
     final path = Path()..moveTo(0, height);
     for (var i = 0; i < 256; i++) {
-      final h = (hist[i] / maxVal) * height;
+      final h = (hist[i] / maxVal) * drawH;
       path.lineTo(i * barWidth, height - h);
     }
     path.lineTo(size.width, height);
@@ -130,7 +150,9 @@ class _ReferenceHistogramPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ReferenceHistogramPainter old) =>
-      old.current != current || old.reference != reference;
+      old.current != current ||
+      old.reference != reference ||
+      old.progress != progress;
 }
 
 // ============ 预置典型分布（高斯生成，作为教学参照锚点）============
