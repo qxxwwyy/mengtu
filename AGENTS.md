@@ -13,7 +13,7 @@
 **目标平台：** Android（优先）→ Windows（二期）
 **详细需求：** 以本文档"已完成"清单 + [README.md](./README.md) 功能列表为准（PRD.md/DEVPLAN.md 未入库）
 
-## 当前开发状态（v8.0）
+## 当前开发状态（v8.1）
 
 ### 已完成
 - ✅ §1.1 项目初始化（Flutter 3.44 + Riverpod 3.x + drift + CI/CD）
@@ -63,6 +63,7 @@
 - ✅ v7.1 矢量示波器双模式（SkinRadar 改 ConsumerWidget + scopeModeProvider 肤色ROI/全图切换 + imageScopeProvider 全图采样 + stage_color_card 嵌入示波器 + FaceBBoxOverlay 按 photoId 作用域可见性）
 - ✅ v7.2 示波器 Cb/Cr 平面重构（修像素云画不出来 bug + 坐标系从 HSV 极坐标切换到 Cb/Cr[YCbCr Rec.709 full-range]直角平面对齐达芬奇 broadcast vectorscope 规范 + 像素云始终来自全图采样[任何照片都有数据] + rgbToYCbCr 纯函数 + SkinAnalysis 加 chromaBins/chromaCb/chromaCr + sampleImageChroma 64×64 bins + 六色 BT.709 75% 彩条 + I-axis 123° 肤色线 + 抽 computeCloudPoints 纯函数 unit test[评审 M3] + isEmpty 纳入 chroma 字段[评审 M2] + 删 sampleImageHueSat/hueSatBins 死代码[评审 m1]，gotcha #64/#65）
 - ✅ v8.0 洞察生成系统（删 StyleProfiles/StyleProfilePhotos 两表 + 删 style_profile_dao/fingerprint_service/builtin_profiles/replication_hints_service/style_profile_page 等档案匹配系统 + schemaVersion v11→v12 + insight_service 洞察生成替代 + stage_insight_card 阶④改用洞察 + SkinAnalysis 加 chromaBins/chromaCb/chromaCr[示波器 Cb/Cr 平面]，详见下）
+- ✅ v8.1 夜航体验升级（小红书调研驱动，见 docs/xhs-research-2026-08.md[调研报告] + docs/feature-decisions.md[功能决策] + docs/night-run/[执行记录]）：①**图表交互与动效** — InteractiveHistogram 按住读数[亮度值/五区名/占比/RGB 分量，松手消失，gotcha #67]、示波器模式切换云层 crossfade + 长按查询任意点位 Cb/Cr/色相名 + 入场从中心生长、参照直方图两段式入场[参照先浮现→当前后生长]、对比页三图表入场、全部核心图表有入场动画；②**三页重做** — settings/plan_detail/compare 全面 token 化 + 三态齐全，compare 永远暗色（DetailColors）；③**一致性清账 13/15** — 新组件 async_views.dart[AsyncLoadingView/AsyncErrorView/AsyncErrorLine 统一三态]、empty_state 推广、AppBar 标题主题层 titleTextStyle 统一、全 app 转场统一 detailPageRoute[PageRouteBuilder fade+slide]、Radii.legacy 全删、日期统一 utils/date_format.dart[fmtDate/fmtDateTime/fmtRelative/fmtMonthDay]、letterbox 统一 utils/letterbox.dart[4 份复制→1]、monospace 全 token 化、onSurface.withValues alpha 链 22 处清零、裸 fontSize 68 处映射 token[新增 AppTypography.captionCompact(10)/chartAnnotation(9)]、harmony_card+color_card 主题泄漏修复→DetailColors；④**死代码** — sharpness_guide_card 整文件/ClippingStatusBar/histogram_chart.dart/onExpandChanged 删除；⑤**洞察 v2** — 通透度诊断 clarityInsight[黑位×RMS→通透/空气感/偏闷/硬朗四档+数值锚点，调研最大痛点"发灰不通透"的用户语言翻译]、风格参照库[参照直方图 4→8 组：+日系清透/电影感/胶片感/港风，_generateGaussian 加 blackLift/whiteCeiling 参数]、stage_tonal_card 风格参照 chips、风格名对齐用户叫法[日系高调→日系清透，新增胶片感灰调]、文案接入调研词典[偏黄气/偏粉气/奶油感/冷白皮方向/跳出来]、harmony_card 置信度百分比→定性档位[heuristic 包装成统计量是伪精确]、洞察卡片默认展开，gotcha #66/#67/#68）
 
 ### 待开发
 - ⬜ 空状态美化（发光线条微图形 + CTA 引导按钮）
@@ -193,7 +194,15 @@ mengtu/
 │   ├── widgets/
 │   │   ├── photo_card.dart          # 瀑布流卡片（+多选蒙层；v2.1移除快速标签按钮）
 │   │   ├── detail_bottom_panel.dart # 详情页统一底部面板（高频工具行[黑白/溢出/构图/锐度/取色/数据] + 展开 GradingPanel 四阶解构卡片[v3.5 重构]）
-│   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注）
+│   │   ├── histogram_painter.dart   # 直方图 CustomPainter（5段标注 + progress 入场）
+│   │   ├── charts/                   # 图表基建（v8.1）
+│   │   │   ├── interactive_histogram.dart # 可交互直方图（按住读数+入场动画，替代已删 histogram_chart）
+│   │   │   └── chart_animations.dart # ChartEnterBuilder 等图表动效规范
+│   │   ├── common/                   # 跨页复用组件（v8.1 扩充）
+│   │   │   ├── async_views.dart      # AsyncLoadingView/AsyncErrorView/AsyncErrorLine 三态统一
+│   │   │   ├── empty_state.dart      # 空状态（全 app 统一）
+│   │   │   ├── animated_number.dart  # 数字滚动
+│   │   │   └── page_transitions.dart # detailPageRoute 统一转场（全 app）
 │   │   ├── tone_info_card.dart      # 影调 5 区域占比条
 │   │   ├── tone_guide_card.dart     # v3.0 数理审美调色指引（信息熵/RMS/肤色4维度纯文字卡片）
 │   │   ├── color_card.dart          # 色卡展示
@@ -228,6 +237,8 @@ mengtu/
 │   └── utils/
 │       ├── app_info.dart           # 应用版本常量（单一数据源，与 pubspec version 对齐）
 │       ├── color_utils.dart         # RGB↔HSL, Rec.709 灰度, rgbToYCbCr（v7.2 示波器 Cb/Cr 平面用）
+│       ├── date_format.dart         # 日期统一格式化（v8.1：fmtDate/fmtDateTime/fmtRelative/fmtMonthDay）
+│       ├── letterbox.dart           # BoxFit.contain letterbox 几何统一（v8.1：蒙层共用）
 │       └── file_hash.dart           # 纯Dart SHA256
 ├── algorithms/                      # 取色算法（独立模块）
 │   ├── mmcq.dart                    # MMCQ 改进中位切分
@@ -244,8 +255,8 @@ mengtu/
 │   ├── algorithms/                  # hue/kmeans/mmcq 算法测试
 │   ├── dao/                         # photo_dao/tag_dao/album_dao/color_pin_dao/plan_dao
 │   ├── integration/                 # analysis_flow/import_flow 全链路测试
-│   ├── unit/                        # color_utils/file_hash/histogram/tone/harmony/clipping/migration
-│   ├── widget/                      # tone_info_card/histogram_painter/photo_card Widget 测试
+│   ├── unit/                        # color_utils/file_hash/histogram/tone/harmony/clipping/migration/insight/histogram_probe/vectorscope_probe
+│   ├── widget/                      # tone_info_card/histogram_painter/photo_card/skin_radar/interactive_histogram Widget 测试
 │   └── helpers/test_helpers.dart    # 测试工具（图片生成、内存DB、ProviderContainer、fixture builder）
 ├── .github/workflows/build.yml      # CI: build_runner → analyze → test → release APK
 ├── AGENTS.md                        # 本文件
@@ -449,6 +460,9 @@ CI 流程（`.github/workflows/build.yml`）：
   - **六色目标**：用 BT.709 **75% 彩条**（每通道 191，非 100%），Cb/Cr 恰为 100% 的 0.75 倍，以 127.5 归一化后自然落在 75% 圈，无需 scale hack，也避免 G/Mg 的 clamp 扭曲
   - **isEmpty 语义**：`SkinAnalysis.isEmpty` 必须纳入 chroma 字段（`chromaBins/chromaCb/chromaCr 任一非空即非 empty`），否则 face_service 的 skinCount==0 早退路径产出的「半填充」对象被 `stage_color_card` 误判 empty → ROI 像素云分支变死代码
 65. **CustomPaint 的 widget 测试盲区 + unit test 范式（v7.2）** — Flutter 的 `CustomPaint` painter 不产生 Element，`find.*` 全部失效——widget test 无法捕获 painter 的渲染 bug（bin 索引算错/坐标 NaN/Paint 透明都不会让测试失败）。**正确范式**：把 painter 的核心计算逻辑抽成**顶层纯函数** + 独立 unit test。示波器把 `_drawChromaCloud` 的 bin→点映射抽成 `computeCloudPoints(bins, cx, cy, radius)` → `List<CloudPoint>`，`test/unit/chroma_cloud_test.dart` 断言坐标轴方向（+Cb 右/+Cr 上）、bin 索引顺序（`cbB*crBins+crB`）、空 bins 安全返回、alpha sqrt 压缩、RGB 反算 clamp。**坑（CI 踩过）**：测试里用 `firstWhere((p)=>p.px>cx)` 区分两个点时，bin 选址必须让两点 Cb 一正一负分居左右——若两个 bin 的 Cb 都为负（如 cbB=10 Cb=-86、cbB=20 Cb=-46，中心在 cbB=31.5），两点都落左侧，`firstWhere((p)=>p.px>cx)` 抛 `Bad state: No element`。算 bin 中心 Cb 值：`cbB*(256/cbBins)+(256/cbBins)/2-128`，cbB>31.5 才是正 Cb
+66. **TweenAnimationBuilder 的隐式动画语义（v8.1 图表动效核心）** — 三个关键行为：(a) **首次挂载** begin≠end 会播放动画（ChartEnterBuilder 入场动画的原理）；(b) **end 值变化**时从**当前值**（不是 begin）动画到新 end（示波器模式切换 crossfade 的原理：`Tween(begin: 0, end: mode==fullImage?1:0)`，mode 变化即触发往返过渡，无需 key 重建）；(c) rebuild 时 tween 值不变则**不重播**（入场动画在 provider 刷新的 rebuild 下安全，raw_data_dashboard 旧注释"避免 rebuild 导致动画反复重置"是误判）。双参数动画（入场 + 切换）要嵌套两层：外层 ChartEnterBuilder（一次性入场）+ 内层 TweenAnimationBuilder（可逆切换）
+67. **滚动容器内的图表触摸用 Listener 不用 GestureDetector（v8.1）** — 直方图按住读数若用 `onPanStart/onHorizontalDragUpdate`，会与外层 ListView 的滚动手势进竞技场（要么读数时页面不能滚、要么读数被滚动吞掉）。正确做法：`Listener`（raw pointer，onPointerDown/Move/Up）不参与手势竞技场，按下即读数、移动即更新、抬起即消失，同时不影响外层滚动。示波器的"长按查询"反过来用 `onLongPressStart/MoveUpdate`（长按语义天然不与滚动冲突）
+68. **const 上下文不能调用方法 —— token 化 TextStyle 的 const 陷阱（v8.1）** — `const Text('x', style: AppTypography.label.copyWith(...))` 报 `Methods can't be invoked in constant expressions`：copyWith 是方法调用，不能出现在 const 构造参数里。批量把裸 `TextStyle(fontSize: N, color: X)` 替换为 `AppTypography.x.copyWith(...)` 时，原本 `const Text`/`const Column`/`const Padding` 的 const 必须同步剥掉（或用已有的 `AppTypography.labelWith(color)` 工厂 + const 保留）。同类：`AppTypography.mono.fontFamily` 不是 const 表达式（TextStyle 的实例属性 getter），字体名要暴露为 `static const monoFontFamily = 'monospace'` 才能用于 const
 
 ## v3.5 已知限制（非阻塞，待后续优化）
 
